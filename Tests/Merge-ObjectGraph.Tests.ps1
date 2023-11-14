@@ -83,7 +83,7 @@ Describe 'Merge-ObjectGraph' {
         }
     }
 
-    It 'Array of Dictionaries by Key' {
+    It 'append Dictionaries items by Key' {
         $InputObject = @(
             @{
                 Key = 'Key1'
@@ -114,6 +114,40 @@ Describe 'Merge-ObjectGraph' {
         $Actual.Count | Should -Be 3
         $Actual.where{ $_.Key -eq 'Key1' }[0].Count | Should -Be 3
         $Actual.where{ $_.Key -eq 'Key2' }[0].Count | Should -Be 5
+        $Actual.where{ $_.Key -eq 'Key3' }[0].Count | Should -Be 3
+    }
+
+    It 'repalce Dictionaries items by Key' {
+        $InputObject = @(
+            @{
+                Key = 'Key1'
+                a = 1
+                b = 2
+            }
+            @{
+                Key = 'Key2'
+                c = 3
+                d = 4
+            }
+        )
+
+        $Template = @(
+            @{
+                Key = 'Key2'
+                c = 1
+                d = 2
+            }
+            @{
+                Key = 'Key3'
+                e = 3
+                f = 4
+            }
+        )
+
+        $Actual = ,$InputObject | Merge-ObjectGraph $Template -PrimaryKey Key
+        $Actual.Count | Should -Be 3
+        $Actual.where{ $_.Key -eq 'Key1' }[0].Count | Should -Be 3
+        $Actual.where{ $_.Key -eq 'Key2' }[0].Count | Should -Be 3
         $Actual.where{ $_.Key -eq 'Key3' }[0].Count | Should -Be 3
     }
 }
