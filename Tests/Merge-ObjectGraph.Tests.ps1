@@ -26,7 +26,7 @@ Describe 'Merge-ObjectGraph' {
          }
     }
 
-    Context 'Basic' {
+    Context 'Merge' {
 
         It 'Scalar Array' {
             ,@('a', 'b', 'c') | Merge-ObjectGraph 'b', 'c', 'd' | Should -Be (,@('a','b','c','d'))
@@ -51,7 +51,7 @@ Describe 'Merge-ObjectGraph' {
             $Actual.Keys | Should -Contain 'd'
         }
 
-        It 'Dictionary Array' {
+        It 'Array of Dictionaries' {
             $InputObject = @(
                 @{
                     Key = 'Key1'
@@ -67,12 +67,12 @@ Describe 'Merge-ObjectGraph' {
 
             $Template = @(
                 @{
-                    Key = 'Key3'
+                    Key = 'Key2'
                     a = 1
                     b = 2
                 }
                 @{
-                    Key = 'Key2'
+                    Key = 'Key3'
                     c = 3
                     d = 4
                 }
@@ -81,5 +81,39 @@ Describe 'Merge-ObjectGraph' {
             $Actual = ,$InputObject | Merge-ObjectGraph $Template
             $Actual.Count | Should -Be 4
         }
+    }
+
+    It 'Array of Dictionaries by Key' {
+        $InputObject = @(
+            @{
+                Key = 'Key1'
+                a = 1
+                b = 2
+            }
+            @{
+                Key = 'Key2'
+                c = 3
+                d = 4
+            }
+        )
+
+        $Template = @(
+            @{
+                Key = 'Key2'
+                a = 1
+                b = 2
+            }
+            @{
+                Key = 'Key3'
+                c = 3
+                d = 4
+            }
+        )
+
+        $Actual = ,$InputObject | Merge-ObjectGraph $Template -PrimaryKey Key
+        $Actual.Count | Should -Be 3
+        $Actual.where{ $_.Key -eq 'Key1' }[0].Count | Should -Be 3
+        $Actual.where{ $_.Key -eq 'Key2' }[0].Count | Should -Be 5
+        $Actual.where{ $_.Key -eq 'Key3' }[0].Count | Should -Be 3
     }
 }
