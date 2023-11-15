@@ -1,6 +1,6 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.0.0"}
 
-Describe 'Merge-ObjectGraph' {
+Describe 'Sort-ObjectGraph' {
 
     BeforeAll {
 
@@ -28,7 +28,7 @@ Describe 'Merge-ObjectGraph' {
 
     Context 'Sort' {
 
-        It 'Type list' {
+        It 'Type' {
             $Object = @{
                 String = 'String'
                 HereString = @'
@@ -74,7 +74,7 @@ World
                 Object = [pscustomobject]@{ Name = 'Value' }
             }
 
-            $Object | Sort-ObjectGraph | should -not -throw
+            { $Object | Sort-ObjectGraph } | Should -not -throw
         }
 
     }
