@@ -92,7 +92,7 @@ Describe 'Compare-ObjectGraph' {
             }
             $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
             $Result = $Object   | Compare-ObjectGraph $Reference
-            $Result.Count       | Should -Be 1
+            @($Result).Count    | Should -Be 1
             $Result.Property    | Should -Be '.Comment'
             $Result.Inequality  | Should -Be 'Value'
             $Result.Reference   | Should -Be 'Sample ObjectGraph'
