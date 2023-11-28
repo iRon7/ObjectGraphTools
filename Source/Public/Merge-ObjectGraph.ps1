@@ -68,12 +68,12 @@ function Merge-ObjectGraph {
                 ,$Output
             }
             elseif ($ObjectNode.Structure -eq 'Dictionary') {
-                $PSNode = $ObjectNode.Renew()                                                   # The $InputObject defines the dictionary (or PSCustomObject) type
-                foreach ($ObjectItem in $ObjectNode.GetItemNodes()) {                                  # The $InputObject order takes president
-                    if ($TemplateNode.Contains($ObjectItem.Key)) {
+                $PSNode = $ObjectNode.Renew()                                               # The $InputObject defines the dictionary (or PSCustomObject) type
+                foreach ($ObjectItem in $ObjectNode.GetItemNodes()) {
+                    if ($TemplateNode.Contains($ObjectItem.Key)) {                          # The $InputObject defines the comparer
                         $Value = MergeObject -Template $TemplateNode.GetItemNode($ObjectItem.Key) -Object $ObjectItem
                     }
-                    else { $Value = $ObjectNode.Value }
+                    else { $Value = $ObjectItem.Value }
                     $PSNode.Set($ObjectItem.Key, $Value)
                 }
                 foreach ($Key in $TemplateNode.get_Keys()) {
