@@ -1,11 +1,9 @@
-$PublicFolder = Join-Path  'Source\Public'
-$PSScripts = Get-ChildItem -Path $PublicFolder -Filter *.ps1
+$SourceFolder = Join-Path $PSScriptRoot 'Source'
+$Scripts = Get-ChildItem -Path $SourceFolder -Filter *.ps1 -Recurse
 
-$Functions = 
-    foreach ($PSScript in $PSScripts){
-        $PSScript.Name
-        . $PSScript.FullName
+$Functions = $Scripts.foreach{
+        . $_.FullName
+        if ($_.Directory.Name -eq 'Public') { $_.BaseName }
     }
 
-# Export only the SSO functions 
 Export-ModuleMember -Function $Functions
