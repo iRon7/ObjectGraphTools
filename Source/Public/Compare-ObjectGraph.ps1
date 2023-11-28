@@ -136,24 +136,29 @@ function Compare-ObjectGraph {
 
                         $ReferenceHashes = [System.Collections.Generic.Dictionary[Int, Object]]::new()
                         $ReferenceNode.GetItemNodes().foreach{ $ReferenceHashes[(GetHashCode $_)] = $_ }
+
                         $ObjectExcept = [Linq.Enumerable]::Except([int[]]$ObjectHashes.Keys, [int[]]$ReferenceHashes.Keys)
-                        $ObjectExcept.foreach{
+                        if ($ObjectExcept.Count) {
                             if ($IsEqual) { return $false }
-                            [PSCustomObject]@{
-                                Property    = $ObjectHashes[$_].GetPathName()
-                                Inequality  = 'Exists'
-                                Reference   = $false
-                                InputObject = $true
+                            @($ObjectExcept).foreach{
+                                [PSCustomObject]@{
+                                    Property    = $ObjectHashes[$_].GetPathName()
+                                    Inequality  = 'Exists'
+                                    Reference   = $false
+                                    InputObject = $true
+                                }
                             }
                         }
                         $ReferenceExcept = [Linq.Enumerable]::Except([int[]]$ReferenceHashes.Keys, [int[]]$ObjectHashes.Keys)
-                        $ReferenceExcept.foreach{
+                        if ($ReferenceExcept.Count) {
                             if ($IsEqual) { return $false }
-                            [PSCustomObject]@{
-                                Property    = $ReferenceHashes[$_].GetPathName()
-                                Inequality  = 'Exists'
-                                Reference   = $true
-                                InputObject = $false
+                            @($ReferenceExcept).foreach{
+                                [PSCustomObject]@{
+                                    Property    = $ReferenceHashes[$_].GetPathName()
+                                    Inequality  = 'Exists'
+                                    Reference   = $true
+                                    InputObject = $false
+                                }
                             }
                         }
                     }
