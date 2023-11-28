@@ -165,7 +165,7 @@ function Compare-ObjectGraph {
                 }
                 elseif ($ObjectNode.Structure -eq 'Dictionary') {
                     $Found = [HashTable]::new() # (Case sensitive)
-                    $Order = if ($ObjectReference.Type -ne 'HashTable') { [HashTable]::new() }
+                    $Order = if ($ReferenceNode.Type.Name -ne 'HashTable') { [HashTable]::new() }
                     $Index = 0
                     if ($Order) { $ReferenceNode.Get_Keys().foreach{ $Order[$_] = $Index++ } }
                     $Index = 0
@@ -176,10 +176,10 @@ function Compare-ObjectGraph {
                             if ($Order -and $Order[$ReferenceItem.Key] -ne $Index) {
                                 if ($IsEqual) { return $false }
                                 [PSCustomObject]@{
-                                    Property    = $ObjectNode.GetPathName()
+                                    Property    = $ObjectItem.GetPathName()
                                     Inequality  = 'Order'
-                                    Reference   = $false
-                                    InputObject = $true
+                                    Reference   = $Order[$ReferenceItem.Key]
+                                    InputObject = $Index
                                 }                                
                             }
                             $Compare = CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual:$IsEqual
