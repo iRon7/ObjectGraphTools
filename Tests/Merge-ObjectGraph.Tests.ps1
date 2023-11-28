@@ -6,17 +6,7 @@ Describe 'Merge-ObjectGraph' {
 
         Set-StrictMode -Version Latest
 
-        $FileInfo = [System.Io.FileInfo]$PSCommandPath
-        $SourceFolder = Join-Path $FileInfo.Directory.Parent 'Source'
-        Foreach ($SubFolder in 'Classes', 'Private') {
-            $Folder = Join-Path $SourceFolder $SubFolder
-            $PSScripts = Get-ChildItem $Folder -Filter *.ps1
-            foreach ($PSScript in $PSScripts) { . $PSScript.FullName }
-        }
-        $PublicFolder =  Join-Path $SourceFolder Public
-        $PSScriptPath = Join-Path $PublicFolder $FileInfo.Name.Replace('.Tests.ps1', '.ps1')
-        . $PSScriptPath
-
+        Import-Module $PSScriptRoot\..\ObjectGraphTools.psm1 -DisableNameChecking -Force
     }
 
     Context 'Sanity Check' {
@@ -117,7 +107,7 @@ Describe 'Merge-ObjectGraph' {
         $Actual.where{ $_.Key -eq 'Key3' }[0].Count | Should -Be 3
     }
 
-    It 'repalce Dictionaries items by Key' {
+    It 'replace Dictionaries items by Key' {
         $InputObject = @(
             @{
                 Key = 'Key1'
@@ -150,4 +140,17 @@ Describe 'Merge-ObjectGraph' {
         $Actual.where{ $_.Key -eq 'Key2' }[0].Count | Should -Be 3
         $Actual.where{ $_.Key -eq 'Key3' }[0].Count | Should -Be 3
     }
+
+    Context 'Warning' {
+
+        It 'Depth' {
+            $Template = @{ Name = 'Base' }
+            $Template.Parent = $Template
+            $InputObject = @{ Name = 'Test' }
+            $InputObject.Parent = $InputObject
+            $Records = $InputObject | Merge-ObjectGraph $Template 3>&1
+            $Records.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike '*maximum depth*10*'
+            $Records.where{$_ -isnot [System.Management.Automation.WarningRecord]}.Name    | Should -Be     'Test'
+        }
+   }
 }

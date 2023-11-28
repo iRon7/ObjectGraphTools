@@ -1,22 +1,15 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.0.0"}
 
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object', Justification = 'False positive')]
+param()
+
 Describe 'Sort-ObjectGraph' {
 
     BeforeAll {
 
         Set-StrictMode -Version Latest
 
-        $FileInfo = [System.Io.FileInfo]$PSCommandPath
-        $SourceFolder = Join-Path $FileInfo.Directory.Parent 'Source'
-        Foreach ($SubFolder in 'Classes', 'Private') {
-            $Folder = Join-Path $SourceFolder $SubFolder
-            $PSScripts = Get-ChildItem $Folder -Filter *.ps1
-            foreach ($PSScript in $PSScripts) { . $PSScript.FullName }
-        }
-        $PublicFolder =  Join-Path $SourceFolder Public
-        $PSScriptPath = Join-Path $PublicFolder $FileInfo.Name.Replace('.Tests.ps1', '.ps1')
-        . $PSScriptPath
-
+        Import-Module $PSScriptRoot\..\ObjectGraphTools.psm1 -DisableNameChecking -Force
     }
 
     Context 'Sanity Check' {
@@ -27,6 +20,57 @@ Describe 'Sort-ObjectGraph' {
     }
 
     Context 'Sort' {
+
+        BeforeEach {
+            $Object = @{
+                Comment = 'Sample ObjectGraph'
+                Data = @(
+                    @{
+                        Index = 1
+                        Name = 'One'
+                        Comment = 'First item'
+                    }
+                    @{
+                        Index = 2
+                        Name = 'Two'
+                        Comment = 'Second item'
+                    }
+                    @{
+                        Index = 3
+                        Name = 'One'
+                        Comment = 'Third item'
+                    }
+                )
+            }
+        }
+
+        It 'Basic Sort' {
+            $Sorted = $Object | Sort-ObjectGraph
+            $Sorted.Data.Index | Should -Be 1, 2, 3
+            $Sorted.PSObject.Properties.Name | Should -Be 'Comment', 'Data'
+            $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Comment', 'Index', 'Name'
+        }
+
+        It 'Decending' {
+            $Sorted = $Object | Sort-ObjectGraph -Descending
+            $Sorted.Data.Index | Should -Be 2, 3, 1
+            $Sorted.PSObject.Properties.Name | Should -Be 'Data', 'Comment'
+            $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Name', 'Index', 'Comment'
+        }
+
+        It 'By Name' {
+            $Sorted = $Object | Sort-ObjectGraph -By Name
+            $Sorted.Data.Index | Should -Be 1, 3, 2
+            $Sorted.PSObject.Properties.Name | Should -Be 'Comment', 'Data'
+            $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Name', 'Comment', 'Index'
+        }
+
+        It 'By Name Descending' {
+            $Sorted = $Object | Sort-ObjectGraph -By Name -Descending
+            $Sorted.Data.Index | Should -Be 2, 3, 1
+            $Sorted.PSObject.Properties.Name | Should -Be 'Data', 'Comment'
+            $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Name', 'Index', 'Comment'
+        }
 
         It 'Type' {
             $Object = @{
@@ -77,5 +121,14 @@ World
             { $Object | Sort-ObjectGraph } | Should -not -throw
         }
 
+        Context 'Warning' {
+            It 'Depth' {
+                $Object = @{ Name = 'Test' }
+                $Object.Parent = $Object
+                $Records = Sort-ObjectGraph $Object 3>&1
+                $Records.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike '*maximum depth*10*'
+                $Records.where{$_ -isnot [System.Management.Automation.WarningRecord]}.Name    | Should -Be     'Test'
+            }
+       }
     }
 }
