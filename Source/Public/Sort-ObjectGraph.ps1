@@ -14,55 +14,69 @@ function Sort-ObjectGraph {
         [Parameter(Mandatory=$true, ValueFromPipeLine = $True)]
         $InputObject,
 
-        [String[]]$PrimaryKey,
+        [Alias('By')][String[]]$PrimaryKey,
         
         [Switch]$MatchCase,
+
+        [Switch]$Descending,
 
         [Alias('Depth')][int]$MaxDepth = 10
     )
     begin {
-        function SortObject($Object, [Int]$Depth = $MaxDepth, [Switch]$SortKey) {
-            $PSObject = [PSInterface]::new($Object) 
-            if ($PSObject.Structure -eq 'Scalar' -or $Depth -le 0) {
-                if ($Depth -le 0) { Write-Warning "The maximum depth of $MaxDepth has been reached." }
-                $Key = if ($Null -eq $Object) { [Char]27 + '$Null' } elseif ($MatchCase) { "$Object".ToUpper() } else { "$Object" }
-                $Output = @{ $Key = $Object }
-            }
-            elseif ($PSObject.Structure -eq 'List') {
-                $Items = foreach ($Item in $Object) { SortObject $Item ($Depth - 1) -SortKey }
-                $Items = $Items | Sort-Object { $_.Keys[0] }
-                $String = [Collections.Generic.List[String]]::new()
-                $Object = [Collections.Generic.List[Object]]::new()
-                foreach ($Item in $Items) {
-                    $Key = $Item.get_Keys()[0]
-                    $String.Add($Key)
-                    $Object.Add($Item[$Key][0])
+        [PSNode]::MaxDepth = $MaxDepth
+        $Primary = @{}
+        if ($PSBoundParameters.ContainsKey('PrimaryKey')) {
+            for($i = 0; $i -lt $PrimaryKey.Count; $i++) {
+                if ($Descending) {
+                    $Primary[$PrimaryKey[$i]] = [Char]254 + '#' * ($PrimaryKey.Count - $i)
                 }
-                $Name = $String -Join [Char]255
-                $Output = @{ $Name = @($Object) }                                           # This will convert the list to an (fixed) array
-            }
-            elseif ($PSObject.Structure -eq 'Dictionary') {
-                $Properties = [Ordered]@{}
-                $String = [Collections.Generic.List[String]]::new()
-                $Order = $PSObject.get_Keys() | Sort-Object { if ($_ -in $PrimaryKey) { [Char]27 + "$_" } else { $_ } }
-                foreach ($Index in $Order) {
-                    $Item = SortObject $PSObject.Get($Index) ($Depth - 1) -SortKey
-                    $Key = $Item.get_Keys()[0]
-                    $Sort =
-                        if ($MatchCase) { "$Index".ToUpper() + [Char]255 + $Key } 
-                        else { "$Index" + [Char]255 + $Key }
-                    $String.Add($Sort)
-                    $Properties[$Index] = $Item[$Key][0]
+                else {
+                    $Primary[$PrimaryKey[$i]] = ' ' + '#' * $i
                 }
-                $Name = $String -Join [Char]255
-                $Output = @{ $Name = [PSCustomObject]$Properties }                          # This will convert a dicitionary to a PSCustomObject
             }
-            else { Write-Error 'Should not happen'}
+        }
 
-            Write-Debug "$('  ' * ($MaxDepth - $Depth)) Sortkey: $($Output.get_Keys())"
-            if ($SortKey) { $Output } else { $Output.get_Values() }
+        function SortObject([PSNode]$Node, [Switch]$SortIndex) {
+            if ($Node.Structure -eq 'Scalar') {
+                $SortKey = if ($Null -eq $($Node.Value)) { [Char]27 + '$Null' } elseif ($MatchCase) { "$($Node.Value)".ToUpper() } else { "$($Node.Value)" }
+                $Output = @{ $SortKey = $($Node.Value) }
+            }
+            elseif ($Node.Structure -eq 'List') {                                           # This will convert the list to an (fixed) array
+                $Items = $Node.GetItemNodes().foreach{ SortObject $_ -SortIndex }
+                $Items = $Items | Sort-Object -CaseSensitive:$MatchCase -Descending:$Descending { $_.Keys[0] }
+                $String = [Collections.Generic.List[String]]::new()
+                $List   = [Collections.Generic.List[Object]]::new()
+                foreach ($Item in $Items) {
+                    $SortKey = $Item.GetEnumerator().Name
+                    $String.Add($SortKey)
+                    $List.Add($Item[$SortKey][0])
+                }
+                $Name = $String -Join [Char]255
+                $Output = @{ $Name = @($List) }
+            }
+            elseif ($Node.Structure -eq 'Dictionary') {                     # This will convert a dicitionary to a PSCustomObject
+                $HashTable = [HashTable]::New(0, [StringComparer]::Ordinal)
+                $Node.GetItemNodes().foreach{
+                    $SortObject = SortObject $_ -SortIndex
+                    $SortKey = $SortObject.GetEnumerator().Name
+                    if ($Primary.Contains($_.Key)) { $Key = $Primary[$_.Key] } else { $Key = $_.Key}
+                    $HashTable["$Key$([Char]255)$SortKey"] = @{ $_.Key = $SortObject[$SortKey] }
+                }
+                $SortedKeys = $HashTable.get_Keys() | Sort-Object -CaseSensitive:$MatchCase -Descending:$Descending
+                $Properties = [System.Collections.Specialized.OrderedDictionary]::new([StringComparer]::Ordinal)
+                @($SortedKeys).foreach{
+                    $Item = $HashTable[$_]
+                    $Name = $Item.GetEnumerator().Name
+                    $Properties[$Name] = $Item[$Name]
+                }
+                $Name = $SortedKeys -Join [Char]255
+                $Output = @{ $Name = [PSCustomObject]$Properties }          # https://github.com/PowerShell/PowerShell/issues/20753
+            }
+            else { Write-Error 'Should not happen' }
+            if ($SortIndex) { $Output } else { $Output.get_Values() }
         }
     }
+
     process {
         SortObject $InputObject $MaxDepth
     }
