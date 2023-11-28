@@ -153,4 +153,38 @@ Describe 'Merge-ObjectGraph' {
             $Records.where{$_ -isnot [System.Management.Automation.WarningRecord]}.Name    | Should -Be     'Test'
         }
    }
+
+   Context 'Issues' {
+
+        It '#2: Merge-ObjectGraph Bug' {
+            $Obj_1 = @{
+                AllNodes = @(
+                    @{
+                        CertificateFile = '.\DSCCertificate.cer'
+                        NodeName = 'localhost'
+                    }
+                )
+            }
+            
+            $Obj_2 = @{
+                NonNodeData = @{
+                    OneDrive = @{
+                        Settings = @{
+                        }
+                    }
+                }
+            }
+
+            $Actual = Merge-ObjectGraph -Template $Obj_1 -InputObject $Obj_2
+            $Expected = @{
+                    NonNodeData = @{OneDrive = @{Settings = @{}}}
+                    AllNodes = ,@{
+                        NodeName = 'localhost'
+                        CertificateFile = '.\DSCCertificate.cer'
+                    }
+                }
+
+            $Actual | Compare-ObjectGraph $Expected -IsEqual | Should -Be $True
+        }
+    }
 }
