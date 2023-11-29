@@ -187,4 +187,35 @@ Describe 'Merge-ObjectGraph' {
             $Actual | Compare-ObjectGraph $Expected -IsEqual | Should -Be $True
         }
     }
+
+    It '[PSCustomObject]' {
+        $Obj_1 = @{
+            AllNodes = @(
+                @{
+                    CertificateFile = '.\DSCCertificate.cer'
+                    NodeName = 'localhost'
+                }
+            )
+        } | ConvertTo-Json -Depth 9 | ConvertFrom-Json
+        
+        $Obj_2 = @{
+            NonNodeData = @{
+                OneDrive = @{
+                    Settings = @{
+                    }
+                }
+            }
+        } | ConvertTo-Json -Depth 9 | ConvertFrom-Json
+
+        $Actual = Merge-ObjectGraph -Template $Obj_1 -InputObject $Obj_2
+        $Expected = @{
+                NonNodeData = @{OneDrive = @{Settings = @{}}}
+                AllNodes = ,@{
+                    NodeName = 'localhost'
+                    CertificateFile = '.\DSCCertificate.cer'
+                }
+            }
+
+        $Actual | Compare-ObjectGraph $Expected -IsEqual | Should -Be $True
+    }
 }

@@ -10,8 +10,29 @@ Describe 'Compare-ObjectGraph' {
         Set-StrictMode -Version Latest
 
         Import-Module $PSScriptRoot\..\ObjectGraphTools.psm1 -DisableNameChecking -Force
-    }
 
+        $Reference = @{
+            Comment = 'Sample ObjectGraph'
+            Data = @(
+                @{
+                    Index = 1
+                    Name = 'One'
+                    Comment = 'First item'
+                }
+                @{
+                    Index = 2
+                    Name = 'Two'
+                    Comment = 'Second item'
+                }
+                @{
+                    Index = 3
+                    Name = 'Three'
+                    Comment = 'Third item'
+                }
+            )
+        }
+    }
+    
     Context 'Sanity Check' {
 
          It 'Help' {
@@ -20,29 +41,6 @@ Describe 'Compare-ObjectGraph' {
     }
 
     Context 'Compare' {
-
-        BeforeEach {
-            $Reference = @{
-                Comment = 'Sample ObjectGraph'
-                Data = @(
-                    @{
-                        Index = 1
-                        Name = 'One'
-                        Comment = 'First item'
-                    }
-                    @{
-                        Index = 2
-                        Name = 'Two'
-                        Comment = 'Second item'
-                    }
-                    @{
-                        Index = 3
-                        Name = 'Three'
-                        Comment = 'Third item'
-                    }
-                )
-            }
-        }
 
         It 'Equal' {
             $Object = @{
@@ -93,7 +91,7 @@ Describe 'Compare-ObjectGraph' {
             $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
             $Result = $Object   | Compare-ObjectGraph $Reference
             @($Result).Count    | Should -Be 1
-            $Result.Property    | Should -Be '.Comment'
+            $Result.Path        | Should -Be '.Comment'
             $Result.Inequality  | Should -Be 'Value'
             $Result.Reference   | Should -Be 'Sample ObjectGraph'
             $Result.InputObject | Should -Be 'Something else'
@@ -119,11 +117,11 @@ Describe 'Compare-ObjectGraph' {
         $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
         $Result = $Object      | Compare-ObjectGraph $Reference
         $Result.Count          | Should -Be 2
-        $Result[0].Property    | Should -Be '.Data'
+        $Result[0].Path        | Should -Be '.Data'
         $Result[0].Inequality  | Should -Be 'Size'
         $Result[0].Reference   | Should -Be 3
         $Result[0].InputObject | Should -Be 2
-        $Result[1].Property    | Should -Be '.Data[2]'
+        $Result[1].Path        | Should -Be '.Data[2]'
         $Result[1].Inequality  | Should -Be 'Exists'
         $Result[1].Reference   | Should -Be $True
         $Result[1].InputObject | Should -Be $False
@@ -157,11 +155,11 @@ Describe 'Compare-ObjectGraph' {
         $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
         $Result = $Object      | Compare-ObjectGraph $Reference
         $Result.Count          | Should -Be 2
-        $Result[0].Property    | Should -Be '.Data'
+        $Result[0].Path        | Should -Be '.Data'
         $Result[0].Inequality  | Should -Be 'Size'
         $Result[0].Reference   | Should -Be 3
         $Result[0].InputObject | Should -Be 4
-        $Result[1].Property    | Should -Be '.Data[3]'
+        $Result[1].Path        | Should -Be '.Data[3]'
         $Result[1].Inequality  | Should -Be 'Exists'
         $Result[1].Reference   | Should -Be $False
         $Result[1].InputObject | Should -Be $True
@@ -182,7 +180,7 @@ Describe 'Compare-ObjectGraph' {
                 }
                 @{
                     Index = 3
-                    Name = 'Zero'
+                    Name = 'Zero'               # This is defferent
                     Comment = 'Third item'
                 }
             )
@@ -190,13 +188,145 @@ Describe 'Compare-ObjectGraph' {
         $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
         $Result = $Object      | Compare-ObjectGraph $Reference
         $Result.Count          | Should -Be 2
-        $Result[0].Property    | Should -Be '.Data[2]'
+        $Result[0].Path        | Should -Be '.Data[2]'
         $Result[0].Inequality  | Should -Be 'Exists'
-        $Result[0].Reference   | Should -Be $False
-        $Result[0].InputObject | Should -Be $True
-        $Result[1].Property    | Should -Be '.Data[2]'
+        $Result[1].Path        | Should -Be '.Data[2]'
         $Result[1].Inequality  | Should -Be 'Exists'
-        $Result[1].Reference   | Should -Be $True
-        $Result[1].InputObject | Should -Be $False
+    }
+    It 'Unordered array' {
+        $Object = @{
+            Comment = 'Sample ObjectGraph'
+            Data = @(
+                @{
+                    Index = 1
+                    Name = 'One'
+                    Comment = 'First item'
+                }
+                @{
+                    Index = 3
+                    Name = 'Three'
+                    Comment = 'Third item'
+                }
+                @{
+                    Index = 2
+                    Name = 'Two'
+                    Comment = 'Second item'
+                }
+            )
+        }
+        $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $True
+        $Object | Compare-ObjectGraph $Reference -MatchOrder -IsEqual | Should -Be $False
+        $Result = $Object      | Compare-ObjectGraph $Reference -MatchOrder
+        $Result.Count          | Should -Be 6
+    }
+    It 'Unordered (hashtable) reference' {
+        $Object = @{
+            Comment = 'Sample ObjectGraph'
+            Data = @(
+                [PSCustomObject]@{
+                    Index = 1
+                    Name = 'One'
+                    Comment = 'First item'
+                }
+                [PSCustomObject]@{
+                    Index = 2
+                    Name = 'Two'
+                    Comment = 'Second item'
+                }
+                [PSCustomObject]@{
+                    Index = 3
+                    Name = 'Three'
+                    Comment = 'Third item'
+                }
+            )
+        }
+        $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $True
+
+        $Object = @{
+            Comment = 'Sample ObjectGraph'
+            Data = @(
+                [PSCustomObject]@{
+                    Index = 1
+                    Name = 'One'
+                    Comment = 'First item'
+                }
+                [PSCustomObject]@{
+                    Index = 2
+                    Comment = 'Second item'                     # Note:
+                    Name = 'Two'                                # These entries are swapped
+                }
+                [PSCustomObject]@{
+                    Index = 3
+                    Name = 'Three'
+                    Comment = 'Third item'
+                }
+            )
+        }
+        $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $True
+    }
+    It 'Ordered (PSCustomObject) reference' {                
+        $Ordered = @{                                           # Redefine Reference with order Dictionary/PSCustomObject
+            Comment = 'Sample ObjectGraph'
+            Data = @(
+                [PSCustomObject]@{
+                    Index = 1
+                    Name = 'One'
+                    Comment = 'First item'
+                }
+                [PSCustomObject]@{
+                    Index = 2
+                    Name = 'Two'
+                    Comment = 'Second item'
+                }
+                [PSCustomObject]@{
+                    Index = 3
+                    Name = 'Three'
+                    Comment = 'Third item'
+                }
+            )
+        }
+        $Object = @{
+            Comment = 'Sample ObjectGraph'
+            Data = @(
+                [PSCustomObject]@{
+                    Index = 1
+                    Name = 'One'
+                    Comment = 'First item'
+                }
+                [PSCustomObject]@{
+                    Index = 2
+                    Name = 'Two'
+                    Comment = 'Second item'
+                }
+                [PSCustomObject]@{
+                    Index = 3
+                    Name = 'Three'
+                    Comment = 'Third item'
+                }
+            )
+        }
+        $Object | Compare-ObjectGraph $Ordered -IsEqual | Should -Be $True
+
+        $Object = @{
+            Comment = 'Sample ObjectGraph'
+            Data = @(
+                [PSCustomObject]@{
+                    Index = 1
+                    Name = 'One'
+                    Comment = 'First item'
+                }
+                [PSCustomObject]@{
+                    Index = 2
+                    Comment = 'Second item'                     # Note:
+                    Name = 'Two'                                # These entries are swapped
+                }
+                [PSCustomObject]@{
+                    Index = 3
+                    Name = 'Three'
+                    Comment = 'Third item'
+                }
+            )
+        }
+        $Object | Compare-ObjectGraph $Ordered -IsEqual | Should -Be $False
     }
 }
