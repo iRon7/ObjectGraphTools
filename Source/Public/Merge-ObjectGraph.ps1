@@ -68,18 +68,19 @@ function Merge-ObjectGraph {
                 ,$Output
             }
             elseif ($ObjectNode.Structure -eq 'Dictionary') {
-                $PSNode = $ObjectNode.Renew()                                               # The $InputObject defines the dictionary (or PSCustomObject) type
+                if ($ObjectNode.Construction -ne 'Object') { $Dictionary = New-Object -TypeName $ObjectNode.Type }      # The $InputObject defines the dictionary (or PSCustomObject) type
+                else { $Dictionary = [System.Collections.Specialized.OrderedDictionary]::new() }
                 foreach ($ObjectItem in $ObjectNode.GetItemNodes()) {
-                    if ($TemplateNode.Contains($ObjectItem.Key)) {                          # The $InputObject defines the comparer
+                    if ($TemplateNode.Contains($ObjectItem.Key)) {                                                      # The $InputObject defines the comparer
                         $Value = MergeObject -Template $TemplateNode.GetItemNode($ObjectItem.Key) -Object $ObjectItem
                     }
                     else { $Value = $ObjectItem.Value }
-                    $PSNode.Set($ObjectItem.Key, $Value)
+                    $Dictionary.Add($ObjectItem.Key, $Value)
                 }
                 foreach ($Key in $TemplateNode.get_Keys()) {
-                    if (-not $PSNode.Contains($Key)) { $PSNode.Set($Key, $TemplateNode.Get($Key)) }
+                    if (-not $Dictionary.Contains($Key)) { $Dictionary.Add($Key, $TemplateNode.Get($Key)) }
                 }
-                $PSNode.Value
+                if ($ObjectNode.Construction -ne 'Object') { $Dictionary } else { [PSCustomObject]$Dictionary }
             }
         }
     }

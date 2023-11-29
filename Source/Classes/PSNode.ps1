@@ -28,13 +28,6 @@ Class PSNode {
         $this.Structure = if ($this.Construction -le 'Dictionary') { $this.Construction } else { 'Dictionary' }
     }
 
-    [PSNode]Renew() {
-        $Object = New-Object -TypeName $this.Type
-        $Node = [PSNode]::new($Object)
-        ('Key', 'Index', 'Depth', 'Parent', 'Path', 'PathName').foreach{ $Node.$_ = $this.$_ }
-        return $Node
-    }
-
     [Array]GetPath() {
         if ($Null -eq $this.Path) {
             if     ($Null -ne $this.Index) { $this.Path = $this.Parent.GetPath() + $this.Index }
@@ -82,8 +75,7 @@ Class PSNode {
 
     Set($Name, $Value) {
         switch ($this.Construction) {
-
-            Object     { $this.Value.PSObject.Properties[$Name].Value = $Value }
+            Object     { $this.Value.PSObject.Properties[$Name].Value = $Value } # Doesn't create new properties
             Dictionary { $this.Value[$Name] = $Value }
             List       { $this.Value[$Name] = $Value }
         }
@@ -102,7 +94,7 @@ Class PSNode {
             return $Node
         }
         elseif ($this.Structure -eq 'Dictionary') {
-            $Node        = [PSNode]::new($this.Value[$Key])
+            $Node        = [PSNode]::new($this.Get($Key))
             $Node.Key    = $Key
             $Node.Depth  = $this.Depth + 1
             $Node.Parent = $this
@@ -143,7 +135,7 @@ Class PSNode {
 
     [Int]get_Count() {
         switch ($this.Construction) {
-            Object     { return $this.Value.PSObject.Properties.Count }
+            Object     { return @($this.Value.PSObject.Properties).Count }
             Dictionary { return $this.Value.get_Count() }
             List       { return $this.Value.get_Count() }
         }

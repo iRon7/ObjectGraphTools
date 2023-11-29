@@ -27,41 +27,12 @@ function Compare-ObjectGraph {
     )
     begin {
         [PSNode]::MaxDepth = $MaxDepth
-        function GetHashCode([PSNode]$Node) {
-            if ($Node.Structure -eq 'Scalar') {
-                $Value = $Node.Value
-                if ($Null -eq $Value) { $Value =[Int]::MinValue } # $Null collides with -2147483648 (as $false with 0 and $true with 1)
-                else {
-                    $Value = if ($MatchCase -and $Value -isnot [ValueType]) { "$Value".ToUpper() } else { $Value }
-                    if ($MatchType) { $Value = "[$($Node.Type)]$Value" }
-                }
-                $Value.GetHashCode()
-            }
-            elseif ($Node.Structure -eq 'List') { # The order of the list is ignored
-                $Seed = if ($MatchType) { "[$($Node.Type)]@()" } else { '@()' }
-                $HashCode = $Seed.GetHashCode()
-                $Node.GetItemNodes().foreach{ $HashCode = $HashCode -bxor (GetHashCode $_) }
-                $HashCode
-            }
-            elseif ($Node.Structure -eq 'Dictionary') {
-                $Seed = if ($MatchType) { "[$($Node.Type)]@{}" } else { '@{}' }
-                $HashCode = $Seed.GetHashCode()
-                $Node.GetItemNodes().foreach{
-                    $Name = if ($MatchCase -and $_.Value -isnot [String]) { "$($_.Value)".ToUpper() } else { $_.Value }
-                    if ($MatchType) { $Name = "[$($Node.Type)]$Name" }
-                    $ValueCode = GetHashCode $_
-                    $HashCode = $HashCode -bxor "$Name=$ValueCode".GetHashCode()
-                }
-                $HashCode
-            }
-        }
-
         function CompareObject([PSNode]$ReferenceNode, [PSNode]$ObjectNode, [Switch]$IsEqual = $IsEqual) {
             if ($MatchType) {
                 if ($ObjectNode.Type -ne $ReferenceNode.Type) {
                     if ($IsEqual) { return $false }
                     [PSCustomObject]@{
-                        Property    = $ObjectNode.GetPathName()
+                        Path        = $ObjectNode.GetPathName()
                         Inequality  = 'Type'
                         Reference   = $ReferenceNode.Type
                         InputObject = $ObjectNode.Type
@@ -71,7 +42,7 @@ function Compare-ObjectGraph {
             if ($ObjectNode.Structure -ne $ReferenceNode.Structure) {
                 if ($IsEqual) { return $false }
                 [PSCustomObject]@{
-                    Property    = $ObjectNode.GetPathName()
+                    Path        = $ObjectNode.GetPathName()
                     Inequality  = 'Structure'
                     Reference   = $ReferenceNode.Structure
                     InputObject = $ObjectNode.Structure
@@ -82,7 +53,7 @@ function Compare-ObjectGraph {
                 if ($NotEqual) { # $ReferenceNode dictates the type
                     if ($IsEqual) { return $false }
                     [PSCustomObject]@{
-                        Property    = $ObjectNode.GetPathName()
+                        Path        = $ObjectNode.GetPathName()
                         Inequality  = 'Value'
                         Reference   = $ReferenceNode.Value
                         InputObject = $ObjectNode.Value
@@ -93,19 +64,19 @@ function Compare-ObjectGraph {
                 if ($ObjectNode.get_Count() -ne $ReferenceNode.get_Count()) {
                     if ($IsEqual) { return $false }
                     [PSCustomObject]@{
-                        Property    = $ObjectNode.GetPathName()
+                        Path        = $ObjectNode.GetPathName()
                         Inequality  = 'Size'
                         Reference   = $ReferenceNode.get_Count()
                         InputObject = $ObjectNode.get_Count()
                     }
                 }
                 if ($ObjectNode.Structure -eq 'List') {
+                    $ObjectItems    = $ObjectNode.GetItemNodes()
+                    $ReferenceItems = $ReferenceNode.GetItemNodes()
                     if ($MatchOrder) {
-                        $ObjectItems    = $ObjectNode.GetItemNodes()
-                        $ReferenceItems = $ReferenceNode.GetItemNodes()
                         $Min = [Math]::Min($ObjectNode.get_Count(), $ReferenceNode.get_Count())
-                        $Max = [Math]::Min($ObjectNode.get_Count(), $ReferenceNode.get_Count())
-                        for ($Index = 0; $Index -le $Max; $Index++) {
+                        $Max = [Math]::Max($ObjectNode.get_Count(), $ReferenceNode.get_Count())
+                        for ($Index = 0; $Index -lt $Max; $Index++) {
                             if ($Index -lt $Min) {
                                 $Compare = CompareObject -Reference $ReferenceItems[$Index] -Object $ObjectItems[$Index] -IsEqual:$IsEqual
                                 if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }  
@@ -113,7 +84,7 @@ function Compare-ObjectGraph {
                             elseif ($Index -ge $ObjectNode.get_Count()) {
                                 if ($IsEqual) { return $false }
                                 [PSCustomObject]@{
-                                    Property    = $ReferenceNode.GetPathName() # ($ObjectNode doesn't exist)
+                                    Path        = $ReferenceNode.GetPathName() # ($ObjectNode doesn't exist)
                                     Inequality  = 'Exists'
                                     Reference   = $true
                                     InputObject = $false
@@ -122,7 +93,7 @@ function Compare-ObjectGraph {
                             else {
                                 if ($IsEqual) { return $false }
                                 [PSCustomObject]@{
-                                    Property    = $ObjectNode.GetPathName()
+                                    Path        = $ObjectNode.GetPathName()
                                     Inequality  = 'Exists'
                                     Reference   = $false
                                     InputObject = $true
@@ -131,35 +102,45 @@ function Compare-ObjectGraph {
                         }
                     }
                     else {
-                        $ObjectHashes = [System.Collections.Generic.Dictionary[Int, Object]]::new()
-                        $ObjectNode.GetItemNodes().foreach{ $ObjectHashes[(GetHashCode $_)] = $_ }
-
-                        $ReferenceHashes = [System.Collections.Generic.Dictionary[Int, Object]]::new()
-                        $ReferenceNode.GetItemNodes().foreach{ $ReferenceHashes[(GetHashCode $_)] = $_ }
-
-                        $ObjectExcept = [Linq.Enumerable]::Except([int[]]$ObjectHashes.Keys, [int[]]$ReferenceHashes.Keys)
-                        if ($ObjectExcept.Count) {
-                            if ($IsEqual) { return $false }
-                            @($ObjectExcept).foreach{
-                                [PSCustomObject]@{
-                                    Property    = $ObjectHashes[$_].GetPathName()
-                                    Inequality  = 'Exists'
-                                    Reference   = $false
-                                    InputObject = $true
+                        $ObjectLinks    = [System.Collections.Generic.HashSet[int]]::new()
+                        $ReferenceLinks = [System.Collections.Generic.HashSet[int]]::new()
+                        foreach($ObjectItem in $ObjectItems) {
+                            $Found = $Null
+                            foreach($ReferenceItem in $ReferenceItems) {
+                                if (-Not $ReferenceLinks.Contains($ReferenceItem.Index)) {
+                                    $Found = CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual
+                                    if ($Found) {
+                                        $Null = $ReferenceLinks.Add($ReferenceItem.Index)
+                                        break
+                                    }
                                 }
                             }
+                            if ($Found) {
+                                $Null = $ObjectLinks.Add($ObjectItem.Index)
+                                continue
+                            }                            
                         }
-                        $ReferenceExcept = [Linq.Enumerable]::Except([int[]]$ReferenceHashes.Keys, [int[]]$ObjectHashes.Keys)
-                        if ($ReferenceExcept.Count) {
-                            if ($IsEqual) { return $false }
-                            @($ReferenceExcept).foreach{
+                        for ($Index = 0; $Index -lt $ReferenceNode.get_Count(); $Index ++) {
+                            if (-not $ReferenceLinks.Contains($Index)) {
+                                if ($IsEqual) { return $false }
                                 [PSCustomObject]@{
-                                    Property    = $ReferenceHashes[$_].GetPathName()
+                                    Path        = $ReferenceNode.GetPathName() + "[$Index]"
                                     Inequality  = 'Exists'
                                     Reference   = $true
                                     InputObject = $false
                                 }
                             }
+                        }
+                        for ($Index = 0; $Index -lt $ObjectNode.get_Count(); $Index ++) {
+                            if (-not $ObjectLinks.Contains($Index)) {
+                                if ($IsEqual) { return $false }
+                                [PSCustomObject]@{
+                                    Path        = $ObjectNode.GetPathName() + "[$Index]"
+                                    Inequality  = 'Exists'
+                                    Reference   = $false
+                                    InputObject = $true
+                                }
+                            }                            
                         }
                     }
                 }
@@ -176,7 +157,7 @@ function Compare-ObjectGraph {
                             if ($Order -and $Order[$ReferenceItem.Key] -ne $Index) {
                                 if ($IsEqual) { return $false }
                                 [PSCustomObject]@{
-                                    Property    = $ObjectItem.GetPathName()
+                                    Path        = $ObjectItem.GetPathName()
                                     Inequality  = 'Order'
                                     Reference   = $Order[$ReferenceItem.Key]
                                     InputObject = $Index
@@ -188,7 +169,7 @@ function Compare-ObjectGraph {
                         else {
                             if ($IsEqual) { return $false }
                             [PSCustomObject]@{
-                                Property    = $ObjectItem.GetPathName()
+                                Path        = $ObjectItem.GetPathName()
                                 Inequality  = 'Exists'
                                 Reference   = $false
                                 InputObject = $true
@@ -200,7 +181,7 @@ function Compare-ObjectGraph {
                         if (-not $Found.Contains($_)) {
                             if ($IsEqual) { return $false }
                             [PSCustomObject]@{
-                                Property    = $ReferenceNode.GetItemNode($_).GetPathName()
+                                Path        = $ReferenceNode.GetItemNode($_).GetPathName()
                                 Inequality  = 'Exists'
                                 Reference   = $true
                                 InputObject = $false
