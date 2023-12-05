@@ -92,9 +92,9 @@ Describe 'Compare-ObjectGraph' {
             $Result = $Object   | Compare-ObjectGraph $Reference
             @($Result).Count    | Should -Be 1
             $Result.Path        | Should -Be '.Comment'
-            $Result.Inequality  | Should -Be 'Value'
-            $Result.Reference   | Should -Be 'Sample ObjectGraph'
+            $Result.Discrepancy | Should -Be 'Value'
             $Result.InputObject | Should -Be 'Something else'
+            $Result.Reference   | Should -Be 'Sample ObjectGraph'
         }
     }
 
@@ -118,13 +118,13 @@ Describe 'Compare-ObjectGraph' {
         $Result = $Object      | Compare-ObjectGraph $Reference
         $Result.Count          | Should -Be 2
         $Result[0].Path        | Should -Be '.Data'
-        $Result[0].Inequality  | Should -Be 'Size'
-        $Result[0].Reference   | Should -Be 3
+        $Result[0].Discrepancy | Should -Be 'Size'
         $Result[0].InputObject | Should -Be 2
+        $Result[0].Reference   | Should -Be 3
         $Result[1].Path        | Should -Be '.Data[2]'
-        $Result[1].Inequality  | Should -Be 'Exists'
-        $Result[1].Reference   | Should -Be $True
+        $Result[1].Discrepancy | Should -Be 'Exists'
         $Result[1].InputObject | Should -Be $False
+        $Result[1].Reference   | Should -Be $True
     }
     It 'Extra entry' {
         $Object = @{
@@ -156,13 +156,13 @@ Describe 'Compare-ObjectGraph' {
         $Result = $Object      | Compare-ObjectGraph $Reference
         $Result.Count          | Should -Be 2
         $Result[0].Path        | Should -Be '.Data'
-        $Result[0].Inequality  | Should -Be 'Size'
-        $Result[0].Reference   | Should -Be 3
+        $Result[0].Discrepancy | Should -Be 'Size'
         $Result[0].InputObject | Should -Be 4
+        $Result[0].Reference   | Should -Be 3
         $Result[1].Path        | Should -Be '.Data[3]'
-        $Result[1].Inequality  | Should -Be 'Exists'
-        $Result[1].Reference   | Should -Be $False
+        $Result[1].Discrepancy | Should -Be 'Exists'
         $Result[1].InputObject | Should -Be $True
+        $Result[1].Reference   | Should -Be $False
     }
     It 'Different entry value' {
         $Object = @{
@@ -180,18 +180,18 @@ Describe 'Compare-ObjectGraph' {
                 }
                 @{
                     Index = 3
-                    Name = 'Zero'               # This is defferent
+                    Name = 'Zero'               # This is different
                     Comment = 'Third item'
                 }
             )
         }
         $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
         $Result = $Object      | Compare-ObjectGraph $Reference
-        $Result.Count          | Should -Be 2
-        $Result[0].Path        | Should -Be '.Data[2]'
-        $Result[0].Inequality  | Should -Be 'Exists'
-        $Result[1].Path        | Should -Be '.Data[2]'
-        $Result[1].Inequality  | Should -Be 'Exists'
+        @($Result).Count       | Should -Be 1
+        $Result[0].Path        | Should -Be '.Data[2].Name'
+        $Result[0].Discrepancy | Should -Be 'Value'
+        $Result[0].InputObject | Should -Be 'Zero'
+        $Result[0].Reference   | Should -Be 'Three'
     }
     It 'Unordered array' {
         $Object = @{
@@ -215,8 +215,8 @@ Describe 'Compare-ObjectGraph' {
             )
         }
         $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $True
-        $Object | Compare-ObjectGraph $Reference -MatchOrder -IsEqual | Should -Be $False
-        $Result = $Object      | Compare-ObjectGraph $Reference -MatchOrder
+        $Object | Compare-ObjectGraph $Reference -MatchObjectOrder -IsEqual | Should -Be $False
+        $Result = $Object      | Compare-ObjectGraph $Reference -MatchObjectOrder
         $Result.Count          | Should -Be 6
     }
     It 'Unordered (hashtable) reference' {
