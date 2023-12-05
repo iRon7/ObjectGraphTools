@@ -165,7 +165,7 @@ Describe 'Merge-ObjectGraph' {
                     }
                 )
             }
-            
+
             $Obj_2 = @{
                 NonNodeData = @{
                     OneDrive = @{
@@ -197,7 +197,7 @@ Describe 'Merge-ObjectGraph' {
                 }
             )
         } | ConvertTo-Json -Depth 9 | ConvertFrom-Json
-        
+
         $Obj_2 = @{
             NonNodeData = @{
                 OneDrive = @{

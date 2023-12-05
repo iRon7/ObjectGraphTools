@@ -8,18 +8,15 @@
 .PARAMETER InputObject
     The input object that will be compared with the reference object (see: [-Reference] parameter).
 
-    > [!NOTE]  
+    > [!NOTE]
     > Multiple input object might be provided via the pipeline.
     > The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
-    > To avoid a list of objects to unroll, use the **comma operator**:
+    > To avoid a list of (root) objects to unroll, use the **comma operator**:
 
         ,$InputObject | Compare-ObjectGraph $Reference.
 
 .PARAMETER Reference
     The reference that is used to compared with the input object (see: [-InputObject] parameter).
-
-.PARAMETER MaxDepth
-    The maximal depth to recursively compare each embedded property (default: 10).
 
 .PARAMETER IsEqual
     If set, the cmdlet will return a boolean (`$true` or `$false`).
@@ -28,28 +25,51 @@
 .PARAMETER MatchCase
     Unless the `-MatchCase` switch is provided, string values are considered case insensitive.
 
-    > [!NOTE]  
+    > [!NOTE]
     > Dictionary keys are compared based on the `$Reference`.
     > if the `$Reference` is an object (PSCustomObject or component object), the key or name comparison
     > is case insensitive otherwise the comparer supplied with the dictionary is used.
 
 .PARAMETER MatchType
     Unless the `-MatchType` switch is provided, a loosely (inclusive) comparison is done where the
-    `$Reference` is leading (`$Reference -eq $InputObject`):
+    `$Reference` object is leading. Meaning `$Reference -eq $InputObject`:
 
-        1.0 -eq '1.0' # $true
-        '1.0' -eq 1.0 # $$false
+        '1.0' -eq 1.0 # $false
+        1.0 -eq '1.0' # $true (also $false if the `-MatchType` is provided)
 
 .PARAMETER MatchObjectOrder
+    Whether a list (or array) is treated as ordered is defined by the `$Reference`.
+    Unless the `-MatchObjectOrder` switch is provided, the order of an object array (`@(...)` aka `Object[]`)
+    is presumed unordered. This means that `Compare-ObjectGraph` cmdlet will try to match each item of an
+    `$InputObject` list which each item in the `$Reference` list.
+
+    If there is a single discrepancy on each side, the properties will be compared deeper, otherwise a
+    list with different items will be returned.
 
 .PARAMETER IgnoreArrayOrder
+    Whether a list (or array) is treated as ordered is defined by the `$Reference`.
+    Unless the `-IgnoreArrayOrder` switch is provided, the order of an array (e.g. `[String[]]('a', b', 'c')`,
+    excluding an object array, see: [-MatchObjectOrder]), is presumed ordered.
 
 .PARAMETER IgnoreListOrder
+    Whether a list is treated as ordered is defined by the `$Reference`.
+    Unless the `-IgnoreListOrder` switch is provided, the order of a list
+    (e.g. `[Collections.Generic.List[Int]](1, 2, 3)`), is presumed ordered.
 
 .PARAMETER IgnoreDictionaryOrder
+    Whether a dictionary is treated as ordered is defined by the `$Reference`.
+    Unless the `-IgnoreDictionaryOrder` switch is provided, the order of a dictionary is presumed ordered.
+
+    > [!WARNING]
+    > A `[HashTable]` type is unordered by design and therefore the order of a `$Reference` hash table
+    > in always ignored
 
 .PARAMETER IgnorePropertyOrder
+    Whether the properties are treated as ordered is defined by the `$Reference`.
+    Unless the `-IgnorePropertyOrder` switch is provided, the property order is presumed ordered.
 
+.PARAMETER MaxDepth
+    The maximal depth to recursively compare each embedded property (default: 10).
 
 #>
 function Compare-ObjectGraph {
@@ -61,8 +81,6 @@ function Compare-ObjectGraph {
         [Parameter(Mandatory=$true, Position=0)]
         $Reference,
 
-        [Alias('Depth')][int]$MaxDepth = 10,
-
         [Switch]$IsEqual,
 
         [Switch]$MatchCase,
@@ -72,12 +90,14 @@ function Compare-ObjectGraph {
         [Switch]$MatchObjectOrder,
 
         [Switch]$IgnoreArrayOrder,
-        
+
         [Switch]$IgnoreListOrder,
 
         [Switch]$IgnoreDictionaryOrder,
-        
-        [Switch]$IgnorePropertyOrder
+
+        [Switch]$IgnorePropertyOrder,
+
+        [Alias('Depth')][int]$MaxDepth = 10
     )
     begin {
         [PSNode]::MaxDepth = $MaxDepth
@@ -141,7 +161,7 @@ function Compare-ObjectGraph {
                         for ($Index = 0; $Index -lt $Max; $Index++) {
                             if ($Index -lt $Min) {
                                 $Compare = CompareObject -Reference $ReferenceItems[$Index] -Object $ObjectItems[$Index] -IsEqual:$IsEqual
-                                if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }  
+                                if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }
                             }
                             elseif ($Index -ge $ObjectNode.get_Count()) {
                                 if ($IsEqual) { return $false }
@@ -178,7 +198,7 @@ function Compare-ObjectGraph {
                                 }
                             }
                             if ($Found) { $ObjectLinks[$ObjectItem.Index] = $ReferenceItem.Index }
-                            elseif ($IsEqual) { return $false }                         
+                            elseif ($IsEqual) { return $false }
                         }
                         $MissingObjects = $ObjectItems.get_Count() - $ObjectLinks.get_Count()
                         $MissingReferences = $ReferenceItems.get_Count() - $ReferenceLinks.get_Count()
@@ -191,7 +211,7 @@ function Compare-ObjectGraph {
                         }
                         else {
                             $Max = [Math]::Max($ObjectNode.get_Count(), $ReferenceNode.get_Count())
-                            for ($Index = 0; $Index -lt $Max; $Index++) {                        
+                            for ($Index = 0; $Index -lt $Max; $Index++) {
                                 if ($Index -ge $ObjectItems.get_Count()) {
                                     [PSCustomObject]@{
                                         Path        = $ReferenceNode.GetPathName() + "[$Index]"
@@ -249,10 +269,10 @@ function Compare-ObjectGraph {
                                     Discrepancy = 'Order'
                                     InputObject = $Index
                                     Reference   = $Order[$ReferenceItem.Key]
-                                }                                
+                                }
                             }
                             $Compare = CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual:$IsEqual
-                            if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }  
+                            if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }
                         }
                         else {
                             if ($IsEqual) { return $false }
@@ -261,7 +281,7 @@ function Compare-ObjectGraph {
                                 Discrepancy = 'Exists'
                                 InputObject = $true
                                 Reference   = $false
-                            }                            
+                            }
                         }
                         $Index++
                     }
@@ -273,7 +293,7 @@ function Compare-ObjectGraph {
                                 Discrepancy = 'Exists'
                                 InputObject = $false
                                 Reference   = $true
-                            }                            
+                            }
                         }
                     }
                 }

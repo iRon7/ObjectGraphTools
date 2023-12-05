@@ -32,7 +32,7 @@ Describe 'Compare-ObjectGraph' {
             )
         }
     }
-    
+
     Context 'Sanity Check' {
 
          It 'Help' {
@@ -264,7 +264,7 @@ Describe 'Compare-ObjectGraph' {
         }
         $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $True
     }
-    It 'Ordered (PSCustomObject) reference' {                
+    It 'Ordered (PSCustomObject) reference' {
         $Ordered = @{                                           # Redefine Reference with order Dictionary/PSCustomObject
             Comment = 'Sample ObjectGraph'
             Data = @(
@@ -328,5 +328,55 @@ Describe 'Compare-ObjectGraph' {
             )
         }
         $Object | Compare-ObjectGraph $Ordered -IsEqual | Should -Be $False
+    }
+
+    Context 'Issues' {
+        It 'Compare single discrepancies' {
+            $Obj1 = ConvertFrom-Json '
+                {
+                    "NonNodeData": {
+                        "Exchange": {
+                            "AcceptedDomains": [
+                                {
+                                    "DomainType": "Authoritative",
+                                    "Ensure": "PresentX",
+                                    "MatchSubDomains": true,
+                                    "OutboundOnly": true,
+                                    "UniqueId": "Default"
+                                }
+                            ],
+                            "ActiveSyncDeviceAccessRules": [],
+                            "AddressBookPolicies": [],
+                            "AddressLists": []
+                        }
+                    }
+                }'
+            $Obj2 = ConvertFrom-Json '
+                {
+                    "NonNodeData": {
+                        "Exchange": {
+                            "AcceptedDomains": [
+                                {
+                                    "DomainType": "Authoritative",
+                                    "Ensure": "PresentY",
+                                    "MatchSubDomains": true,
+                                    "OutboundOnly": true,
+                                    "UniqueId": "Default"
+                                }
+                            ],
+                            "ActiveSyncDeviceAccessRules": [],
+                            "AddressBookPolicies": [],
+                            "AddressLists": []
+                        }
+                    }
+                }'
+            $Obj1 | Compare-ObjectGraph $Obj2 -IsEqual | Should -Be $False
+            $Result = $Obj1 | Compare-ObjectGraph $Obj2
+            @($Result).Count       | Should -Be 1
+            $Result[0].Path        | Should -Be '.NonNodeData.Exchange.AcceptedDomains[0].Ensure'
+            $Result[0].Discrepancy | Should -Be 'Value'
+            $Result[0].InputObject | Should -Be 'PresentX'
+            $Result[0].Reference   | Should -Be 'PresentY'
+        }
     }
 }

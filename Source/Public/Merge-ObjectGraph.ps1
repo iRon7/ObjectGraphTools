@@ -3,8 +3,34 @@
     Merges two object graphs into one
 
 .DESCRIPTION
-    Merges two object graphs into one
-    
+    Deep merges two object graphs into a new object graph.
+
+.PARAMETER InputObject
+    The input object that will be merged with the template object (see: [-Template] parameter).
+
+    > [!NOTE]
+    > Multiple input object might be provided via the pipeline.
+    > The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
+    > To avoid a list of (root) objects to unroll, use the **comma operator**:
+
+        ,$InputObject | Compare-ObjectGraph $Template.
+
+.PARAMETER Template
+    The template that is used to merge with the input object (see: [-InputObject] parameter).
+
+.PARAMETER PrimaryKey
+    In case of a list of dictionaries or PowerShell objects, the PowerShell key is used to
+    link the items or properties: if the PrimaryKey exists on both the [-Template] and the
+    [-InputObject] and the values are equal, the dictionary or PowerShell object will be merged.
+    Otherwise (if the key can't be found or the values differ), the complete dictionary or
+    PowerShell object will be added to the list.
+
+    It is allowed to supply multiple primary keys where each primary key will be used to
+    check the relation between the [-Template] and the [-InputObject].
+
+.PARAMETER MaxDepth
+    The maximal depth to recursively compare each embedded property (default: 10).
+
 #>
 
 function Merge-ObjectGraph {
@@ -38,7 +64,7 @@ function Merge-ObjectGraph {
                     foreach ($TemplateItem in $TemplateItems) {
                         if ($ObjectItem.Structure -eq $TemplateItem.Structure) {
                             if ($ObjectItem.Structure -eq 'Scalar') {
-                                $Equal = if ($MatchCase) { $TemplateItem.Value -ceq $ObjectItem.Value } 
+                                $Equal = if ($MatchCase) { $TemplateItem.Value -ceq $ObjectItem.Value }
                                          else            { $TemplateItem.Value -eq  $ObjectItem.Value }
                                 if ($Equal) {
                                     $Output.Add($ObjectItem.Value)
@@ -55,7 +81,7 @@ function Merge-ObjectGraph {
                                         $FoundNode = $True
                                         $Null = $FoundIndices.Add($TemplateItem.Index)
                                     }
-                                }                                        
+                                }
                             }
                         }
                     }
