@@ -3,8 +3,35 @@
     Sort object graph
 
 .DESCRIPTION
-    Sort object graph
-    
+    Recursively sorts a object graph.
+
+.PARAMETER InputObject
+    The input object that will be recursively sorted.
+
+    > [!NOTE]
+    > Multiple input object might be provided via the pipeline.
+    > The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
+    > To avoid a list of (root) objects to unroll, use the **comma operator**:
+
+        ,$InputObject | Sort-Object.
+
+.PARAMETER PrimaryKey
+    Any primary key defined by the [-PrimaryKey] parameter will be put on top of [-InputObject]
+    independent of the (descending) sort order.
+
+    It is allowed to supply multiple primary keys.
+
+.PARAMETER MatchCase
+    Indicates that the sort is case-sensitive. By default, sorts aren't case-sensitive.
+
+.PARAMETER Descending
+    Indicates that Sort-Object sorts the objects in descending order. The default is ascending order.
+
+    > [!NOTE]
+    > Primary keys (see: [-PrimaryKey]) will always put on top.
+
+.PARAMETER MaxDepth
+    The maximal depth to recursively compare each embedded property (default: 10).
 #>
 
 function Sort-ObjectGraph {
@@ -15,7 +42,7 @@ function Sort-ObjectGraph {
         $InputObject,
 
         [Alias('By')][String[]]$PrimaryKey,
-        
+
         [Switch]$MatchCase,
 
         [Switch]$Descending,
@@ -54,7 +81,7 @@ function Sort-ObjectGraph {
                 $Name = $String -Join [Char]255
                 $Output = @{ $Name = @($List) }
             }
-            elseif ($Node.Structure -eq 'Dictionary') {                     # This will convert a dicitionary to a PSCustomObject
+            elseif ($Node.Structure -eq 'Dictionary') {                     # This will convert a dictionary to a PSCustomObject
                 $HashTable = [HashTable]::New(0, [StringComparer]::Ordinal)
                 $Node.GetItemNodes().foreach{
                     $SortObject = SortObject $_ -SortIndex
