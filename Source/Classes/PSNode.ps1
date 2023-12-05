@@ -4,7 +4,7 @@ enum Construction { Undefined; Scalar; List; Dictionary; Object }
 
 Class PSNode {
     static [int]$MaxDepth       # Set the MaxDepth in the Begin of your cmdlet: [PSNode]::MaxDepth = $MaxDepth
-    $Key                        # The dictionary key or propery name of the node
+    $Key                        # The dictionary key or property name of the node
     $Index                      # This index of $this item
     [Int]$Depth
     [PSNode]$Parent
