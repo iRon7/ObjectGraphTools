@@ -16,7 +16,7 @@ Merges two object graphs into one
 
 ## Description
 
-Deep merges two object graphs into a new object graph.
+Recursively merges two object graphs into a new object graph.
 
 ## Parameter
 
