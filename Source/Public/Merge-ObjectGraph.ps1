@@ -3,7 +3,7 @@
     Merges two object graphs into one
 
 .DESCRIPTION
-    Deep merges two object graphs into a new object graph.
+    Recursively merges two object graphs into a new object graph.
 
 .PARAMETER InputObject
     The input object that will be merged with the template object (see: [-Template] parameter).
