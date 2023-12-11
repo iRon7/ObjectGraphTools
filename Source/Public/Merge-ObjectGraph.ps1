@@ -50,7 +50,8 @@ function Merge-ObjectGraph {
         [Alias('Depth')][int]$MaxDepth = 10
     )
     begin {
-        [PSNode]::MaxDepth = $MaxDepth
+        $TemplateNode = [PSNode]::new($Template)
+        $TemplateNode.MaxDepth = $MaxDepth
         function MergeObject ([PSNode]$TemplateNode, [PSNode]$ObjectNode) {
             if ($ObjectNode.Structure -ne $TemplateNode.Structure) { return $ObjectNode.Value }
             elseif ($ObjectNode.Structure -eq 'Scalar')        { return $ObjectNode.Value }
@@ -58,8 +59,9 @@ function Merge-ObjectGraph {
                 $FoundIndices = [System.Collections.Generic.HashSet[int]]::new()
                 $Type = if ($ObjectNode.Value.IsFixedSize) { [Collections.Generic.List[PSObject]] } else { $ObjectNode.Value.GetType() }
                 $Output = New-Object -TypeName $Type
+                $ObjectItems   = $ObjectNode.GetItemNodes()
                 $TemplateItems = $TemplateNode.GetItemNodes()
-                foreach($ObjectItem in $ObjectNode.GetItemNodes()) {
+                foreach($ObjectItem in $ObjectItems) {
                     $FoundNode = $False
                     foreach ($TemplateItem in $TemplateItems) {
                         if ($ObjectItem.Structure -eq $TemplateItem.Structure) {
@@ -111,6 +113,6 @@ function Merge-ObjectGraph {
         }
     }
     process {
-        MergeObject $Template $InputObject $MaxDepth
+        MergeObject $TemplateNode $InputObject $MaxDepth
     }
 }
