@@ -100,7 +100,8 @@ function Compare-ObjectGraph {
         [Alias('Depth')][int]$MaxDepth = 10
     )
     begin {
-        [PSNode]::MaxDepth = $MaxDepth
+        $ReferenceNode = [PSNode]::new($Reference)
+        $ReferenceNode.MaxDepth = $MaxDepth
         function CompareObject([PSNode]$ReferenceNode, [PSNode]$ObjectNode, [Switch]$IsEqual = $IsEqual) {
             if ($MatchType) {
                 if ($ObjectNode.Type -ne $ReferenceNode.Type) {
@@ -302,6 +303,6 @@ function Compare-ObjectGraph {
         }
     }
     process {
-        CompareObject $Reference $InputObject
+        CompareObject $ReferenceNode $InputObject
     }
 }

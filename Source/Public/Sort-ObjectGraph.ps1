@@ -50,7 +50,6 @@ function Sort-ObjectGraph {
         [Alias('Depth')][int]$MaxDepth = 10
     )
     begin {
-        [PSNode]::MaxDepth = $MaxDepth
         $Primary = @{}
         if ($PSBoundParameters.ContainsKey('PrimaryKey')) {
             for($i = 0; $i -lt $PrimaryKey.Count; $i++) {
@@ -76,7 +75,7 @@ function Sort-ObjectGraph {
                 foreach ($Item in $Items) {
                     $SortKey = $Item.GetEnumerator().Name
                     $String.Add($SortKey)
-                    $List.Add($Item[$SortKey][0])
+                    $List.Add($Item[$SortKey])
                 }
                 $Name = $String -Join [Char]255
                 $Output = @{ $Name = @($List) }
@@ -105,6 +104,8 @@ function Sort-ObjectGraph {
     }
 
     process {
-        SortObject $InputObject $MaxDepth
+        $PSnode = [PSNode]::new($InputObject)
+        $PSNode.MaxDepth = $MaxDepth
+        SortObject ($PSNode)
     }
 }

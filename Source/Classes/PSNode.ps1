@@ -1,11 +1,63 @@
+<#
+.SYNOPSIS
+    PowerShell Object Node Class
+
+.DESCRIPTION
+    This class provides general properties and method to recursively
+    iterate through to PowerShell Object Graph nodes.
+
+## Usage
+
+To create a root node, you might simply construct a `[PSNode]` instance from the root object:
+
+```PowerShell
+[PSNode]$MyObject
+```
+
+To ensure that the recursive properties and method are being up to date with the object depth,
+it is imperative that any child node is created from the parent node when passed to any recursive
+function using the `GetItemNodes()` or `GetItemNode(<index/key>)` methods:
+
+```PowerShell
+function MyRecursiveFunction([PSNode]$Node) {
+    Write-Host $Node.GetPathName() '=' $Node.Value
+    foreach ($ChildNode in $Node.GetItemNodes()) {
+        MyRecursiveFunction($ChildNode)
+    }
+}
+MyRecursiveFunction($MyObject)
+```
+
+## properties
+
+### `MaxDepth`
+
+Defines the class wide (static) maximum node depth of the object.
+If the maximum depth has been reached, a error will be thrown.
+
+### `Depth`
+
+The current depth of the node.
+
+### `Index`
+
+The item node index relative to parent list or array. (ReadOnly, do not set)
+
+### `Key`
+
+The item node key or property relative to parent dictionary or PowerShell object.
+
+#>
+
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Name', Justification = 'False positive')]
 param()
 enum Construction { Undefined; Scalar; List; Dictionary; Object }
 
 Class PSNode {
-    static [int]$MaxDepth       # Set the MaxDepth in the Begin of your cmdlet: [PSNode]::MaxDepth = $MaxDepth
-    $Key                        # The dictionary key or property name of the node
-    $Index                      # This index of $this item
+    static [int]$DefaultMaxDepth = 10
+    [Int]$MaxDepth = [PSNode]::DefaultMaxDepth
+    $Key                                    # The dictionary key or property name of the node
+    $Index                                  # This index of $this item
     [Int]$Depth
     [PSNode]$Parent
     hidden $Path
@@ -83,8 +135,8 @@ Class PSNode {
 
     [PSNode]GetItemNode($Key) {
         if ($this.Structure -eq 'Scalar') { Write-Error "Expected collection" }
-        elseif ($this.Depth -ge [PSNode]::MaxDepth) {
-            Write-Warning "$($this.GetPathName) reached the maximum depth of $([PSNode]::MaxDepth)."
+        elseif ($this.Depth -ge $this.MaxDepth) {
+            Write-Warning "$($this.GetPathName) reached the maximum depth of $($this.MaxDepth)."
         }
         elseif ($this.Structure -eq 'List') {
             $Node        = [PSNode]::new($this.Value[$Key])
@@ -106,8 +158,8 @@ Class PSNode {
     [PSNode[]]GetItemNodes() {
         $ItemNodes = [Collections.Generic.List[PSNode]]::new()
         if ($this.Structure -eq 'Scalar') { Write-Error "Expected collection" }
-        elseif ($this.Depth -ge [PSNode]::MaxDepth) {
-            Write-Warning "$($this.GetPathName) reached the maximum depth of $([PSNode]::MaxDepth)."
+        elseif ($this.Depth -ge $this.MaxDepth) {
+            Write-Warning "$($this.GetPathName) reached the maximum depth of $($this.MaxDepth)."
         }
         elseif ($this.Structure -eq 'List') {
             for ($i = 0; $i -lt $this.Value.Count; $i++) {

@@ -22,7 +22,7 @@ Compare Object Graph
 
 ## Description
 
-Deep compares two Object Graph and lists the differences between them.
+Recursively compares two Object Graph and lists the differences between them.
 
 ## Parameter
 
