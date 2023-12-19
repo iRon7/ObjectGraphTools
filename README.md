@@ -17,6 +17,7 @@ Currently the tool set includes:
 * [`Compare-ObjectGraph`](./Docs/Compare-ObjectGraph.md)
 * [`Merge-ObjectGraph`](./Docs/Merge-ObjectGraph.md)
 * [`Sort-ObjectGraph`](./Docs/Sort-ObjectGraph.md)
+* [`Copy-ObjectGraph`](./Docs/Copy-ObjectGraph.md)
 * [`ConvertTo-Expression`](https://www.powershellgallery.com/packages/ConvertTo-Expression/) (under renovation, not yet included)
 
 ## Installation

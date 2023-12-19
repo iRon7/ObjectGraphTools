@@ -76,7 +76,7 @@ Class PSNode {
         elseif ($Object -is [ComponentModel.Component])             { 'Object' }
         elseif ($Object -is [Collections.IDictionary])              { 'Dictionary' }
         elseif ($Object -is [Collections.ICollection])              { 'List' }
-        else                                                            { 'Scalar' }
+        else                                                        { 'Scalar' }
         $this.Structure = if ($this.Construction -le 'Dictionary') { $this.Construction } else { 'Dictionary' }
     }
 

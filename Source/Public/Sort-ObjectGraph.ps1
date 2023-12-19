@@ -106,6 +106,6 @@ function Sort-ObjectGraph {
     process {
         $PSnode = [PSNode]::new($InputObject)
         $PSNode.MaxDepth = $MaxDepth
-        SortObject ($PSNode)
+        SortObject $PSNode
     }
 }
