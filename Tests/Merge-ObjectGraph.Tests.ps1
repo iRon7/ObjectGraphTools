@@ -1,19 +1,19 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.0.0"}
 
+using module ..\ObjectGraphTools.psm1
+
 Describe 'Merge-ObjectGraph' {
 
     BeforeAll {
 
         Set-StrictMode -Version Latest
-
-        Import-Module $PSScriptRoot\..\ObjectGraphTools.psm1 -DisableNameChecking -Force
     }
 
     Context 'Sanity Check' {
 
-         It 'Help' {
-             Merge-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
-         }
+        It 'Help' {
+            Merge-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
+        }
     }
 
     Context 'Merge' {

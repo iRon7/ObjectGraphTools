@@ -8,21 +8,18 @@ Compare Object Graph
 ```JavaScript
     -InputObject <Object>
     -Reference <Object>
+    [-PrimaryKey <String[]>]
     [-IsEqual]
     [-MatchCase]
     [-MatchType]
-    [-MatchObjectOrder]
-    [-IgnoreArrayOrder]
-    [-IgnoreListOrder]
-    [-IgnoreDictionaryOrder]
-    [-IgnorePropertyOrder]
+    [-MatchOrder]
     [-MaxDepth <Int32> = 10]
     [<CommonParameters>]
 ```
 
 ## Description
 
-Recursively compares two Object Graph and lists the differences between them.
+Deep compares two Object Graph and lists the differences between them.
 
 ## Parameter
 
@@ -55,6 +52,20 @@ The reference that is used to compared with the input object (see: [-InputObject
 <table>
 <tr><td>Type:</td><td></td></tr>
 <tr><td>Mandatory:</td><td>True</td></tr>
+<tr><td>Position:</td><td>Named</td></tr>
+<tr><td>Default value:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept wildcard characters:</td><td>False</td></tr>
+</table>
+
+### <a id="-primarykey">**`-PrimaryKey <String[]>`**</a>
+
+If supplied, dictionaries (including PSCustomObject or Component Objects) in a list are matched
+based on the values of the `-PrimaryKey` supplied.
+
+<table>
+<tr><td>Type:</td><td></td></tr>
+<tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
 <tr><td>Accept pipeline input:</td><td></td></tr>
@@ -112,77 +123,19 @@ Unless the `-MatchType` switch is provided, a loosely (inclusive) comparison is 
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
-### <a id="-matchobjectorder">**`-MatchObjectOrder`**</a>
+### <a id="-matchorder">**`-MatchOrder`**</a>
 
-Whether a list (or array) is treated as ordered is defined by the `$Reference`.
-Unless the `-MatchObjectOrder` switch is provided, the order of an object array (`@(...)` aka `Object[]`)
-is presumed unordered. This means that `Compare-ObjectGraph` cmdlet will try to match each item of an
-`$InputObject` list which each item in the `$Reference` list.
+By default, items in a list and dictionary (including properties of an PSCustomObject or Component Object)
+are matched independent of the order. If the `-MatchOrder` switch is supplied the index of the concerned
+item (or property) is matched.
 
-If there is a single discrepancy on each side, the properties will be compared deeper, otherwise a
-list with different items will be returned.
+> [!NOTE]
+> A `[HashTable]` type is unordered by design and therefore, regardless the `-MatchOrder` switch, the order
+> of the `[HashTable]` are always ignored.
 
-<table>
-<tr><td>Type:</td><td></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
-
-### <a id="-ignorearrayorder">**`-IgnoreArrayOrder`**</a>
-
-Whether a list (or array) is treated as ordered is defined by the `$Reference`.
-Unless the `-IgnoreArrayOrder` switch is provided, the order of an array (e.g. `[String[]]('a', b', 'c')`,
-excluding an object array, see: [-MatchObjectOrder](#-matchobjectorder)), is presumed ordered.
-
-<table>
-<tr><td>Type:</td><td></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
-
-### <a id="-ignorelistorder">**`-IgnoreListOrder`**</a>
-
-Whether a list is treated as ordered is defined by the `$Reference`.
-Unless the `-IgnoreListOrder` switch is provided, the order of a list
-(e.g. `[Collections.Generic.List[Int]](1, 2, 3)`), is presumed ordered.
-
-<table>
-<tr><td>Type:</td><td></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
-
-### <a id="-ignoredictionaryorder">**`-IgnoreDictionaryOrder`**</a>
-
-Whether a dictionary is treated as ordered is defined by the `$Reference`.
-Unless the `-IgnoreDictionaryOrder` switch is provided, the order of a dictionary is presumed ordered.
-
-> [!WARNING]
-> A `[HashTable]` type is unordered by design and therefore the order of a `$Reference` hash table
-> in always ignored
-
-<table>
-<tr><td>Type:</td><td></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
-
-### <a id="-ignorepropertyorder">**`-IgnorePropertyOrder`**</a>
-
-Whether the properties are treated as ordered is defined by the `$Reference`.
-Unless the `-IgnorePropertyOrder` switch is provided, the property order is presumed ordered.
+> [!NOTE]
+> Regardless of the `-MatchOrder` switch, indexed (defined by the [PrimaryKey](#primarykey) parameter) dictionaries
+(including PSCustomObject or Component Objects) in a list are matched independent of the order.
 
 <table>
 <tr><td>Type:</td><td></td></tr>

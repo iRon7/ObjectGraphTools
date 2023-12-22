@@ -3,7 +3,7 @@
     RootModule = 'ObjectGraphTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.0.7'
+    ModuleVersion = '0.0.8'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -48,7 +48,7 @@
     # RequiredAssemblies = @()
 
     # Script files (.ps1) that are run in the caller's environment prior to importing this module.
-    # ScriptsToProcess = @()
+    ScriptsToProcess = @('.\Source\Classes\PSNode.ps1')
 
     # Type files (.ps1xml) to be loaded when importing this module
     # TypesToProcess = @()
@@ -60,7 +60,7 @@
     # NestedModules = @()
 
     # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-    FunctionsToExport = 'Merge-ObjectGraph', 'Sort-ObjectGraph', 'Compare-ObjectGraph'
+    FunctionsToExport = 'Merge-ObjectGraph', 'Sort-ObjectGraph', 'Compare-ObjectGraph', 'Copy-ObjectGraph'
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
     CmdletsToExport = @()

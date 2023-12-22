@@ -25,7 +25,7 @@ function MyRecursiveFunction([PSNode]$Node) {
         MyRecursiveFunction($ChildNode)
     }
 }
-MyRecursiveFunction($MyObject)
+MyRecursiveFunction $MyObject
 ```
 
 ## properties
@@ -60,6 +60,7 @@ Class PSNode {
     $Index                                  # This index of $this item
     [Int]$Depth
     [PSNode]$Parent
+    [PSNode]$Root = $this
     hidden $Path
     hidden $PathName
 
@@ -135,14 +136,15 @@ Class PSNode {
 
     [PSNode]GetItemNode($Key) {
         if ($this.Structure -eq 'Scalar') { Write-Error "Expected collection" }
-        elseif ($this.Depth -ge $this.MaxDepth) {
-            Write-Warning "$($this.GetPathName) reached the maximum depth of $($this.MaxDepth)."
+        elseif ($this.Depth -ge $this.Root.MaxDepth) {
+            Write-Warning "$($this.GetPathName) reached the maximum depth of $($this.Root.MaxDepth)."
         }
         elseif ($this.Structure -eq 'List') {
             $Node        = [PSNode]::new($this.Value[$Key])
             $Node.Index  = $Key
             $Node.Depth  = $this.Depth + 1
             $Node.Parent = $this
+            $Node.Root   = $this.Root
             return $Node
         }
         elseif ($this.Structure -eq 'Dictionary') {
@@ -150,6 +152,7 @@ Class PSNode {
             $Node.Key    = $Key
             $Node.Depth  = $this.Depth + 1
             $Node.Parent = $this
+            $Node.Root   = $this.Root
             return $Node
         }
         return $null
@@ -159,7 +162,7 @@ Class PSNode {
         $ItemNodes = [Collections.Generic.List[PSNode]]::new()
         if ($this.Structure -eq 'Scalar') { Write-Error "Expected collection" }
         elseif ($this.Depth -ge $this.MaxDepth) {
-            Write-Warning "$($this.GetPathName) reached the maximum depth of $($this.MaxDepth)."
+            Write-Warning "$($this.Root.GetPathName) reached the maximum depth of $($this.Root.MaxDepth)."
         }
         elseif ($this.Structure -eq 'List') {
             for ($i = 0; $i -lt $this.Value.Count; $i++) {
@@ -167,6 +170,7 @@ Class PSNode {
                 $Node.Index  = $i
                 $Node.Depth  = $this.Depth + 1
                 $Node.Parent = $this
+                $Node.Root   = $this.Root
                 $ItemNodes.Add($Node)
             }
         }
@@ -179,6 +183,7 @@ Class PSNode {
                 $Node.Key    = $_.Name
                 $Node.Depth  = $this.Depth + 1
                 $Node.Parent = $this
+                $Node.Root   = $this.Root
                 $ItemNodes.Add($Node)
             }
         }
