@@ -1,5 +1,7 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.0.0"}
 
+using module ..\ObjectGraphTools.psm1
+
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Reference', Justification = 'False positive')]
 param()
 
@@ -35,9 +37,9 @@ Describe 'Compare-ObjectGraph' {
 
     Context 'Sanity Check' {
 
-         It 'Help' {
+        It 'Help' {
             Compare-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
-         }
+        }
     }
 
     Context 'Compare' {
@@ -122,9 +124,9 @@ Describe 'Compare-ObjectGraph' {
         $Result[0].InputObject | Should -Be 2
         $Result[0].Reference   | Should -Be 3
         $Result[1].Path        | Should -Be '.Data[2]'
-        $Result[1].Discrepancy | Should -Be 'Exists'
-        $Result[1].InputObject | Should -Be $False
-        $Result[1].Reference   | Should -Be $True
+        $Result[1].Discrepancy | Should -Be 'Value'
+        $Result[1].InputObject | Should -BeNullOrEmpty
+        $Result[1].Reference   | Should -Be '[HashTable]'
     }
     It 'Extra entry' {
         $Object = @{
@@ -160,9 +162,9 @@ Describe 'Compare-ObjectGraph' {
         $Result[0].InputObject | Should -Be 4
         $Result[0].Reference   | Should -Be 3
         $Result[1].Path        | Should -Be '.Data[3]'
-        $Result[1].Discrepancy | Should -Be 'Exists'
-        $Result[1].InputObject | Should -Be $True
-        $Result[1].Reference   | Should -Be $False
+        $Result[1].Discrepancy | Should -Be 'Value'
+        $Result[1].InputObject | Should -Be '[HashTable]'
+        $Result[1].Reference   | Should -Be $Null
     }
     It 'Different entry value' {
         $Object = @{
@@ -215,9 +217,10 @@ Describe 'Compare-ObjectGraph' {
             )
         }
         $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $True
-        $Object | Compare-ObjectGraph $Reference -MatchObjectOrder -IsEqual | Should -Be $False
-        $Result = $Object      | Compare-ObjectGraph $Reference -MatchObjectOrder
-        $Result.Count          | Should -Be 6
+        $Object | Compare-ObjectGraph $Reference -MatchOrder -IsEqual | Should -Be $False
+        $Object | Compare-ObjectGraph $Reference -PrimaryKey Index -MatchOrder -IsEqual | Should -Be $True
+        $Result = $Object | Compare-ObjectGraph $Reference -MatchOrder
+        $Result.Count     | Should -Be 2
     }
     It 'Unordered (hashtable) reference' {
         $Object = @{
@@ -327,7 +330,11 @@ Describe 'Compare-ObjectGraph' {
                 }
             )
         }
-        $Object | Compare-ObjectGraph $Ordered -IsEqual | Should -Be $False
+        $Object | Compare-ObjectGraph $Ordered -IsEqual | Should -Be $True
+        $Object | Compare-ObjectGraph $Ordered -MatchOrder -IsEqual | Should -Be $False
+        $Object | Compare-ObjectGraph $Ordered -PrimaryKey Index -MatchOrder -IsEqual | Should -Be $False
+        $Result = $Object | Compare-ObjectGraph $Ordered -MatchOrder
+        $Result.Count     | Should -Be 2
     }
 
     Context 'Issues' {

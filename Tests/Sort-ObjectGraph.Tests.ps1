@@ -1,5 +1,7 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.0.0"}
 
+using module ..\ObjectGraphTools.psm1
+
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object', Justification = 'False positive')]
 param()
 
@@ -8,15 +10,13 @@ Describe 'Sort-ObjectGraph' {
     BeforeAll {
 
         Set-StrictMode -Version Latest
-
-        Import-Module $PSScriptRoot\..\ObjectGraphTools.psm1 -DisableNameChecking -Force
     }
 
     Context 'Sanity Check' {
 
-         It 'Help' {
-             Sort-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
-         }
+        It 'Help' {
+            Sort-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
+        }
     }
 
     Context 'Scalar Array' {
@@ -221,11 +221,20 @@ World
         }
 
         Context 'Warning' {
-            It 'Depth' {
+            BeforeAll {
                 $Object = @{ Name = 'Test' }
                 $Object.Parent = $Object
+            }
+
+            It 'Default Depth' {
                 $Records = Sort-ObjectGraph $Object 3>&1
                 $Records.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike '*maximum depth*10*'
+                $Records.where{$_ -isnot [System.Management.Automation.WarningRecord]}.Name    | Should -Be     'Test'
+            }
+
+            It '-Depth 5' {
+                $Records = Sort-ObjectGraph -Depth 5 $Object 3>&1
+                $Records.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike '*maximum depth*5*'
                 $Records.where{$_ -isnot [System.Management.Automation.WarningRecord]}.Name    | Should -Be     'Test'
             }
        }
@@ -255,7 +264,7 @@ World
                     }
                 }'
 
-            $Sorted = $MyObject | Sort-ObjectGraph
+            $Sorted = $Object | Sort-ObjectGraph
             $Sorted.NoneNodeData.Teams.AppSetupPolicies[0].PinnedAppBarApps[0] | Should -BeOfType String
             $Sorted.NoneNodeData.Teams.AppSetupPolicies[0].PinnedAppBarApps[0].Length | Should -BeGreaterThan 1
         }
