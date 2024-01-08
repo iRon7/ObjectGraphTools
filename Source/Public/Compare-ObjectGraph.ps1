@@ -80,191 +80,206 @@ function Compare-ObjectGraph {
         [Alias('Depth')][int]$MaxDepth = 10
     )
     begin {
-        $ReferenceNode = [PSNode]::new($Reference)
-        $ReferenceNode.MaxDepth = $MaxDepth
-        function CompareObject([PSNode]$ReferenceNode, [PSNode]$ObjectNode, [Switch]$IsEqual = $IsEqual) {
+        function CompareObject(
+            [PSNode]$ReferenceNode,
+            [PSNode]$ObjectNode,
+            [String[]]$PrimaryKey = $PrimaryKey,
+            [Switch]$IsEqual      = $IsEqual,
+            [Switch]$MatchCase    = $MatchCase,
+            [Switch]$MatchType    = $MatchType,
+            [Switch]$MatchOrder   = $MatchOrder
+        ) {
             if ($MatchType) {
                 if ($ObjectNode.Type -ne $ReferenceNode.Type) {
                     if ($IsEqual) { return $false }
                     [PSCustomObject]@{
-                        Path        = $ObjectNode.GetPathName()
+                        Path        = $ObjectNode.PathName
                         Discrepancy = 'Type'
                         InputObject = $ObjectNode.Type
                         Reference   = $ReferenceNode.Type
                     }
                 }
             }
-            if ($ObjectNode.Structure -ne $ReferenceNode.Structure) {
-                if ($IsEqual) { return $false }
-                [PSCustomObject]@{
-                    Path        = $ObjectNode.GetPathName()
-                    Discrepancy = 'Structure'
-                    InputObject = $ObjectNode.Structure
-                    Reference   = $ReferenceNode.Structure
+            if ($ObjectNode -is [PSCollectionNode] -and $ReferenceNode -is [PSCollectionNode]) {
+                if ($ObjectNode.Count -ne $ReferenceNode.Count) {
+                    if ($IsEqual) { return $false }
+                    [PSCustomObject]@{
+                        Path        = $ObjectNode.PathName
+                        Discrepancy = 'Size'
+                        InputObject = $ObjectNode.Count
+                        Reference   = $ReferenceNode.Count
+                    }
                 }
             }
-            elseif ($ObjectNode.Structure -eq 'Scalar') {
+            if ($ObjectNode -is [PSLeafNode] -and $ReferenceNode -is [PSLeafNode]) {
                 $NotEqual = if ($MatchCase) { $ReferenceNode.Value -cne $ObjectNode.Value } else { $ReferenceNode.Value -cne $ObjectNode.Value }
                 if ($NotEqual) { # $ReferenceNode dictates the type
                     if ($IsEqual) { return $false }
                     [PSCustomObject]@{
-                        Path        = $ObjectNode.GetPathName()
+                        Path        = $ObjectNode.PathName
                         Discrepancy = 'Value'
                         InputObject = $ObjectNode.Value
                         Reference   = $ReferenceNode.Value
                     }
                 }
             }
-            else {
-                if ($ObjectNode.get_Count() -ne $ReferenceNode.get_Count()) {
-                    if ($IsEqual) { return $false }
-                    [PSCustomObject]@{
-                        Path        = $ObjectNode.GetPathName()
-                        Discrepancy = 'Size'
-                        InputObject = $ObjectNode.get_Count()
-                        Reference   = $ReferenceNode.get_Count()
-                    }
-                }
-                if ($ObjectNode.Structure -eq 'List') {
-                    $ObjectItems      = $ObjectNode.GetItemNodes()
-                    $ReferenceItems   = $ReferenceNode.GetItemNodes()
-                    if ($ObjectItems.Count)    { $ObjectIndices    = [Collections.Generic.List[Int]]$ObjectItems.Index } else { $ObjectIndices      = @() }
-                    if ($ReferenceItems.Count) { $ReferenceIndices = [Collections.Generic.List[Int]]$ReferenceItems.Index } else { $ReferenceIndices = @() }
-                    if ($PrimaryKey) {
-                        $ObjectDictionaries = [Collections.Generic.List[Int]]$ObjectItems.where{ $_.Structure -eq 'Dictionary' }.Index
-                        if ($ObjectDictionaries.Count) {
-                            $ReferenceDictionaries = [Collections.Generic.List[Int]]$ReferenceItems.where{ $_.Structure -eq 'Dictionary' }.Index
-                            if ($ReferenceDictionaries.Count) {
-                                foreach ($Key in $PrimaryKey) {
-                                    foreach($ObjectIndex in @($ObjectDictionaries)) {
-                                        $ObjectItem = $ObjectItems[$ObjectIndex]
-                                        foreach ($ReferenceIndex in $ReferenceDictionaries) {
-                                            $ReferenceItem = $ReferenceItems[$ReferenceIndex]
-                                            if ($ReferenceItem.Get($Key) -eq $ObjectItem.Get($Key)) {
-                                                if (CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual) {
-                                                    $null = $ObjectDictionaries.Remove($ObjectIndex)
-                                                    $Null = $ReferenceDictionaries.Remove($ReferenceIndex)
-                                                    $null = $ObjectIndices.Remove($ObjectIndex)
-                                                    $Null = $ReferenceIndices.Remove($ReferenceIndex)
-                                                    break # Only match a single node
-                                                }
+            elseif ($ObjectNode -is [PSListNode] -and $ReferenceNode -is [PSListNode]) {
+                $ObjectItems      = $ObjectNode.ChildNodes
+                $ReferenceItems   = $ReferenceNode.ChildNodes
+                if ($ObjectItems.Count)    { $ObjectIndices    = [Collections.Generic.List[Int]]$ObjectItems.Index } else { $ObjectIndices      = @() }
+                if ($ReferenceItems.Count) { $ReferenceIndices = [Collections.Generic.List[Int]]$ReferenceItems.Index } else { $ReferenceIndices = @() }
+                if ($PrimaryKey) {
+                    $ObjectDictionaries = [Collections.Generic.List[Int]]$ObjectItems.where{ $_ -is [PSMapNode] }.Index
+                    if ($ObjectDictionaries.Count) {
+                        $ReferenceDictionaries = [Collections.Generic.List[Int]]$ReferenceItems.where{ $_ -is [PSMapNode] }.Index
+                        if ($ReferenceDictionaries.Count) {
+                            foreach ($Key in $PrimaryKey) {
+                                foreach($ObjectIndex in @($ObjectDictionaries)) {
+                                    $ObjectItem = $ObjectItems[$ObjectIndex]
+                                    foreach ($ReferenceIndex in $ReferenceDictionaries) {
+                                        $ReferenceItem = $ReferenceItems[$ReferenceIndex]
+                                        if ($ReferenceItem.GetItem($Key) -eq $ObjectItem.GetItem($Key)) {
+                                            if (CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual) {
+                                                $null = $ObjectDictionaries.Remove($ObjectIndex)
+                                                $Null = $ReferenceDictionaries.Remove($ReferenceIndex)
+                                                $null = $ObjectIndices.Remove($ObjectIndex)
+                                                $Null = $ReferenceIndices.Remove($ReferenceIndex)
+                                                break # Only match a single node
                                             }
                                         }
                                     }
-                                    foreach ($Key in $PrimaryKey) { # in case of any single leftovers where the key value doesn't match
-                                        if($ObjectDictionaries.Count -eq 1 -and $ReferenceDictionaries.Count -eq 1) {
-                                            $ObjectItem    = $ObjectItems[$ObjectDictionaries[0]]
-                                            $ReferenceItem = $ReferenceItems[$ReferenceDictionaries[0]]
-                                            $Compare = CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual:$IsEqual
-                                            if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }
-                                            $ObjectDictionaries.Clear()
-                                            $ReferenceDictionaries.Clear()
-                                            $null = $ObjectIndices.Remove($ObjectDictionaries[0])
-                                            $Null = $ReferenceIndices.Remove($ReferenceDictionaries[0])
-                                        }
+                                }
+                                foreach ($Key in $PrimaryKey) { # in case of any single leftovers where the key value doesn't match
+                                    if($ObjectDictionaries.Count -eq 1 -and $ReferenceDictionaries.Count -eq 1) {
+                                        $ObjectItem    = $ObjectItems[$ObjectDictionaries[0]]
+                                        $ReferenceItem = $ReferenceItems[$ReferenceDictionaries[0]]
+                                        $Compare = CompareObject -Reference $ReferenceItem -Object $ObjectItem
+                                        if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }
+                                        $ObjectDictionaries.Clear()
+                                        $ReferenceDictionaries.Clear()
+                                        $null = $ObjectIndices.Remove($ObjectDictionaries[0])
+                                        $Null = $ReferenceIndices.Remove($ReferenceDictionaries[0])
                                     }
                                 }
                             }
-                        }
-
-                    }
-                    foreach($ObjectIndex in @($ObjectIndices)) {
-                        $ObjectItem = $ObjectItems[$ObjectIndex]
-                        foreach ($ReferenceIndex in $ReferenceIndices) {
-                            $ReferenceItem = $ReferenceItems[$ReferenceIndex]
-                            if (CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual) {
-                                if ($MatchOrder -and $ObjectItem.Index -ne $ReferenceItem.Index) {
-                                    if ($IsEqual) { return $false }
-                                    [PSCustomObject]@{
-                                        Path        = $ReferenceNode.GetPathName()
-                                        Discrepancy = 'Index'
-                                        InputObject = $ObjectItem.Index
-                                        Reference   = $ReferenceItem.Index
-                                    }
-                                }
-                                $null = $ObjectIndices.Remove($ObjectIndex)
-                                $Null = $ReferenceIndices.Remove($ReferenceIndex)
-                                break # Only match a single node
-                            }
-                        }
-                    }
-                    for ($i = 0; $i -lt [math]::max($ObjectIndices.Count, $ReferenceIndices.Count); $i++) {
-                        $ObjectIndex    = if ($i -lt $ObjectIndices.Count)    { $ObjectIndices[$i] }
-                        $ReferenceIndex = if ($i -lt $ReferenceIndices.Count) { $ReferenceIndices[$i] }
-                        $ObjectItem     = if ($Null -ne $ObjectIndex)    { $ObjectItems[$ObjectIndex] }
-                        $ReferenceItem  = if ($Null -ne $ReferenceIndex) { $ReferenceItems[$ReferenceIndex] }
-                        if ($Null -eq $ObjectItem) {            # if ($IsEqual) { never happens as the size already differs
-                            [PSCustomObject]@{
-                                Path        = $ReferenceNode.GetPathName() + "[$ReferenceIndex]"
-                                Discrepancy = 'Value'
-                                InputObject = $Null
-                                Reference   = if ($ReferenceItem -eq 'Scalar') { $ReferenceItem.Value } else { "[$($ReferenceItem.Type)]" }
-                            }
-                        }
-                        elseif ($Null -eq $ReferenceItem) {     # if ($IsEqual) { never happens as the size already differs
-                            [PSCustomObject]@{
-                                Path        = $ObjectNode.GetPathName() + "[$ObjectIndex]"
-                                Discrepancy = 'Value'
-                                InputObject = if ($ObjectItem -eq 'Scalar') { $ObjectItem.Value } else { "[$($ObjectItem.Type)]" }
-                                Reference   = $Null
-                            }
-                        }
-                        else {
-                            $Compare = CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual:$IsEqual
-                            if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }
                         }
                     }
                 }
-                elseif ($ObjectNode.Structure -eq 'Dictionary') {
-                    $Found = [HashTable]::new() # (Case sensitive)
-                    $Order = if ($MatchOrder -and $ReferenceNode.Type.Name -ne 'HashTable') { [HashTable]::new() }
-                    $Index = 0
-                    if ($Order) { $ReferenceNode.Get_Keys().foreach{ $Order[$_] = $Index++ } }
-                    $Index = 0
-                    foreach ($ObjectItem in $ObjectNode.GetItemNodes()) {
-                        if ($ReferenceNode.Contains($ObjectItem.Key)) {
-                            $ReferenceItem = $ReferenceNode.GetItemNode($ObjectItem.Key)
-                            $Found[$ReferenceItem.Key] = $true
-                            if ($Order -and $Order[$ReferenceItem.Key] -ne $Index) {
+                foreach($ObjectIndex in @($ObjectIndices)) {
+                    $ObjectItem = $ObjectItems[$ObjectIndex]
+                    foreach ($ReferenceIndex in $ReferenceIndices) {
+                        $ReferenceItem = $ReferenceItems[$ReferenceIndex]
+                        if (CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual) {
+                            if ($MatchOrder -and $ObjectItem.Index -ne $ReferenceItem.Index) {
                                 if ($IsEqual) { return $false }
                                 [PSCustomObject]@{
-                                    Path        = $ObjectItem.GetPathName()
+                                    Path        = $ReferenceNode.PathName
                                     Discrepancy = 'Index'
-                                    InputObject = $Index
-                                    Reference   = $Order[$ReferenceItem.Key]
+                                    InputObject = $ObjectItem.Index
+                                    Reference   = $ReferenceItem.Index
                                 }
                             }
-                            $Compare = CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual:$IsEqual
-                            if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }
+                            $null = $ObjectIndices.Remove($ObjectIndex)
+                            $Null = $ReferenceIndices.Remove($ReferenceIndex)
+                            break # Only match a single node
                         }
-                        else {
-                            if ($IsEqual) { return $false }
-                            [PSCustomObject]@{
-                                Path        = $ObjectItem.GetPathName()
-                                Discrepancy = 'Exists'
-                                InputObject = $true
-                                Reference   = $false
-                            }
-                        }
-                        $Index++
                     }
-                    $ReferenceNode.get_Keys().foreach{
-                        if (-not $Found.Contains($_)) {
+                }
+                for ($i = 0; $i -lt [math]::max($ObjectIndices.Count, $ReferenceIndices.Count); $i++) {
+                    $ObjectIndex    = if ($i -lt $ObjectIndices.Count)    { $ObjectIndices[$i] }
+                    $ReferenceIndex = if ($i -lt $ReferenceIndices.Count) { $ReferenceIndices[$i] }
+                    $ObjectItem     = if ($Null -ne $ObjectIndex)    { $ObjectItems[$ObjectIndex] }
+                    $ReferenceItem  = if ($Null -ne $ReferenceIndex) { $ReferenceItems[$ReferenceIndex] }
+                    if ($Null -eq $ObjectItem) {            # if ($IsEqual) { never happens as the size already differs
+                        [PSCustomObject]@{
+                            Path        = $ReferenceNode.PathName + "[$ReferenceIndex]"
+                            Discrepancy = 'Value'
+                            InputObject = $Null
+                            Reference   = if ($ReferenceItem -eq 'Scalar') { $ReferenceItem.Value } else { "[$($ReferenceItem.Type)]" }
+                        }
+                    }
+                    elseif ($Null -eq $ReferenceItem) {     # if ($IsEqual) { never happens as the size already differs
+                        [PSCustomObject]@{
+                            Path        = $ObjectNode.PathName + "[$ObjectIndex]"
+                            Discrepancy = 'Value'
+                            InputObject = if ($ObjectItem -eq 'Scalar') { $ObjectItem.Value } else { "[$($ObjectItem.Type)]" }
+                            Reference   = $Null
+                        }
+                    }
+                    else {
+                        $Compare = CompareObject -Reference $ReferenceItem -Object $ObjectItem
+                        if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }
+                    }
+                }
+            }
+            elseif ($ObjectNode -is [PSMapNode] -and $ReferenceNode -is [PSMapNode]) {
+                $Found = [HashTable]::new() # (Case sensitive)
+                $Order = if ($MatchOrder -and $ReferenceNode.Type.Name -ne 'HashTable') { [HashTable]::new() }
+                $Index = 0
+                if ($Order) { $ReferenceNode.Keys.foreach{ $Order[$_] = $Index++ } }
+                $Index = 0
+                foreach ($ObjectItem in $ObjectNode.ChildNodes) {
+                    if ($ReferenceNode.Contains($ObjectItem.Key)) {
+                        $ReferenceItem = $ReferenceNode.GetChildNode($ObjectItem.Key)
+                        $Found[$ReferenceItem.Key] = $true
+                        if ($Order -and $Order[$ReferenceItem.Key] -ne $Index) {
                             if ($IsEqual) { return $false }
                             [PSCustomObject]@{
-                                Path        = $ReferenceNode.GetItemNode($_).GetPathName()
-                                Discrepancy = 'Exists'
-                                InputObject = $false
-                                Reference   = $true
+                                Path        = $ObjectItem.PathName
+                                Discrepancy = 'Index'
+                                InputObject = $Index
+                                Reference   = $Order[$ReferenceItem.Key]
                             }
+                        }
+                        $Compare = CompareObject -Reference $ReferenceItem -Object $ObjectItem
+                        if ($Compare -eq $false) { return $Compare } elseif ($Compare -ne $true) { $Compare }
+                    }
+                    else {
+                        if ($IsEqual) { return $false }
+                        [PSCustomObject]@{
+                            Path        = $ObjectItem.PathName
+                            Discrepancy = 'Exists'
+                            InputObject = $true
+                            Reference   = $false
+                        }
+                    }
+                    $Index++
+                }
+                $ReferenceNode.Keys.foreach{
+                    if (-not $Found.Contains($_)) {
+                        if ($IsEqual) { return $false }
+                        [PSCustomObject]@{
+                            Path        = $ReferenceNode.GetChildNode($_).PathName
+                            Discrepancy = 'Exists'
+                            InputObject = $false
+                            Reference   = $true
                         }
                     }
                 }
             }
-            if ($IsEqual) { return $true }
+            else {
+                if ($IsEqual) { return $false }
+                [PSCustomObject]@{
+                    Path        = $ObjectNode.PathName
+                    Discrepancy = 'Structure'
+                    InputObject = $ObjectNode.Type.Name
+                    Reference   = $ReferenceNode.Type.Name
+                }
+            }            if ($IsEqual) { return $true }
         }
+        $ReferenceNode = [PSNode]::ParseInput($Reference, $MaxDepth)
     }
     process {
-        CompareObject $ReferenceNode $InputObject
+        $ObjectNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
+        $Arguments = @{
+            ReferenceNode = $ReferenceNode
+            ObjectNode    = $ObjectNode
+            PrimaryKey    = $PrimaryKey
+            IsEqual       = $IsEqual
+            MatchCase     = $MatchCase
+            MatchType     = $MatchType
+            MatchOrder    = $MatchOrder
+        }
+        CompareObject @Arguments
     }
 }

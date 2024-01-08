@@ -1,6 +1,6 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.0.0"}
 
-using module ..\ObjectGraphTools.psm1
+using module ..\..\ObjectGraphTools
 
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object', Justification = 'False positive')]
 param()
@@ -73,7 +73,7 @@ Describe 'Sort-ObjectGraph' {
                     }
                     @{
                         Index = 3
-                        Name = 'One'
+                        Name = 'Three'
                         Comment = 'Third item'
                     }
                 )

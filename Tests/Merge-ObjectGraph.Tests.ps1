@@ -1,6 +1,6 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.0.0"}
 
-using module ..\ObjectGraphTools.psm1
+using module ..\..\ObjectGraphTools
 
 Describe 'Merge-ObjectGraph' {
 

@@ -50,39 +50,33 @@ function Merge-ObjectGraph {
         [Alias('Depth')][int]$MaxDepth = 10
     )
     begin {
-        $TemplateNode = [PSNode]::new($Template)
-        $TemplateNode.MaxDepth = $MaxDepth
-        function MergeObject ([PSNode]$TemplateNode, [PSNode]$ObjectNode) {
-            if ($ObjectNode.Structure -ne $TemplateNode.Structure) { return $ObjectNode.Value }
-            elseif ($ObjectNode.Structure -eq 'Scalar')        { return $ObjectNode.Value }
-            elseif ($ObjectNode.Structure -eq 'List') {
+        function MergeObject ([PSNode]$TemplateNode, [PSNode]$ObjectNode, [String[]]$PrimaryKey, [Switch]$MatchCase) {
+            if ($ObjectNode -is [PSListNode] -and $TemplateNode -is [PSListNode]) {
                 $FoundIndices = [System.Collections.Generic.HashSet[int]]::new()
                 $Type = if ($ObjectNode.Value.IsFixedSize) { [Collections.Generic.List[PSObject]] } else { $ObjectNode.Value.GetType() }
                 $Output = New-Object -TypeName $Type
-                $ObjectItems   = $ObjectNode.GetItemNodes()
-                $TemplateItems = $TemplateNode.GetItemNodes()
+                $ObjectItems   = $ObjectNode.ChildNodes
+                $TemplateItems = $TemplateNode.ChildNodes
                 foreach($ObjectItem in $ObjectItems) {
                     $FoundNode = $False
                     foreach ($TemplateItem in $TemplateItems) {
-                        if ($ObjectItem.Structure -eq $TemplateItem.Structure) {
-                            if ($ObjectItem.Structure -eq 'Scalar') {
-                                $Equal = if ($MatchCase) { $TemplateItem.Value -ceq $ObjectItem.Value }
-                                         else            { $TemplateItem.Value -eq  $ObjectItem.Value }
-                                if ($Equal) {
-                                    $Output.Add($ObjectItem.Value)
+                        if ($ObjectItem -is [PSLeafNode] -and $TemplateItem  -is [PSLeafNode]) {
+                            $Equal = if ($MatchCase) { $TemplateItem.Value -ceq $ObjectItem.Value }
+                                     else            { $TemplateItem.Value -eq  $ObjectItem.Value }
+                            if ($Equal) {
+                                $Output.Add($ObjectItem.Value)
+                                $FoundNode = $True
+                                $Null = $FoundIndices.Add($TemplateItem.Index)
+                            }
+                        }
+                        elseif ($ObjectItem -is [PSMapNode] -and $TemplateItem -is [PSMapNode]) {
+                            foreach ($Key in $PrimaryKey) {
+                                if (-not $TemplateItem.Contains($Key) -or -not $ObjectItem.Contains($Key)) { continue }
+                                if ($TemplateItem.GetChildNode($Key).Value -eq $ObjectItem.GetChildNode($Key).Value) {
+                                    $Item = MergeObject -Template $TemplateItem -Object $ObjectItem -PrimaryKey $PrimaryKey -MatchCase $MatchCase
+                                    $Output.Add($Item)
                                     $FoundNode = $True
                                     $Null = $FoundIndices.Add($TemplateItem.Index)
-                                }
-                            }
-                            elseif ($ObjectItem.Structure -eq 'Dictionary') {
-                                foreach ($Key in $PrimaryKey) {
-                                    if (-not $TemplateItem.Contains($Key) -or -not $ObjectItem.Contains($Key)) { continue }
-                                    if ($TemplateItem.Get($Key) -eq $ObjectItem.Get($Key)) {
-                                        $Item = MergeObject -Template $TemplateItem -Object $ObjectItem
-                                        $Output.Add($Item)
-                                        $FoundNode = $True
-                                        $Null = $FoundIndices.Add($TemplateItem.Index)
-                                    }
                                 }
                             }
                         }
@@ -95,24 +89,27 @@ function Merge-ObjectGraph {
                 if ($ObjectNode.Value.IsFixedSize) { $Output = @($Output) }
                 ,$Output
             }
-            elseif ($ObjectNode.Structure -eq 'Dictionary') {
-                if ($ObjectNode.Construction -ne 'Object') { $Dictionary = New-Object -TypeName $ObjectNode.Type }      # The $InputObject defines the dictionary (or PSCustomObject) type
+            elseif ($ObjectNode -is [PSMapNode] -and $TemplateNode -is [PSMapNode]) {
+                if ($ObjectNode -is [PSDictionaryNode]) { $Dictionary = New-Object -TypeName $ObjectNode.Type }     # The $InputObject defines the map type
                 else { $Dictionary = [System.Collections.Specialized.OrderedDictionary]::new() }
-                foreach ($ObjectItem in $ObjectNode.GetItemNodes()) {
-                    if ($TemplateNode.Contains($ObjectItem.Key)) {                                                      # The $InputObject defines the comparer
-                        $Value = MergeObject -Template $TemplateNode.GetItemNode($ObjectItem.Key) -Object $ObjectItem
+                foreach ($ObjectItem in $ObjectNode.ChildNodes) {
+                    if ($TemplateNode.Contains($ObjectItem.Key)) {                                                  # The $InputObject defines the comparer
+                        $Value = MergeObject -Template $TemplateNode.GetChildNode($ObjectItem.Key) -Object $ObjectItem -PrimaryKey $PrimaryKey -MatchCase $MatchCase
                     }
                     else { $Value = $ObjectItem.Value }
                     $Dictionary.Add($ObjectItem.Key, $Value)
                 }
-                foreach ($Key in $TemplateNode.get_Keys()) {
-                    if (-not $Dictionary.Contains($Key)) { $Dictionary.Add($Key, $TemplateNode.Get($Key)) }
+                foreach ($Key in $TemplateNode.Keys) {
+                    if (-not $Dictionary.Contains($Key)) { $Dictionary.Add($Key, $TemplateNode.GetChildNode($Key).Value) }
                 }
-                if ($ObjectNode.Construction -ne 'Object') { $Dictionary } else { [PSCustomObject]$Dictionary }
+                if ($ObjectNode -is [PSDictionaryNode]) { $Dictionary } else { [PSCustomObject]$Dictionary }
             }
+            else { return $ObjectNode.Value }
         }
+        $TemplateNode = [PSNode]::ParseInput($Template, $MaxDepth)
     }
     process {
-        MergeObject $TemplateNode $InputObject $MaxDepth
+        $ObjectNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
+        MergeObject $TemplateNode $ObjectNode -PrimaryKey $PrimaryKey -MatchCase $MatchCase
     }
 }
