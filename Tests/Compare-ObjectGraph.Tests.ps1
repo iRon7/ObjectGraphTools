@@ -1,6 +1,6 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.0.0"}
 
-using module ..\ObjectGraphTools.psm1
+using module ..\..\ObjectGraphTools
 
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Reference', Justification = 'False positive')]
 param()
@@ -10,8 +10,6 @@ Describe 'Compare-ObjectGraph' {
     BeforeAll {
 
         Set-StrictMode -Version Latest
-
-        Import-Module $PSScriptRoot\..\ObjectGraphTools.psm1 -DisableNameChecking -Force
 
         $Reference = @{
             Comment = 'Sample ObjectGraph'

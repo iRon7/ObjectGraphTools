@@ -34,7 +34,7 @@
     The maximal depth to recursively compare each embedded property (default: 10).
 #>
 
-function Sort-ObjectGraph {
+function ConvertTo-SortedObjectGraph {
     [Diagnostics.CodeAnalysis.SuppressMessage('PSUseApprovedVerbs', '')]
     [CmdletBinding()][OutputType([Object[]])] param(
 
@@ -62,13 +62,13 @@ function Sort-ObjectGraph {
             }
         }
 
-        function SortObject([PSNode]$Node, [Switch]$SortIndex) {
-            if ($Node.Structure -eq 'Scalar') {
+        function SortObject([PSNode]$Node, [String[]]$PrimaryKey, [Switch]$MatchCase, [Switch]$Descending, [Switch]$SortIndex) {
+            if ($Node -is [PSLeafNode]) {
                 $SortKey = if ($Null -eq $($Node.Value)) { [Char]27 + '$Null' } elseif ($MatchCase) { "$($Node.Value)".ToUpper() } else { "$($Node.Value)" }
                 $Output = @{ $SortKey = $($Node.Value) }
             }
-            elseif ($Node.Structure -eq 'List') {                                           # This will convert the list to an (fixed) array
-                $Items = $Node.GetItemNodes().foreach{ SortObject $_ -SortIndex }
+            elseif ($Node -is [PSListNode]) {                                           # This will convert the list to an (fixed) array
+                $Items = $Node.ChildNodes.foreach{ SortObject $_ -SortIndex -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending }
                 $Items = $Items | Sort-Object -CaseSensitive:$MatchCase -Descending:$Descending { $_.Keys[0] }
                 $String = [Collections.Generic.List[String]]::new()
                 $List   = [Collections.Generic.List[Object]]::new()
@@ -80,10 +80,10 @@ function Sort-ObjectGraph {
                 $Name = $String -Join [Char]255
                 $Output = @{ $Name = @($List) }
             }
-            elseif ($Node.Structure -eq 'Dictionary') {                     # This will convert a dictionary to a PSCustomObject
+            elseif ($Node -is [PSMapNode]) {                     # This will convert a dictionary to a PSCustomObject
                 $HashTable = [HashTable]::New(0, [StringComparer]::Ordinal)
-                $Node.GetItemNodes().foreach{
-                    $SortObject = SortObject $_ -SortIndex
+                $Node.ChildNodes.foreach{
+                    $SortObject = SortObject $_ -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending -SortIndex
                     $SortKey = $SortObject.GetEnumerator().Name
                     if ($Primary.Contains($_.Key)) { $Key = $Primary[$_.Key] } else { $Key = $_.Key}
                     $HashTable["$Key$([Char]255)$SortKey"] = @{ $_.Key = $SortObject[$SortKey] }
@@ -104,8 +104,9 @@ function Sort-ObjectGraph {
     }
 
     process {
-        $PSnode = [PSNode]::new($InputObject)
-        $PSNode.MaxDepth = $MaxDepth
-        SortObject $PSNode
+        $PSNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
+        SortObject $PSNode -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending
     }
 }
+
+Set-Alias -Name 'Sort-ObjectGraph' -Value 'ConvertTo-SortedObjectGraph' -Scope Global

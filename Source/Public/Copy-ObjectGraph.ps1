@@ -46,9 +46,9 @@ function Copy-ObjectGraph {
         [Parameter(Mandatory=$true, ValueFromPipeLine = $True)]
         $InputObject,
 
-        [Alias('ListsAs')]$ListAs,
+        $ListAs,
 
-        [Alias('DictionariesAs')]$DictionaryAs,
+        $MapAs,
 
         [Switch]$ExcludeLeafs,
 
@@ -63,52 +63,56 @@ function Copy-ObjectGraph {
 
         $ListNode = if ($PSBoundParameters.ContainsKey('ListAs')) {
             if ($ListAs -is [String] -or $ListAs -is [Type]) {
-                try { [PSNode](New-Object -Type $ListAs) } catch { StopError $_ }
-            } else { [PSNode]$ListAs }
+                try { $ListAs = New-Object -Type $ListAs } catch { StopError $_ }
+            }
+            [PSNode]::ParseInput($ListAs)
         }
 
-        $DictionaryNode = if ($PSBoundParameters.ContainsKey('DictionaryAs')) {
-            if ($DictionaryAs -is [String] -or $DictionaryAs -is [Type]) {
-                try { [PSNode](New-Object -Type $DictionaryAs) } catch { StopError $_ }
-            } else { [PSNode]$DictionaryAs }
+        $MapNode = if ($PSBoundParameters.ContainsKey('MapAs')) {
+            if ($MapAs -is [String] -or $MapAs -is [Type]) {
+                try { $MapAs = New-Object -Type $MapAs } catch { StopError $_ }
+            }
+            [PSNode]::ParseInput($MapAs)
         }
 
-        $ListStructure       = if ($ListNode)       { $ListNode.Structure }
-        $DictionaryStructure = if ($DictionaryNode) { $DictionaryNode.Structure }
-        if (($ListStructure -eq 'Dictionary' -and $DictionaryStructure -ne 'Dictionary') -or ($DictionaryStructure -eq 'List' -and $ListStructure -ne 'List')) {
+        if (($ListNode -is [PSMapNode] -and $MapNode -isnot [PSMapNode]) -or ($MapNode -is [PSListNode] -and $ListNode -isnot [PSListNode])) {
             $ListNode, $DictionaryNode = $DictionaryNode, $ListNode
         }
 
-        if ($ListNode -and $ListNode.Structure -ne 'List') {
+        if ($Null -ne $ListNode -and $ListNode -isnot [PSListNode]) {
             StopError 'The -ListAs parameter requires a string, type or an object example that supports a list structure'
         }
-        if ($DictionaryNode -and $DictionaryNode.Structure -ne 'Dictionary') {
-            StopError 'The -DictionaryAs parameter requires a string, type or an object example that supports a dictionary structure'
+        if ($Null -ne $MapNode -and $MapNode -isnot [PSMapNode]) {
+            StopError 'The -MapAs parameter requires a string, type or an object example that supports a map structure'
         }
 
-        function CopyObject([PSNode]$Node, [Type]$ListType, [Type]$DictionaryType) {
-            if ($Node.Structure -eq 'Scalar') {
+        function CopyObject(
+            [PSNode]$Node,
+            [Type]$ListType,
+            [Type]$MapType,
+            [Switch]$ExcludeLeafs
+        ) {
+            if ($Node -is [PSLeafNode]) {
                 if ($ExcludeLeafs -or $Null -eq $Node.Value) { return $Node.Value }
                 else { $Node.Value.PSObject.Copy() }
             }
-            elseif ($Node.Structure -eq 'List') {
+            elseif ($Node -is [PSListNode]) {
                 $Type = if ($Null -ne $ListType) { $ListType } else { $Node.Type }
-                $Values = $Node.GetItemNodes().foreach{ CopyObject $_ -ListType $ListType -DictionaryType $DictionaryType }
+                $Values = $Node.ChildNodes.foreach{ CopyObject $_ -ListType $ListType -MapType $MapType }
                 $Values = $Values -as $Type
                 ,$Values
             }
-            elseif ($Node.Structure -eq 'Dictionary') {                     # This will convert a dictionary to a PSCustomObject
-                $Type = if ($Null -ne $DictionaryType) { $DictionaryType } else { $Node.Type }
+            elseif ($Node -is [PSMapNode]) {
+                $Type = if ($Null -ne $MapType) { $MapType } else { $Node.Type }
                 $IsDirectory = $Null -ne $Type.GetInterface('IDictionary')
                 if ($IsDirectory) { $Dictionary = New-Object -Type $Type } else { $Dictionary = [Ordered]@{} }
-                $Node.GetItemNodes().foreach{ $Dictionary[$_.Key] = CopyObject $_ -ListType $ListType -DictionaryType $DictionaryType }
+                $Node.ChildNodes.foreach{ $Dictionary[$_.Key] = CopyObject $_ -ListType $ListType -MapType $MapType }
                 if ($IsDirectory) { $Dictionary } else { [PSCustomObject]$Dictionary }
             }
         }
     }
     process {
-        $PSnode = [PSNode]::new($InputObject)
-        $PSNode.MaxDepth = $MaxDepth
-        CopyObject $PSNode -ListType $ListNode.Type -DictionaryType $DictionaryNode.Type
+        $PSNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
+        CopyObject $PSNode -ListType $ListNode.Type -MapType $MapNode.Type -ExcludeLeafs:$ExcludeLeafs
     }
 }

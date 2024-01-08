@@ -1,9 +1,11 @@
-$SourceFolder = Join-Path $PSScriptRoot 'Source'
-$Scripts = Get-ChildItem -Path $SourceFolder -Filter *.ps1 -Recurse
+. "$PSScriptRoot\Source\Classes\ObjectParser.ps1"
+. "$PSScriptRoot\Source\Public\Compare-ObjectGraph.ps1"
+. "$PSScriptRoot\Source\Public\Copy-ObjectGraph.ps1"
+. "$PSScriptRoot\Source\Public\Merge-ObjectGraph.ps1"
+. "$PSScriptRoot\Source\Public\Sort-ObjectGraph.ps1"
 
-$Functions = $Scripts.foreach{
-        . $_.FullName
-        if ($_.Directory.Name -eq 'Public') { $_.BaseName }
-    }
-
-Export-ModuleMember -Function $Functions
+$Parameters = @{
+    Function = 'Compare-ObjectGraph', 'Copy-ObjectGraph', 'Merge-ObjectGraph', 'ConvertTo-SortedObjectGraph'
+    Alias    = 'Sort-ObjectGraph'
+}
+Export-ModuleMember @Parameters
