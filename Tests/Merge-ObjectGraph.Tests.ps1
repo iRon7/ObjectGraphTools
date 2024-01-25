@@ -37,8 +37,8 @@ Describe 'Merge-ObjectGraph' {
 
             $Actual = $InputObject | Merge-ObjectGraph $Template
             $Actual.Count | Should -Be 4
-            $Actual.Keys | Should -Contain 'a'
-            $Actual.Keys | Should -Contain 'd'
+            $Actual.Keys  | Should -Contain 'a'
+            $Actual.Keys  | Should -Contain 'd'
         }
 
         It 'Array of Dictionaries' {

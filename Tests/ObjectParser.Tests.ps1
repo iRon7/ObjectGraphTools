@@ -1,11 +1,12 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.0.0"}
 
-using module ..\..\ObjectGraphTools
+# using module ..\..\ObjectGraphTools
 
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object', Justification = 'False positive')]
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Node',   Justification = 'False positive')]
 param()
 
+. $PSScriptRoot\..\Source\Private\Use-ClassAccessors.ps1
 . $PSScriptRoot\..\Source\Classes\ObjectParser.ps1
 
 Describe 'PSNode' {
@@ -35,15 +36,27 @@ Describe 'PSNode' {
     Context 'Sanity Check' {
 
         It 'Loaded' {
-            [PSNode]1 | Should -BeOfType PSNode
+            [PSNode]::new() | Should -BeOfType PSNode
         }
     }
 
     Context 'ParseInput' {
 
-        it 'Object' {
+        BeforeAll {
             $Node = [PSNode]::ParseInput($Object)
+        }
+
+        it 'PSNode' {
             $Node | Should -BeOfType PSNode
+        }
+
+        it "Value" {
+            $Node.Value | Should -Be $Object
+        }
+
+        it "ValueType" {
+            $Node.ValueType | Should -Be 'HashTable'
+            { $Node.ValueType = 'Something' } | Should -Throw '*ReadOnly*' -ExceptionType System.Management.Automation.RuntimeException
         }
     }
 
@@ -56,7 +69,7 @@ Describe 'PSNode' {
             $ItemNode = $Node.GetChildNode('String')
             $ItemNode | Should -BeOfType PSNode
             $ItemNode | Should -BeOfType PSLeafNode
-            $ItemNode.Type | Should -Be $Object.String.GetType()
+            $ItemNode.ValueType | Should -Be $Object.String.GetType()
         }
 
         it 'Array' {
@@ -64,7 +77,7 @@ Describe 'PSNode' {
             $ItemNode | Should -BeOfType PSNode
             $ItemNode | Should -BeOfType PSCollectionNode
             $ItemNode | Should -BeOfType PSListNode
-            $ItemNode.Type | Should -Be $Object.Array.GetType()
+            $ItemNode.ValueType | Should -Be $Object.Array.GetType()
         }
 
         it 'HashTable' {
@@ -73,7 +86,7 @@ Describe 'PSNode' {
             $ItemNode | Should -BeOfType PSCollectionNode
             $ItemNode | Should -BeOfType PSMapNode
             $ItemNode | Should -BeOfType PSDictionaryNode
-            $ItemNode.Type | Should -Be $Object.HashTable.GetType()
+            $ItemNode.ValueType | Should -Be $Object.HashTable.GetType()
         }
 
         it 'PSCustomObject' {
@@ -82,7 +95,7 @@ Describe 'PSNode' {
             $ItemNode | Should -BeOfType PSCollectionNode
             $ItemNode | Should -BeOfType PSMapNode
             $ItemNode | Should -BeOfType PSObjectNode
-            $ItemNode.Type | Should -Be $Object.PSCustomObject.GetType()
+            $ItemNode.ValueType | Should -Be $Object.PSCustomObject.GetType()
         }
     }
 
@@ -102,17 +115,16 @@ Describe 'PSNode' {
             $Node = [PSNode]::ParseInput($Test)
         }
 
-        it 'Read leaf' {
+        it 'Read string node' {
             $ItemNode = $Node.GetChildNode('String')
             $ItemNode.Value | Should -Be 'Hello World'
         }
 
-        it 'Write leaf' {
+        it 'Write string node' {
             $ItemNode = $Node.GetChildNode('String')
-            $SetValue = { $ItemNode.Value = 'Something else' }
-            $SetValue | Should -Throw '*readonly*' -ExceptionType System.Management.Automation.SetValueInvocationException
-            # $OutPut = &$SetValue 2>&1
-            # $Output | Should -BeLike "*readonly*"
+            $ItemNode.Value = 'Changed'
+            $ItemNode.Value                    | Should -Be 'Changed'
+            $Node.GetChildNode('String').Value | Should -Be 'Changed'
         }
 
         it 'Array' {
@@ -154,9 +166,9 @@ Describe 'PSNode' {
             $ItemNodes = $Node.GetChildNode('HashTable').ChildNodes
             $ItemNodes -is [PSNode[]] | Should -BeTrue
             $ItemNodes.Count          | Should -Be 3
-            $ItemNodes.Key            | Should -Contain 'One'
-            $ItemNodes.Key            | Should -Contain 'Two'
-            $ItemNodes.Key            | Should -Contain 'Three'
+            $ItemNodes.Name           | Should -Contain 'One'
+            $ItemNodes.Name           | Should -Contain 'Two'
+            $ItemNodes.Name           | Should -Contain 'Three'
             $ItemNodes.Value          | Should -Contain 1
             $ItemNodes.Value          | Should -Contain 2
             $ItemNodes.Value          | Should -Contain 3
@@ -167,7 +179,7 @@ Describe 'PSNode' {
             $ItemNodes = $Node.GetChildNode('PSCustomObject').ChildNodes
             $ItemNodes -is [PSNode[]] | Should -BeTrue
             $ItemNodes.Count          | Should -Be 3
-            $ItemNodes.Key            | Should -Be 'One', 'Two', 'Three'
+            $ItemNodes.Name      | Should -Be 'One', 'Two', 'Three'
             $ItemNodes.Value          | Should -Be 1, 2, 3
         }
     }
@@ -215,6 +227,35 @@ Describe 'PSNode' {
         }
     }
 
+
+    Context '(not) exists' {
+        BeforeAll {
+            $Exists = @{
+                String = 'Hello World'
+                Array = 'One', 'Two', 'Three'
+                HashTable = @{ One = 1; Two = 2; Three = 3 }
+                PSCustomObject = [PSCustomObject]@{ One = 1; Two = 2; Three = 3 }
+            }
+            $Node = [PSNode]::ParseInput($Exists)
+        }
+
+        it '(in/out bound)' {
+            { $Node.GetChildNode('NotExists') }                           | Should -Throw
+            { $Node.GetChildNode('String') }                              | Should -Not -Throw
+            { $Node.GetChildNode('Array') }                               | Should -Not -Throw
+            { $Node.GetChildNode('Array').GetChildNode(2)}                | Should -Not -Throw
+            { $Node.GetChildNode('Array').GetChildNode(3)}                | Should -Throw
+            { $Node.GetChildNode('Array').GetChildNode(-3) }              | Should -Not -Throw
+            { $Node.GetChildNode('Array').GetChildNode(-4) }              | Should -Throw
+            { $Node.GetChildNode('HashTable').GetChildNode('One') }       | Should -Not -Throw
+            { $Node.GetChildNode('HashTable').GetChildNode('one') }       | Should -Not -Throw
+            { $Node.GetChildNode('HashTable').GetChildNode('Four') }      | Should -Throw
+            { $Node.GetChildNode('PSCustomObject').GetChildNode('One') }  | Should -Not -Throw
+            { $Node.GetChildNode('PSCustomObject').GetChildNode('one') }  | Should -Not -Throw
+            { $Node.GetChildNode('PSCustomObject').GetChildNode('Four') } | Should -Throw
+        }
+    }
+
     Context 'Null or Empty' {
         BeforeAll {
             $Empties = @{
@@ -224,10 +265,6 @@ Describe 'PSNode' {
                 PSCustomObject = [PSCustomObject]@{}
             }
             $Node = [PSNode]::ParseInput($Empties)
-        }
-
-        it 'Not exists' {
-            $Node.GetChildNode('NotExists') | Should -BeNullOrEmpty
         }
 
         it 'Empty Array' {

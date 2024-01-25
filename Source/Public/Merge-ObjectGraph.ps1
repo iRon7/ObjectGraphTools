@@ -37,10 +37,10 @@ function Merge-ObjectGraph {
     [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Scope = "Function", Justification = 'False positive')]
     [CmdletBinding()][OutputType([Object[]])] param(
 
-        [Parameter(Mandatory=$true, ValueFromPipeLine = $True)]
+        [Parameter(Mandatory = $true, ValueFromPipeLine = $True)]
         $InputObject,
 
-        [Parameter(Mandatory=$true, Position=0)]
+        [Parameter(Mandatory = $true, Position=0)]
         $Template,
 
         [String[]]$PrimaryKey,
@@ -66,7 +66,7 @@ function Merge-ObjectGraph {
                             if ($Equal) {
                                 $Output.Add($ObjectItem.Value)
                                 $FoundNode = $True
-                                $Null = $FoundIndices.Add($TemplateItem.Index)
+                                $Null = $FoundIndices.Add($TemplateItem.Name)
                             }
                         }
                         elseif ($ObjectItem -is [PSMapNode] -and $TemplateItem -is [PSMapNode]) {
@@ -76,7 +76,7 @@ function Merge-ObjectGraph {
                                     $Item = MergeObject -Template $TemplateItem -Object $ObjectItem -PrimaryKey $PrimaryKey -MatchCase $MatchCase
                                     $Output.Add($Item)
                                     $FoundNode = $True
-                                    $Null = $FoundIndices.Add($TemplateItem.Index)
+                                    $Null = $FoundIndices.Add($TemplateItem.Name)
                                 }
                             }
                         }
@@ -84,22 +84,22 @@ function Merge-ObjectGraph {
                     if (-not $FoundNode) { $Output.Add($ObjectItem.Value) }
                 }
                 foreach ($TemplateItem in $TemplateItems) {
-                    if (-not $FoundIndices.Contains($TemplateItem.Index)) { $Output.Add($TemplateItem.Value) }
+                    if (-not $FoundIndices.Contains($TemplateItem.Name)) { $Output.Add($TemplateItem.Value) }
                 }
                 if ($ObjectNode.Value.IsFixedSize) { $Output = @($Output) }
                 ,$Output
             }
             elseif ($ObjectNode -is [PSMapNode] -and $TemplateNode -is [PSMapNode]) {
-                if ($ObjectNode -is [PSDictionaryNode]) { $Dictionary = New-Object -TypeName $ObjectNode.Type }     # The $InputObject defines the map type
+                if ($ObjectNode -is [PSDictionaryNode]) { $Dictionary = New-Object -TypeName $ObjectNode.ValueType }     # The $InputObject defines the map type
                 else { $Dictionary = [System.Collections.Specialized.OrderedDictionary]::new() }
                 foreach ($ObjectItem in $ObjectNode.ChildNodes) {
-                    if ($TemplateNode.Contains($ObjectItem.Key)) {                                                  # The $InputObject defines the comparer
-                        $Value = MergeObject -Template $TemplateNode.GetChildNode($ObjectItem.Key) -Object $ObjectItem -PrimaryKey $PrimaryKey -MatchCase $MatchCase
+                    if ($TemplateNode.Contains($ObjectItem.Name)) {                                                  # The $InputObject defines the comparer
+                        $Value = MergeObject -Template $TemplateNode.GetChildNode($ObjectItem.Name) -Object $ObjectItem -PrimaryKey $PrimaryKey -MatchCase $MatchCase
                     }
                     else { $Value = $ObjectItem.Value }
-                    $Dictionary.Add($ObjectItem.Key, $Value)
+                    $Dictionary.Add($ObjectItem.Name, $Value)
                 }
-                foreach ($Key in $TemplateNode.Keys) {
+                foreach ($Key in $TemplateNode.Names) {
                     if (-not $Dictionary.Contains($Key)) { $Dictionary.Add($Key, $TemplateNode.GetChildNode($Key).Value) }
                 }
                 if ($ObjectNode -is [PSDictionaryNode]) { $Dictionary } else { [PSCustomObject]$Dictionary }

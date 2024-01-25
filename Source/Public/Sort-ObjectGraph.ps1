@@ -38,7 +38,7 @@ function ConvertTo-SortedObjectGraph {
     [Diagnostics.CodeAnalysis.SuppressMessage('PSUseApprovedVerbs', '')]
     [CmdletBinding()][OutputType([Object[]])] param(
 
-        [Parameter(Mandatory=$true, ValueFromPipeLine = $True)]
+        [Parameter(Mandatory = $true, ValueFromPipeLine = $True)]
         $InputObject,
 
         [Alias('By')][String[]]$PrimaryKey,
@@ -85,8 +85,8 @@ function ConvertTo-SortedObjectGraph {
                 $Node.ChildNodes.foreach{
                     $SortObject = SortObject $_ -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending -SortIndex
                     $SortKey = $SortObject.GetEnumerator().Name
-                    if ($Primary.Contains($_.Key)) { $Key = $Primary[$_.Key] } else { $Key = $_.Key}
-                    $HashTable["$Key$([Char]255)$SortKey"] = @{ $_.Key = $SortObject[$SortKey] }
+                    if ($Primary.Contains($_.Name)) { $Key = $Primary[$_.Name] } else { $Key = $_.Name}
+                    $HashTable["$Key$([Char]255)$SortKey"] = @{ $_.Name = $SortObject[$SortKey] }
                 }
                 $SortedKeys = $HashTable.get_Keys() | Sort-Object -CaseSensitive:$MatchCase -Descending:$Descending
                 $Properties = [System.Collections.Specialized.OrderedDictionary]::new([StringComparer]::Ordinal)

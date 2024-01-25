@@ -61,10 +61,10 @@
 function Compare-ObjectGraph {
     [CmdletBinding()] param(
 
-        [Parameter(Mandatory=$true, ValueFromPipeLine = $true)]
+        [Parameter(Mandatory = $true, ValueFromPipeLine = $true)]
         $InputObject,
 
-        [Parameter(Mandatory=$true, Position=0)]
+        [Parameter(Mandatory = $true, Position=0)]
         $Reference,
 
         [String[]]$PrimaryKey,
@@ -90,13 +90,13 @@ function Compare-ObjectGraph {
             [Switch]$MatchOrder   = $MatchOrder
         ) {
             if ($MatchType) {
-                if ($ObjectNode.Type -ne $ReferenceNode.Type) {
+                if ($ObjectNode.ValueType -ne $ReferenceNode.ValueType) {
                     if ($IsEqual) { return $false }
                     [PSCustomObject]@{
                         Path        = $ObjectNode.PathName
                         Discrepancy = 'Type'
-                        InputObject = $ObjectNode.Type
-                        Reference   = $ReferenceNode.Type
+                        InputObject = $ObjectNode.ValueType
+                        Reference   = $ReferenceNode.ValueType
                     }
                 }
             }
@@ -126,12 +126,12 @@ function Compare-ObjectGraph {
             elseif ($ObjectNode -is [PSListNode] -and $ReferenceNode -is [PSListNode]) {
                 $ObjectItems      = $ObjectNode.ChildNodes
                 $ReferenceItems   = $ReferenceNode.ChildNodes
-                if ($ObjectItems.Count)    { $ObjectIndices    = [Collections.Generic.List[Int]]$ObjectItems.Index } else { $ObjectIndices      = @() }
-                if ($ReferenceItems.Count) { $ReferenceIndices = [Collections.Generic.List[Int]]$ReferenceItems.Index } else { $ReferenceIndices = @() }
+                if ($ObjectItems.Count)    { $ObjectIndices    = [Collections.Generic.List[Int]]$ObjectItems.Name } else { $ObjectIndices      = @() }
+                if ($ReferenceItems.Count) { $ReferenceIndices = [Collections.Generic.List[Int]]$ReferenceItems.Name } else { $ReferenceIndices = @() }
                 if ($PrimaryKey) {
-                    $ObjectDictionaries = [Collections.Generic.List[Int]]$ObjectItems.where{ $_ -is [PSMapNode] }.Index
+                    $ObjectDictionaries = [Collections.Generic.List[Int]]$ObjectItems.where{ $_ -is [PSMapNode] }.Name
                     if ($ObjectDictionaries.Count) {
-                        $ReferenceDictionaries = [Collections.Generic.List[Int]]$ReferenceItems.where{ $_ -is [PSMapNode] }.Index
+                        $ReferenceDictionaries = [Collections.Generic.List[Int]]$ReferenceItems.where{ $_ -is [PSMapNode] }.Name
                         if ($ReferenceDictionaries.Count) {
                             foreach ($Key in $PrimaryKey) {
                                 foreach($ObjectIndex in @($ObjectDictionaries)) {
@@ -170,13 +170,13 @@ function Compare-ObjectGraph {
                     foreach ($ReferenceIndex in $ReferenceIndices) {
                         $ReferenceItem = $ReferenceItems[$ReferenceIndex]
                         if (CompareObject -Reference $ReferenceItem -Object $ObjectItem -IsEqual) {
-                            if ($MatchOrder -and $ObjectItem.Index -ne $ReferenceItem.Index) {
+                            if ($MatchOrder -and $ObjectItem.Name -ne $ReferenceItem.Name) {
                                 if ($IsEqual) { return $false }
                                 [PSCustomObject]@{
                                     Path        = $ReferenceNode.PathName
                                     Discrepancy = 'Index'
-                                    InputObject = $ObjectItem.Index
-                                    Reference   = $ReferenceItem.Index
+                                    InputObject = $ObjectItem.Name
+                                    Reference   = $ReferenceItem.Name
                                 }
                             }
                             $null = $ObjectIndices.Remove($ObjectIndex)
@@ -195,14 +195,14 @@ function Compare-ObjectGraph {
                             Path        = $ReferenceNode.PathName + "[$ReferenceIndex]"
                             Discrepancy = 'Value'
                             InputObject = $Null
-                            Reference   = if ($ReferenceItem -eq 'Scalar') { $ReferenceItem.Value } else { "[$($ReferenceItem.Type)]" }
+                            Reference   = if ($ReferenceItem -eq 'Scalar') { $ReferenceItem.Value } else { "[$($ReferenceItem.ValueType)]" }
                         }
                     }
                     elseif ($Null -eq $ReferenceItem) {     # if ($IsEqual) { never happens as the size already differs
                         [PSCustomObject]@{
                             Path        = $ObjectNode.PathName + "[$ObjectIndex]"
                             Discrepancy = 'Value'
-                            InputObject = if ($ObjectItem -eq 'Scalar') { $ObjectItem.Value } else { "[$($ObjectItem.Type)]" }
+                            InputObject = if ($ObjectItem -eq 'Scalar') { $ObjectItem.Value } else { "[$($ObjectItem.ValueType)]" }
                             Reference   = $Null
                         }
                     }
@@ -214,21 +214,21 @@ function Compare-ObjectGraph {
             }
             elseif ($ObjectNode -is [PSMapNode] -and $ReferenceNode -is [PSMapNode]) {
                 $Found = [HashTable]::new() # (Case sensitive)
-                $Order = if ($MatchOrder -and $ReferenceNode.Type.Name -ne 'HashTable') { [HashTable]::new() }
+                $Order = if ($MatchOrder -and $ReferenceNode.ValueType.Name -ne 'HashTable') { [HashTable]::new() }
                 $Index = 0
-                if ($Order) { $ReferenceNode.Keys.foreach{ $Order[$_] = $Index++ } }
+                if ($Order) { $ReferenceNode.Names.foreach{ $Order[$_] = $Index++ } }
                 $Index = 0
                 foreach ($ObjectItem in $ObjectNode.ChildNodes) {
-                    if ($ReferenceNode.Contains($ObjectItem.Key)) {
-                        $ReferenceItem = $ReferenceNode.GetChildNode($ObjectItem.Key)
-                        $Found[$ReferenceItem.Key] = $true
-                        if ($Order -and $Order[$ReferenceItem.Key] -ne $Index) {
+                    if ($ReferenceNode.Contains($ObjectItem.Name)) {
+                        $ReferenceItem = $ReferenceNode.GetChildNode($ObjectItem.Name)
+                        $Found[$ReferenceItem.Name] = $true
+                        if ($Order -and $Order[$ReferenceItem.Name] -ne $Index) {
                             if ($IsEqual) { return $false }
                             [PSCustomObject]@{
                                 Path        = $ObjectItem.PathName
                                 Discrepancy = 'Index'
                                 InputObject = $Index
-                                Reference   = $Order[$ReferenceItem.Key]
+                                Reference   = $Order[$ReferenceItem.Name]
                             }
                         }
                         $Compare = CompareObject -Reference $ReferenceItem -Object $ObjectItem
@@ -245,7 +245,7 @@ function Compare-ObjectGraph {
                     }
                     $Index++
                 }
-                $ReferenceNode.Keys.foreach{
+                $ReferenceNode.Names.foreach{
                     if (-not $Found.Contains($_)) {
                         if ($IsEqual) { return $false }
                         [PSCustomObject]@{
@@ -262,8 +262,8 @@ function Compare-ObjectGraph {
                 [PSCustomObject]@{
                     Path        = $ObjectNode.PathName
                     Discrepancy = 'Structure'
-                    InputObject = $ObjectNode.Type.Name
-                    Reference   = $ReferenceNode.Type.Name
+                    InputObject = $ObjectNode.ValueType.Name
+                    Reference   = $ReferenceNode.ValueType.Name
                 }
             }            if ($IsEqual) { return $true }
         }
