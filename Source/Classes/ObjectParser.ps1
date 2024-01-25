@@ -286,6 +286,10 @@ Class PSLeafNode : PSNode {
     hidden PSLeafNode($Object) {
         if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
     }
+
+    [Int]GetHashCode() {
+        if ($Null -ne $this._Value) { return $this._Value.GetHashCode() } else { return '$Null'.GetHashCode() }
+    }
 }
 
 Class PSCollectionNode : PSNode {
@@ -298,7 +302,9 @@ Class PSCollectionNode : PSNode {
         return $MaxDepthReached
     }
 
-    hidden [Object]_($Name) { return $this.GetChildNode($Name) } # Shorthand ("alias") for GetChildNode
+    hidden [Object]get_ChildNodes()      { return ,[PSNode[]]@($this.GetChildNodes($false)) }
+    hidden [Object]get_DescendantNodes() { return ,[PSNode[]]@($this.GetChildNodes($true)) }
+    hidden [Object]_($Name)              { return $this.GetChildNode($Name) } # Shorthand ("alias") for GetChildNode
 }
 
 Class PSListNode : PSCollectionNode {
@@ -330,16 +336,20 @@ Class PSListNode : PSCollectionNode {
         $this._Value[$Index] = $Value
     }
 
-    hidden [Object] get_ChildNodes() {
-        if ($this.MaxDepthReached()) { return ,[PSNode[]]@() }
-        return ,[PSNode[]]@(
+    hidden [Collections.Generic.List[PSNode]]GetChildNodes([Bool]$Recurse) {
+        $List = [Collections.Generic.List[PSNode]]::new()
+        if (-not $this.MaxDepthReached()) {
             for ($Index = 0; $Index -lt $this._Value.Get_Count(); $Index++) {
                 $Node = $this.Append($this._Value[$Index])
                 $Node._NodeOrigin = 'List'
                 $Node._Name = $Index
-                $Node
+                $List.Add($Node)
+                if ($Recurse -and $Node -is [PSCollectionNode]) {
+                    $list.AddRange($Node.GetChildNodes($true))
+                }
             }
-        )
+        }
+        return $List
     }
 
     [Object]GetChildNode([Int]$Index) {
@@ -353,9 +363,28 @@ Class PSListNode : PSCollectionNode {
         $Node._Name = $Index
         return $Node
     }
+
+    [Int]GetHashCode() {
+        $HashCode = '@()'.GetHashCode()
+        foreach ($Node in $this.GetChildNodes($false)) {
+            $HashCode = $HashCode -bxor $Node.GetHashCode()
+        }
+        # Shift the bits to make the level unique
+        $HashCode = if ($HashCode -band 1) { $HashCode -shr 1 } else { $HashCode -shr 1 -bor 1073741824 }
+        return $HashCode -bxor 0xa5a5a5a5
+    }
 }
 
-Class PSMapNode : PSCollectionNode { }
+Class PSMapNode : PSCollectionNode {
+
+    [Int]GetHashCode() {
+        $HashCode = '@{}'.GetHashCode()
+        foreach ($Node in $this.GetChildNodes($false)) {
+            $HashCode = $HashCode -bxor "$($Node._Name)=$($Node.GetHashCode())".GetHashCode()
+        }
+        return $HashCode
+    }
+}
 
 Class PSDictionaryNode : PSMapNode {
     hidden PSDictionaryNode($Object) {
@@ -386,16 +415,20 @@ Class PSDictionaryNode : PSMapNode {
         $this._Value[$Key] = $Value
     }
 
-    hidden [Object]get_ChildNodes() {
-        if ($this.MaxDepthReached()) { return ,[PSNode[]]@() }
-        return ,[PSNode[]]@(
+    hidden [Collections.Generic.List[PSNode]]GetChildNodes([Bool]$Recurse) {
+        $List = [Collections.Generic.List[PSNode]]::new()
+        if (-not $this.MaxDepthReached()) {
             foreach($Key in $this._Value.get_Keys()) {
                 $Node = $this.Append($this._Value[$Key])
                 $Node._NodeOrigin = 'Map'
                 $Node._Name = $Key
-                $Node
+                $List.Add($Node)
+                if ($Recurse -and $Node -is [PSCollectionNode]) {
+                    $list.AddRange($Node.GetChildNodes($true))
+                }
             }
-        )
+        }
+        return $List
     }
 
     [Object]GetChildNode($Key) {
@@ -439,16 +472,20 @@ Class PSObjectNode : PSMapNode {
         $this._Value.PSObject.Properties[$Name].Value = $Value
     }
 
-    hidden [Object]get_ChildNodes() {
-        if ($this.MaxDepthReached()) { return ,[PSNode[]]@() }
-        return ,[PSNode[]]@(
+    hidden [Collections.Generic.List[PSNode]]GetChildNodes([Bool]$Recurse) {
+        $List = [Collections.Generic.List[PSNode]]::new()
+        if (-not $this.MaxDepthReached()) {
             foreach($Property in $this._Value.PSObject.Properties) {
                 $Node = $this.Append($Property.Value)
                 $Node._NodeOrigin = 'Map'
                 $Node._Name = $Property.Name
-                $Node
+                $List.Add($Node)
+                if ($Recurse -and $Node -is [PSCollectionNode]) {
+                    $list.AddRange($Node.GetChildNodes($true))
+                }
             }
-        )
+        }
+        return $List
     }
 
     [Object]GetChildNode([String]$Name) {
