@@ -305,14 +305,6 @@ Class PSCollectionNode : PSNode {
     hidden [Object]get_ChildNodes()      { return ,[PSNode[]]@($this.GetChildNodes($false)) }
     hidden [Object]get_DescendantNodes() { return ,[PSNode[]]@($this.GetChildNodes($true)) }
     hidden [Object]_($Name)              { return $this.GetChildNode($Name) } # Shorthand ("alias") for GetChildNode
-
-    [Int]GetHashCode() {
-        $HashCode = if ($this -is [PSListNode]) { '@()'.GetHashCode() } else { '@{}'.GetHashCode() }
-        $this.GetChildNodes($true).where{ $_ -is [PSLeafNode] }.Foreach{
-            $HashCode = $HashCode -bxor "$($_.PathName)=$($_.GetHashCode())".GetHashCode()
-        }
-        return $HashCode
-    }
 }
 
 Class PSListNode : PSCollectionNode {
@@ -371,9 +363,28 @@ Class PSListNode : PSCollectionNode {
         $Node._Name = $Index
         return $Node
     }
+
+    [Int]GetHashCode() {
+        $HashCode = '@()'.GetHashCode()
+        foreach ($Node in $this.GetChildNodes($false)) {
+            $HashCode = $HashCode -bxor $Node.GetHashCode()
+        }
+        # Shift the bits to make the level unique
+        $HashCode = if ($HashCode -band 1) { $HashCode -shr 1 } else { $HashCode -shr 1 -bor 1073741824 }
+        return $HashCode -bxor 0xa5a5a5a5
+    }
 }
 
-Class PSMapNode : PSCollectionNode { }
+Class PSMapNode : PSCollectionNode {
+
+    [Int]GetHashCode() {
+        $HashCode = '@{}'.GetHashCode()
+        foreach ($Node in $this.GetChildNodes($false)) {
+            $HashCode = $HashCode -bxor "$($Node._Name)=$($Node.GetHashCode())".GetHashCode()
+        }
+        return $HashCode
+    }
+}
 
 Class PSDictionaryNode : PSMapNode {
     hidden PSDictionaryNode($Object) {
