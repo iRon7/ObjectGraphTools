@@ -286,6 +286,10 @@ Class PSLeafNode : PSNode {
     hidden PSLeafNode($Object) {
         if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
     }
+
+    [Int]GetHashCode() {
+        if ($Null -ne $this._Value) { return $this._Value.GetHashCode() } else { return '$Null'.GetHashCode() }
+    }
 }
 
 Class PSCollectionNode : PSNode {
@@ -298,7 +302,17 @@ Class PSCollectionNode : PSNode {
         return $MaxDepthReached
     }
 
-    hidden [Object]_($Name) { return $this.GetChildNode($Name) } # Shorthand ("alias") for GetChildNode
+    hidden [Object]get_ChildNodes()      { return ,[PSNode[]]@($this.GetChildNodes($false)) }
+    hidden [Object]get_DescendantNodes() { return ,[PSNode[]]@($this.GetChildNodes($true)) }
+    hidden [Object]_($Name)              { return $this.GetChildNode($Name) } # Shorthand ("alias") for GetChildNode
+
+    [Int]GetHashCode() {
+        $HashCode = if ($this -is [PSListNode]) { '@()'.GetHashCode() } else { '@{}'.GetHashCode() }
+        $this.GetChildNodes($true).where{ $_ -is [PSLeafNode] }.Foreach{
+            $HashCode = $HashCode -bxor "$($_.PathName)=$($_.GetHashCode())".GetHashCode()
+        }
+        return $HashCode
+    }
 }
 
 Class PSListNode : PSCollectionNode {
@@ -330,16 +344,20 @@ Class PSListNode : PSCollectionNode {
         $this._Value[$Index] = $Value
     }
 
-    hidden [Object] get_ChildNodes() {
-        if ($this.MaxDepthReached()) { return ,[PSNode[]]@() }
-        return ,[PSNode[]]@(
+    hidden [Collections.Generic.List[PSNode]]GetChildNodes([Bool]$Recurse) {
+        $List = [Collections.Generic.List[PSNode]]::new()
+        if (-not $this.MaxDepthReached()) {
             for ($Index = 0; $Index -lt $this._Value.Get_Count(); $Index++) {
                 $Node = $this.Append($this._Value[$Index])
                 $Node._NodeOrigin = 'List'
                 $Node._Name = $Index
-                $Node
+                $List.Add($Node)
+                if ($Recurse -and $Node -is [PSCollectionNode]) {
+                    $list.AddRange($Node.GetChildNodes($true))
+                }
             }
-        )
+        }
+        return $List
     }
 
     [Object]GetChildNode([Int]$Index) {
@@ -386,16 +404,20 @@ Class PSDictionaryNode : PSMapNode {
         $this._Value[$Key] = $Value
     }
 
-    hidden [Object]get_ChildNodes() {
-        if ($this.MaxDepthReached()) { return ,[PSNode[]]@() }
-        return ,[PSNode[]]@(
+    hidden [Collections.Generic.List[PSNode]]GetChildNodes([Bool]$Recurse) {
+        $List = [Collections.Generic.List[PSNode]]::new()
+        if (-not $this.MaxDepthReached()) {
             foreach($Key in $this._Value.get_Keys()) {
                 $Node = $this.Append($this._Value[$Key])
                 $Node._NodeOrigin = 'Map'
                 $Node._Name = $Key
-                $Node
+                $List.Add($Node)
+                if ($Recurse -and $Node -is [PSCollectionNode]) {
+                    $list.AddRange($Node.GetChildNodes($true))
+                }
             }
-        )
+        }
+        return $List
     }
 
     [Object]GetChildNode($Key) {
@@ -439,16 +461,20 @@ Class PSObjectNode : PSMapNode {
         $this._Value.PSObject.Properties[$Name].Value = $Value
     }
 
-    hidden [Object]get_ChildNodes() {
-        if ($this.MaxDepthReached()) { return ,[PSNode[]]@() }
-        return ,[PSNode[]]@(
+    hidden [Collections.Generic.List[PSNode]]GetChildNodes([Bool]$Recurse) {
+        $List = [Collections.Generic.List[PSNode]]::new()
+        if (-not $this.MaxDepthReached()) {
             foreach($Property in $this._Value.PSObject.Properties) {
                 $Node = $this.Append($Property.Value)
                 $Node._NodeOrigin = 'Map'
                 $Node._Name = $Property.Name
-                $Node
+                $List.Add($Node)
+                if ($Recurse -and $Node -is [PSCollectionNode]) {
+                    $list.AddRange($Node.GetChildNodes($true))
+                }
             }
-        )
+        }
+        return $List
     }
 
     [Object]GetChildNode([String]$Name) {
