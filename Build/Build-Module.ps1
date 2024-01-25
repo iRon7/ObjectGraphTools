@@ -2,47 +2,52 @@ $ModuleRoot = Get-Item $PSScriptRoot\..
 
 $SourceFolder = Join-Path $ModuleRoot 'Source'
 
+$PSModule  = [Collections.Generic.List[String]]::new()
+
 $Functions = [Collections.Generic.List[String]]::new()
-$Aliases   = [Collections.Generic.List[String]]::new()
-$Classes   = [Collections.Generic.List[String]]::new()
+Get-ChildItem -Path $SourceFolder\Private -Filter *.ps1 | Foreach-Object {
+    . $_.FullName
+    $TrailingPath = $_.FullName.SubString($ModuleRoot.FullName.Length)
+    $PSModule.Add(". `$PSScriptRoot$TrailingPath")
+}
 
-$PSScripts = Get-ChildItem -Path $SourceFolder -Filter *.ps1 -Recurse
-$PSM1 = @(
-    $PSScripts.foreach{
-        $SubPath = $_.FullName.SubString($ModuleRoot.FullName.Length)
-        ". ""`$PSScriptRoot$SubPath"""
-        . $_.FullName
-        if ($_.Directory.Name -eq 'Public') {
-            $Command = Get-Command $_.BaseName
-            if ($Command -is [System.Management.Automation.AliasInfo]){ $Command = $Command.ResolvedCommand }
-            if ($Command) {
-                $Functions.Add($Command.Name)
-                Get-Alias -Definition $Command.Name  -ErrorAction SilentlyContinue | ForEach-Object { $Aliases.Add($_.Name) }
-            }
-            else {
-                Write-Error "Expected the script $RelativePath to contain a function or alias with the same name: $($_.BaseName)"
-            }
-        }
-        elseif ($_.Directory.Name -eq 'Classes') {
-            $Classes.Add(".$SubPath")
-        }
+$Classes = [Collections.Generic.List[String]]::new()
+Get-ChildItem -Path $SourceFolder\Classes -Filter *.ps1 | Foreach-Object {
+    . $_.FullName
+    $TrailingPath = $_.FullName.SubString($ModuleRoot.FullName.Length)
+    $PSModule.Add(". `$PSScriptRoot$TrailingPath")
+    $Classes.Add(".$TrailingPath")
+}
+
+$Aliases = [Collections.Generic.List[String]]::new()
+Get-ChildItem -Path $SourceFolder\Public -Filter *.ps1 | Foreach-Object {
+    . $_.FullName
+    $TrailingPath = $_.FullName.SubString($ModuleRoot.FullName.Length)
+    $PSModule.Add(". `$PSScriptRoot$TrailingPath")
+    $Command = Get-Command $_.BaseName
+    if ($Command -is [System.Management.Automation.AliasInfo]){ $Command = $Command.ResolvedCommand }
+    if ($Command) {
+        $Functions.Add($Command.Name)
+        Get-Alias -Definition $Command.Name -ErrorAction SilentlyContinue | ForEach-Object { $Aliases.Add($_.Name) }
     }
-    if ($Functions.Count) {
-@"
+    else {
+        Write-Error "Expected the script $RelativePath to contain a function or alias with the same name: $($_.BaseName)"
+    }
+}
 
+if ($Functions.Count) {
+    $PSModule.Add("
 `$Parameters = @{
     Function = $(@($Functions).foreach{ "'$_'" } -Join ', ')
     Alias    = $(@($Aliases).foreach{ "'$_'" }   -Join ', ')
 }
-Export-ModuleMember @Parameters
-"@
-    }
-    else {
-        Write-Error "No source functions found"
-    }
-)
+Export-ModuleMember @Parameters")
+}
+else {
+    Write-Error "No source functions found"
+}
 
-$PSM1 | Set-Content $ModuleRoot\ObjectGraphTools.psm1
+$PSModule | Set-Content $ModuleRoot\ObjectGraphTools.psm1
 
 function UpdateSetting([string]$DataExpression, [string]$Name, [string]$ValueExpression) {
     $Ast = [System.Management.Automation.Language.Parser]::ParseInput($DataExpression, [ref]$Null, [ref]$Null)
@@ -67,15 +72,15 @@ elseif ($PSD1.ModuleVersion -le $PSGalleryModule.Version) {
     if (-not $UpdatePSD1) { $UpdatePSD1 = Get-Content -Raw $ModuleRoot\ObjectGraphTools.psd1 }
     $UpdatePSD1 = UpdateSetting $UpdatePSD1 'ModuleVersion' "'$Version'"
 }
-if ($PSD1.ScriptsToProcess | Compare-Object $Classes) {
+if (Compare-Object $Classes $PSD1.ScriptsToProcess) {
     if (-not $UpdatePSD1) { $UpdatePSD1 = Get-Content -Raw -LiteralPath $ModuleRoot\ObjectGraphTools.psd1 }
     $UpdatePSD1 = UpdateSetting $UpdatePSD1 'ScriptsToProcess' "@($(@($Classes).foreach{ "'$_'" } -Join ', '))"
 }
-if ($PSD1.FunctionsToExport | Compare-Object $Functions) {
+if (Compare-Object $Functions $PSD1.FunctionsToExport) {
     if (-not $UpdatePSD1) { $UpdatePSD1 = Get-Content -Raw -LiteralPath $ModuleRoot\ObjectGraphTools.psd1 }
     $UpdatePSD1 = UpdateSetting $UpdatePSD1 'FunctionsToExport' "@($(@($Functions).foreach{ "'$_'" } -Join ', '))"
 }
-if ($PSD1.AliasesToExport | Compare-Object $Aliases) {
+if (Compare-Object $Aliases $PSD1.AliasesToExport) {
     if (-not $UpdatePSD1) { $UpdatePSD1 = Get-Content -Raw -LiteralPath $ModuleRoot\ObjectGraphTools.psd1 }
     $UpdatePSD1 = UpdateSetting $UpdatePSD1 'AliasesToExport' "@($(@($Aliases).foreach{ "'$_'" } -Join ', '))"
 }

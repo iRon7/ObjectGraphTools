@@ -41,9 +41,10 @@
     [2]: https://learn.microsoft.com/dotnet/api/system.componentmodel.component "Component Class"
 #>
 function Copy-ObjectGraph {
-    [CmdletBinding(DefaultParameterSetName = 'ListAs')][OutputType([Object[]])] param(
+    [OutputType([Object[]])]
+    [CmdletBinding(DefaultParameterSetName = 'ListAs')] param(
 
-        [Parameter(Mandatory=$true, ValueFromPipeLine = $True)]
+        [Parameter(Mandatory = $true, ValueFromPipeLine = $true)]
         $InputObject,
 
         $ListAs,
@@ -97,22 +98,22 @@ function Copy-ObjectGraph {
                 else { $Node.Value.PSObject.Copy() }
             }
             elseif ($Node -is [PSListNode]) {
-                $Type = if ($Null -ne $ListType) { $ListType } else { $Node.Type }
+                $Type = if ($Null -ne $ListType) { $ListType } else { $Node.ValueType }
                 $Values = $Node.ChildNodes.foreach{ CopyObject $_ -ListType $ListType -MapType $MapType }
                 $Values = $Values -as $Type
                 ,$Values
             }
             elseif ($Node -is [PSMapNode]) {
-                $Type = if ($Null -ne $MapType) { $MapType } else { $Node.Type }
+                $Type = if ($Null -ne $MapType) { $MapType } else { $Node.ValueType }
                 $IsDirectory = $Null -ne $Type.GetInterface('IDictionary')
                 if ($IsDirectory) { $Dictionary = New-Object -Type $Type } else { $Dictionary = [Ordered]@{} }
-                $Node.ChildNodes.foreach{ $Dictionary[$_.Key] = CopyObject $_ -ListType $ListType -MapType $MapType }
+                $Node.ChildNodes.foreach{ $Dictionary[$_.Name] = CopyObject $_ -ListType $ListType -MapType $MapType }
                 if ($IsDirectory) { $Dictionary } else { [PSCustomObject]$Dictionary }
             }
         }
     }
     process {
         $PSNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
-        CopyObject $PSNode -ListType $ListNode.Type -MapType $MapNode.Type -ExcludeLeafs:$ExcludeLeafs
+        CopyObject $PSNode -ListType $ListNode.ValueType -MapType $MapNode.ValueType -ExcludeLeafs:$ExcludeLeafs
     }
 }
