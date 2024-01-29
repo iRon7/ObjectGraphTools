@@ -12,11 +12,18 @@ Using NameSpace System.Management.Automation.Language
 function Get-ChildNode {
     [OutputType([PSNode[]])]
     [CmdletBinding(DefaultParameterSetName='ListChild')] param(
-        [Parameter(Mandatory = $true, ValueFromPipeLine = $true)]
+        [Parameter(Position = 0, Mandatory = $true, ValueFromPipeLine = $true)]
         $ObjectGraph,
+
+        [ValidateNotNull()]
+        $Path,
 
         [switch]
         $Recurse,
+
+        [ValidateRange(0, [int]::MaxValue)]
+        [int[]]
+        $AtDepth,
 
         [Parameter(ParameterSetName='ListChild')]
         [switch]
@@ -35,51 +42,54 @@ function Get-ChildNode {
         $Literal,
 
         [switch]
-        $LeafNode
-    )
-    begin {
-        function iterate(
-            [PSNode]$Node,
-            [Switch]$Recurse   = $Recurse,
-            [string[]]$Include = $Include,
-            [string[]]$Exclude = $Exclude,
-            [switch]$Literal   = $Literal,
-            [switch]$ListChild = $ListChild,
-            [switch]$LeafNode  = $LeafNode
-        ) {
+        $Leaf,
 
-            foreach ($ChildNode in $Node.ChildNodes) {
-                if (
+        [Alias('Self')][switch]
+        $IncludeSelf
+    )
+
+    process {
+        if ($ObjectGraph -is [PSNode]) { $Self = $ObjectGraph }
+        else { $Self = [PSNode]::ParseInput($ObjectGraph) }
+        if ($PSBoundParameters.ContainsKey('Path')) { $Self = $Self.GetDescendentNode($Path) }
+        $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
+            [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
+        } elseif ($Recurse) { -1 } else { 0 }
+        $Nodes = $Self.GetDescendentNodes($SearchDepth)
+        if ($IncludeSelf) {
+            $ChildNodes = $Nodes
+            $Nodes = [Collections.Generic.List[PSNode]]$Self
+            $Nodes.AddRange($ChildNodes)
+        }
+        foreach ($Node in $Nodes) {
+            if (
+                (
+                    -not $PSBoundParameters.ContainsKey('AtDepth') -or $Node.Depth -in $AtDepth
+                ) -and
+                (
+                    -not $Leaf -or $Node -is [PSLeafNode]
+                ) -and
+                (
+                    $Node.NodeOrigin -eq 'Root' -or
                     (
-                        -not $LeafNode -or $ChildNode -is [PSLeafNode]
-                    ) -and
+                        $Node.NodeOrigin -eq 'List' -and -not ($Include -or $Exclude)
+                    ) -or
                     (
+                        $Node.NodeOrigin -eq 'Map' -and -Not $ListChild -and
                         (
-                            $ChildNode.NodeOrigin -eq 'List' -and -not ($Include -or $Exclude)
-                        ) -or
-                        (
-                            $ChildNode.NodeOrigin -eq 'Map' -and -Not $ListChild -and
-                            (
-                                -not $Include -or (
-                                    ($Literal -and $ChildNode.Name -in $Include) -or
-                                    (-not $Literal -and $Include.foreach{ $ChildNode.Name -like $_ })
-                                )
-                            ) -and -not (
-                                $Exclude -and (
-                                    ($Literal -and $ChildNode.Name -in $Exclude) -or
-                                    (-not $Literal -and $Exclude.foreach{ $ChildNode.Name -like $_ })
-                                )
+                            -not $Include -or (
+                                ($Literal -and $Node.Name -in $Include) -or
+                                (-not $Literal -and $Include.foreach{ $Node.Name -like $_ })
+                            )
+                        ) -and -not (
+                            $Exclude -and (
+                                ($Literal -and $Node.Name -in $Exclude) -or
+                                (-not $Literal -and $Exclude.foreach{ $Node.Name -like $_ })
                             )
                         )
                     )
-                ) { $ChildNode }
-                if ($Recurse) { Iterate $ChildNode }
-            }
+                )
+            ) { $Node }
         }
-    }
-    process {
-        if ($ObjectGraph -is [PSNode]) { $Node = $ObjectGraph }
-        else { $Node = [PSNode]::ParseInput($ObjectGraph) }
-        Iterate $Node
     }
 }

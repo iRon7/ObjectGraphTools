@@ -3,23 +3,24 @@ $ModuleRoot = Get-Item $PSScriptRoot\..
 $SourceFolder = Join-Path $ModuleRoot 'Source'
 
 $PSModule  = [Collections.Generic.List[String]]::new()
-
+$ToProcess = [Collections.Generic.List[String]]::new()
 $Functions = [Collections.Generic.List[String]]::new()
+$Aliases   = [Collections.Generic.List[String]]::new()
+
 Get-ChildItem -Path $SourceFolder\Private -Filter *.ps1 | Foreach-Object {
     . $_.FullName
     $TrailingPath = $_.FullName.SubString($ModuleRoot.FullName.Length)
     $PSModule.Add(". `$PSScriptRoot$TrailingPath")
+    $ToProcess.Add(".$TrailingPath")
 }
 
-$Classes = [Collections.Generic.List[String]]::new()
 Get-ChildItem -Path $SourceFolder\Classes -Filter *.ps1 | Foreach-Object {
     . $_.FullName
     $TrailingPath = $_.FullName.SubString($ModuleRoot.FullName.Length)
     $PSModule.Add(". `$PSScriptRoot$TrailingPath")
-    $Classes.Add(".$TrailingPath")
+    $ToProcess.Add(".$TrailingPath")
 }
 
-$Aliases = [Collections.Generic.List[String]]::new()
 Get-ChildItem -Path $SourceFolder\Public -Filter *.ps1 | Foreach-Object {
     . $_.FullName
     $TrailingPath = $_.FullName.SubString($ModuleRoot.FullName.Length)
@@ -72,9 +73,9 @@ elseif ($PSD1.ModuleVersion -le $PSGalleryModule.Version) {
     if (-not $UpdatePSD1) { $UpdatePSD1 = Get-Content -Raw $ModuleRoot\ObjectGraphTools.psd1 }
     $UpdatePSD1 = UpdateSetting $UpdatePSD1 'ModuleVersion' "'$Version'"
 }
-if (Compare-Object $Classes $PSD1.ScriptsToProcess) {
+if (Compare-Object $ToProcess $PSD1.ScriptsToProcess) {
     if (-not $UpdatePSD1) { $UpdatePSD1 = Get-Content -Raw -LiteralPath $ModuleRoot\ObjectGraphTools.psd1 }
-    $UpdatePSD1 = UpdateSetting $UpdatePSD1 'ScriptsToProcess' "@($(@($Classes).foreach{ "'$_'" } -Join ', '))"
+    $UpdatePSD1 = UpdateSetting $UpdatePSD1 'ScriptsToProcess' "@($(@($ToProcess).foreach{ "'$_'" } -Join ', '))"
 }
 if (Compare-Object $Functions $PSD1.FunctionsToExport) {
     if (-not $UpdatePSD1) { $UpdatePSD1 = Get-Content -Raw -LiteralPath $ModuleRoot\ObjectGraphTools.psd1 }
