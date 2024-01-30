@@ -1,3 +1,6 @@
+<!-- markdownlint-disable MD033 -->
+# Object Parser
+
 This class provides general properties and method to recursively
 iterate through to PowerShell Object Graph nodes.
 
@@ -7,17 +10,17 @@ The following function recursively iterates through all the property nodes (`PSN
 of an object-graph and returns the path to each object.
 
 ```PowerShell
-    function Iterate([PSNode]$Node) { # Basic iterator
-        $Node.PathName
-        if ($Node -is [PSCollectionNode]) {
-            $Node.ChildNodes.foreach{ Iterate $_ }
-        }
+function Iterate([PSNode]$Node) { # Basic iterator
+    $Node.PathName
+    if ($Node -is [PSCollectionNode]) {
+        $Node.ChildNodes.foreach{ Iterate $_ }
     }
+}
 
-    $Object = $Json | ConvertFrom-Json
-    $PSNode = [PSNode]::ParseInput($Object)
-    Iterate $PSNode
-``````
+$Object = $Json | ConvertFrom-Json
+$PSNode = [PSNode]::ParseInput($Object)
+Iterate $PSNode
+```
 
 ## Class hierarchy
 
@@ -97,6 +100,12 @@ The value might be modified but should be of the same structure (`[PSLeafNode]`,
 The depth where the current PSNode resides in the PSNode hierarchy (aka tree).
 An error will occur if the depth exceed the `MaxDepth` setting.
 
+### `MaxDepth`
+
+The maximum iteration depth of the embedded graph object.
+The `MaxDepth` value can be read at every level but can only be set on the root node:
+`[PSNode].RootNode.MaxDepth = <Maximum Depth>`
+
 ### `ValueType` (ReadOnly)
 
 The type of the value embedded by the PSNode.
@@ -115,27 +124,29 @@ Refers to node containing the current PSNode and possible siblings.
 
 Refers to the top node containing the current PSNode and all its decedents.
 
-### `ChildNodes` (ReadOnly)
+### `ChildNodes` (ReadOnly) (`[PSCollectionNodes]` only)
 
-(`[PSCollectionNodes]` only)
 Returns all the child nodes contained by the current PSNode.
 To retrieve a specific child node, use the `GetChildNode(<Name>)` method.
 
-### `Count` (ReadOnly)
+### `DescendantNodes` (ReadOnly) (`[PSCollectionNodes]` only)
 
-(`[PSCollectionNodes]` only)
+Returns all the descendant nodes (up and till the `$MaxDepth` level) contained
+by the current PSNode.
+
+### `Count` (ReadOnly) (`[PSCollectionNodes]` only)
+
 Returns the number of items or properties contained by the embedded value.
 This number is equal to the number of child nodes contained by the current node.
 
-### `Names` (ReadOnly)
+### `Names` (ReadOnly) (`[PSCollectionNodes]` only)
 
-(`[PSCollectionNodes]` only)
 Returns the property or key names of the embedded value. If the PSNode is of
 `[PSListNode]` type list a indices (starting from zero) is returned.
 The name of each child node is equal to the name (or index) that identifies item
 of the embedded value
 
-### `Values` (ReadOnly)
+### `Values` (ReadOnly) (`[PSCollectionNodes]` only)
 
 Returns all the value of the items or properties of the embedded value.
 A PSNode derived from a `[PSLeafNode]` type doesn't have a `Values` property.
@@ -162,26 +173,46 @@ The `<maximal depth>` argument, set the maximal depth of the properties  that wi
 recursively retrieve. When the maximal depth is reached, an error is throw.
 The default maximal depth is defined by the static property `[PSNode]::MaxDepth` (default: 10)
 
-### `GetChildNode(<name>)`
+### `GetChildNode(<name>)` (`[PSCollectionNodes]` only)
 
-(`[PSCollectionNodes]` only)
 Returns a specific child node (`[PSNode]`) selected by the name (or index) of the embedded
 
-### `GetItem(<name>)`
+> [!Note]
+> The `GetChildNode` has a Shorthand ("alias"): `_(<name>)` which shouldn't be used
+> in scripts as the its name or functionality might change in the future
 
-(`[PSCollectionNodes]` only)
+### `GetDescendentNode(<path>)` (`[PSCollectionNodes]` only)
+
+Returns a specific child node (`[PSNode]`) selected by the path of the embedded object
+The path might be either:
+
+* As [String] a "dot-property" selection as defined by the `PathName` property a specific node.
+* A array of strings (dictionary keys or Property names) and/or Integers (list indices).
+* A object (`PSNode[]`) list where each `Name` property defines the path
+
+> [!Note]
+> The `GetDescendentNode` has a Shorthand ("alias"): `Get(<name>)` which shouldn't be used
+> in scripts as the its name or functionality might change in the future
+
+### `GetDescendentNodes(<generations>)` (`[PSCollectionNodes]` only)
+
+Returns all descendant nodes of the current node for a the defined number of generations.
+
+> [!Note]
+> The number of generations will not surpass the `MaxDepth` defined at the root.
+
+### `GetItem(<name>)` (`[PSCollectionNodes]` only)
+
 Returns the value of a specific item identified by `<name>` of the embedded collection
 or object.
 
-### `SetItem(<name>, <value>)`
+### `SetItem(<name>, <value>)` (`[PSCollectionNodes]` only)
 
-(`[PSCollectionNodes]` only)
 Sets the value of a specific item identified by `<name>` of the embedded collection
 or object. The new value should be of the same structure (`[PSLeafNode]`, `[PSListNode]`,
 `[PSDictionaryNode]` or `[PSObjectNode]`) as the original node type.
 
-### `Contains(<name>)`
+### `Contains(<name>)` (`[PSCollectionNodes]` only)
 
-(`[PSCollectionNodes]` only)
 Determines whether a specific item identified by `<name>` is contained by th embedded
 collection or object.

@@ -3,7 +3,7 @@
     RootModule = 'ObjectGraphTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.0.10'
+    ModuleVersion = '0.0.12'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -48,7 +48,7 @@
     # RequiredAssemblies = @()
 
     # Script files (.ps1) that are run in the caller's environment prior to importing this module.
-    ScriptsToProcess = @('.\Source\Classes\ObjectParser.ps1')
+    ScriptsToProcess = @('.\Source\Private\Use-ClassAccessors.ps1', '.\Source\Classes\ObjectParser.ps1')
 
     # Type files (.ps1xml) to be loaded when importing this module
     # TypesToProcess = @()
@@ -120,6 +120,7 @@
     # DefaultCommandPrefix = ''
 
 }
+
 
 
 

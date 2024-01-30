@@ -52,13 +52,18 @@ Describe 'Get-ChildNode' {
             $Nodes.Count | Should -Be 14
         }
 
+        it 'All decedent nodes including self' {
+            $Nodes = $Object | Get-ChildNode -Recurse -IncludeSelf
+            $Nodes.Count | Should -Be 15
+        }
+
         it 'All leaf nodes' {
-            $Nodes = $Object | Get-ChildNode -LeafNode
+            $Nodes = $Object | Get-ChildNode -Leaf
             $Nodes.Name  | Should -Be Comment
         }
 
         it 'All decedent leaf nodes' {
-            $Nodes = $Object | Get-ChildNode -LeafNode -Recurse
+            $Nodes = $Object | Get-ChildNode -Leaf -Recurse
             $Nodes.Count | Should -Be 10
         }
 
@@ -78,7 +83,7 @@ Describe 'Get-ChildNode' {
         }
 
         it 'All map leaf nodes' {
-            $Nodes = $Object | Get-ChildNode -Include * -LeafNode
+            $Nodes = $Object | Get-ChildNode -Include * -Leaf
             $Nodes.Name  | Should -Be Comment
         }
 
@@ -88,7 +93,7 @@ Describe 'Get-ChildNode' {
         }
 
         it 'All decedent map leaf nodes' {
-            $Nodes = $Object | Get-ChildNode -Include * -Recurse -LeafNode
+            $Nodes = $Object | Get-ChildNode -Include * -Recurse -Leaf
             $Nodes.Count | Should -Be 10
         }
 

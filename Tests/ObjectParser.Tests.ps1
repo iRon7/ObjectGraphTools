@@ -69,6 +69,7 @@ Describe 'PSNode' {
             $ItemNode = $Node.GetChildNode('String')
             $ItemNode | Should -BeOfType PSNode
             $ItemNode | Should -BeOfType PSLeafNode
+            $ItemNode.Value     | Should -Be $Object.String
             $ItemNode.ValueType | Should -Be $Object.String.GetType()
         }
 
@@ -96,6 +97,36 @@ Describe 'PSNode' {
             $ItemNode | Should -BeOfType PSMapNode
             $ItemNode | Should -BeOfType PSObjectNode
             $ItemNode.ValueType | Should -Be $Object.PSCustomObject.GetType()
+        }
+    }
+
+    Context 'Get descendent node' {
+        BeforeAll {
+            $Node = [PSNode]::ParseInput($Object)
+        }
+
+        it 'String' {
+            $ItemNode = $Node.GetDescendentNode('String')
+            $ItemNode | Should -BeOfType PSNode
+            $ItemNode | Should -BeOfType PSLeafNode
+            $ItemNode.Value     | Should -Be $Object.String
+            $ItemNode.ValueType | Should -Be $Object.String.GetType()
+        }
+
+        it 'String' {
+            $ItemNode = $Node.GetDescendentNode('.String')
+            $ItemNode | Should -BeOfType PSNode
+            $ItemNode | Should -BeOfType PSLeafNode
+            $ItemNode.Value     | Should -Be $Object.String
+            $ItemNode.ValueType | Should -Be $Object.String.GetType()
+        }
+
+        it 'Array' {
+            $ItemNode = $Node.GetDescendentNode('.Array[0].Comment')
+            $ItemNode | Should -BeOfType PSNode
+            $ItemNode | Should -BeOfType PSLeafNode
+            $ItemNode.Value     | Should -Be $Object.Array[0].Comment
+            $ItemNode.ValueType | Should -Be $Object.Array[0].Comment.GetType()
         }
     }
 
