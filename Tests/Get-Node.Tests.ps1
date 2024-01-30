@@ -40,6 +40,23 @@ Describe 'Get-Node' {
         }
     }
 
+    Context 'Root' {
+
+        it 'String' {
+            $Node = Get-Node 'Hello World'
+            $Node       | Should -BeOfType PSNode
+            $Node.Value | Should -Be 'Hello World'
+        }
+
+        it 'Object' {
+            $Node = Get-Node $Object
+            $Node | Should -BeOfType PSNode
+            $Node | Should -BeOfType PSCollectionNode
+            $Node | Should -BeOfType PSMapNode
+            $Node | Should -BeOfType PSDictionaryNode
+        }
+    }
+
     Context 'by PathName' {
 
         it 'Get data node' {

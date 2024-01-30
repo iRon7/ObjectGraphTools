@@ -30,7 +30,6 @@
 
 .PARAMETER MaxDepth
     The maximal depth to recursively compare each embedded property (default: 10).
-
 #>
 
 function Merge-ObjectGraph {

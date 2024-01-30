@@ -5,6 +5,21 @@
 .DESCRIPTION
     Recursively ("deep") copies a object graph.
 
+.EXAMPLE
+    # Deep copy a complete object graph into a new object graph
+
+        $NewObjectGraph = Copy-ObjectGraph $ObjectGraph
+
+.EXAMPLE
+    # Copy (convert) an object graph using common PowerShell arrays and PSCustomObjects
+
+        $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObject
+
+.EXAMPLE
+    # Convert a Json string to an object graph with (case insensitive) ordered dictionaries
+
+        $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
+
 .PARAMETER InputObject
     The input object that will be recursively copied.
 
@@ -20,21 +35,6 @@
 .PARAMETER ExcludeLeafs
     If supplied, only the structure (lists, dictionaries, [`PSCustomObject`][1] types and [`Component`][2] types will be copied.
     If omitted, each leaf will be shallow copied
-
-.Example
-    # Deep copy a complete object graph into a new object graph
-
-        $NewObjectGraph = Copy-ObjectGraph $ObjectGraph
-
-.Example
-    # Copy (convert) an object graph using common PowerShell arrays and PSCustomObjects
-
-        $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObject
-
-.Example
-    # Convert a Json string to an object graph with (case insensitive) ordered dictionaries
-
-        $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
 
 .LINK
     [1]: https://learn.microsoft.com/dotnet/api/system.management.automation.pscustomobject "PSCustomObject Class"

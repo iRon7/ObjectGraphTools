@@ -1,18 +1,26 @@
+## 2024-01-30 0.0.13 (iRon)
+  - Fixes
+    - If no path is supplied for the `Get-Node` cmdlet, the root node is returned
+
+  - Enhancements
+    - Get-Node: Added (commented) [help](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md)
+    - Get-ChildNode: Added (commented) [help](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-ChildNode.md)
+
 ## 2024-01-29 0.0.12 (iRon)
   - Fixes
-    - #31 "ComponentModel.Component does not parse correctly"
+    - #31 ComponentModel.Component does not parse correctly
 
   - Enhancements
     - Improved `PathName` property performance
 
 ## 2024-01-27 0.0.11 (iRon)
   - Break changes
-    - rename `-LeafNode` parameter from `Get-ChildNode` to just `-Leaf` to be consistent with `-ListChild`considering that the word `Node` is al ready in the cmdlet verb.
+    - rename `-LeafNode` parameter from `Get-ChildNode` to just `-Leaf` to be consistent with `-ListChild`considering that the word `Node` is al ready in the cmdlet noun.
 
   - Enhancements
     - Object parser: uniform `MaxDepth` property (might only be set at the root node)
     - Object parser: added: `GetDescendentNode(<path>)` (alias: `Get(<path>)`) method
-    - Object parser: added [help](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Sort-ObjectGraph.md)
+    - Object parser: added [help](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md)
     - Get-ChildNode: Added `-Path` parameter
     - Get-ChildNode: Added `-AtDepth` parameter
     - Get-ChildNode: Added `-IncludeSelf` parameter
