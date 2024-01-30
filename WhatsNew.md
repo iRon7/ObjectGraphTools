@@ -1,6 +1,14 @@
+## 2024-01-30 0.0.13 (iRon)
+  - Fixes
+    - If no path is supplied for the `Get-Node` cmdlet, the root node is returned
+
+  - Enhancements
+    - Get-Node: Added (commented) [help](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md)
+    - Get-ChildNode: Added (commented) [help](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-ChildNode.md)
+
 ## 2024-01-29 0.0.12 (iRon)
   - Fixes
-    - #31 "ComponentModel.Component does not parse correctly"
+    - #31 ComponentModel.Component does not parse correctly
 
   - Enhancements
     - Improved `PathName` property performance
