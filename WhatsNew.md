@@ -1,3 +1,10 @@
+## 2024-01-29 0.0.12 (iRon)
+  - Fixes
+    - #31 "ComponentModel.Component does not parse correctly"
+
+  - Enhancements
+    - Improved `PathName` property performance
+
 ## 2024-01-27 0.0.11 (iRon)
   - Break changes
     - rename `-LeafNode` parameter from `Get-ChildNode` to just `-Leaf` to be consistent with `-ListChild`considering that the word `Node` is al ready in the cmdlet verb.

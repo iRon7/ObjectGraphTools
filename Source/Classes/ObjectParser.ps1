@@ -230,6 +230,8 @@ Class PSNode {
     hidden [PSNodeOrigin]$_NodeOrigin
     [PSNode]$ParentNode
     [PSNode]$RootNode = $this               # This will be overwritten by the Append method
+    hidden [PSNode[]]$_Path = @()
+    hidden [String]$_PathName
     hidden [Bool]$WarnedMaxDepth            # Warn ones per item branch
 
     hidden [object] get_Value() {
@@ -281,10 +283,10 @@ Class PSNode {
     static [PSNode] ParseInput($Object) {
         if     ($Object -is [PSNode]) { return $Object }
         switch ([PSNode]::getPSNodeType($object)) {
-            'PSObjectNode'     { return [PSObjectNode]$Object }
-            'PSDictionaryNode' { return [PSDictionaryNode]$Object }
-            'PSListNode'       { return [PSListNode]$Object }
-            Default            { return [PSLeafNode]$Object }
+            'PSObjectNode'     { return [PSObjectNode]::new($Object) }
+            'PSDictionaryNode' { return [PSDictionaryNode]::new($Object) }
+            'PSListNode'       { return [PSListNode]::new($Object) }
+            Default            { return [PSLeafNode]::new($Object) }
         }
         Throw 'Unknown structure'
     }
@@ -306,24 +308,29 @@ Class PSNode {
     }
 
     hidden [System.Collections.Generic.List[PSNode]] get_Path() {
-        if ($this.ParentNode) { $Path = $this.ParentNode.get_Path() }
-        else { $Path = [System.Collections.Generic.List[PSNode]]::new() }
-        $Path.Add($this)
-        return $Path
+        if ($this._Path.Count -eq 0) {
+            if ($this.ParentNode) { $ParentPath = $this.ParentNode.get_Path() } else { $ParentPath =  @() }
+            $this._Path = $ParentPath + $this # This will shallow copy the parent path
+        }
+        return $this._Path
     }
 
     hidden [String] get_PathName() {
-        return -Join @($this.get_Path()).foreach{
-            if ($_._NodeOrigin -eq 'List') {
-                "[$($_._Name)]"
-            }
-            elseif ($_._NodeOrigin -eq 'Map') {
-                if     ($_.Name -is [ValueType])        { ".$($_._Name)" }
-                elseif ($_.Name -isnot [String])        { ".[$($_._Name.GetType())]'$($_._Name)'" }
-                elseif ($_.Name -Match '^[_,a-z]+\w*$') { ".$($_._Name)" }
-                else                                         { ".'$($_._Name)'" }
-            }
+        if ($Null -eq $this._PathName) {
+            $ParentPathName = if ($this.ParentNode) { $this.ParentNode.get_PathName() }
+            $Name =
+                if ($this._NodeOrigin -eq 'List') {
+                    "[$($this._Name)]"
+                }
+                elseif ($this._NodeOrigin -eq 'Map') {
+                    if     ($this.Name -is [ValueType])        { ".$($this._Name)" }
+                    elseif ($this.Name -isnot [String])        { ".[$($this._Name.GetType())]'$($this._Name)'" }
+                    elseif ($this.Name -Match '^[_,a-z]+\w*$') { ".$($this._Name)" }
+                    else                                       { ".'$($this._Name)'" }
+                }
+            $this._PathName = $ParentPathName + $Name
         }
+        return $this._PathName
     }
 }
 
