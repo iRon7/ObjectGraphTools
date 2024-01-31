@@ -16,6 +16,7 @@ Currently the tool set includes:
 
 * [`Get-Node`](./Docs/Get-Node.md)
 * [`Get-ChildNode`](./Docs/Get-ChildNode.md)
+* [`Get-NodeWhere`](./Docs/Get-NodeWhere.md)
 * [`Compare-ObjectGraph`](./Docs/Compare-ObjectGraph.md)
 * [`Merge-ObjectGraph`](./Docs/Merge-ObjectGraph.md)
 * [`Sort-ObjectGraph`](./Docs/Sort-ObjectGraph.md)

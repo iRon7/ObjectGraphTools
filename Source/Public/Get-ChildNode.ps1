@@ -8,7 +8,7 @@ Using NameSpace System.Management.Automation.Language
     Gets the items and child items in one or more specified locations of an object-graph
 
 .EXAMPLE
-        # Select all leaf node in a object graph
+        # Select all leaf nodes in a object graph
 
     Given the following object graph:
 
@@ -85,7 +85,7 @@ Using NameSpace System.Management.Automation.Language
 
     See the [PowerShell Object Parser][1] For details on the `[PSNode]` properties and methods.
 
-.PARAMETER ObjectGraph
+.PARAMETER InputObject
     The concerned object graph or node.
 
 .PARAMETER Path
@@ -101,7 +101,7 @@ Using NameSpace System.Management.Automation.Language
     The maximum depth of of a specific node that might be retrieved is define by the `MaxDepth`
     of the (root) node. To change the maximum depth the (root) node needs to be loaded first, e.g.:
 
-        Get-Node <ObjectGraph> -Depth 20 | Get-ChildNode ...
+        Get-Node <InputObject> -Depth 20 | Get-ChildNode ...
 
     (See also: [`Get-Node`][2])
 
@@ -154,7 +154,7 @@ function Get-ChildNode {
     [OutputType([PSNode[]])]
     [CmdletBinding(DefaultParameterSetName='ListChild')] param(
         [Parameter(Position = 0, Mandatory = $true, ValueFromPipeLine = $true)]
-        $ObjectGraph,
+        $InputObject,
 
         [ValidateNotNull()]
         $Path,
@@ -190,8 +190,8 @@ function Get-ChildNode {
     )
 
     process {
-        if ($ObjectGraph -is [PSNode]) { $Self = $ObjectGraph }
-        else { $Self = [PSNode]::ParseInput($ObjectGraph) }
+        $Self = [PSNode]::ParseInput($InputObject, $MaxDepth)
+
         if ($PSBoundParameters.ContainsKey('Path')) { $Self = $Self.GetDescendentNode($Path) }
         $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
             [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
@@ -220,12 +220,12 @@ function Get-ChildNode {
                         (
                             -not $Include -or (
                                 ($Literal -and $Node.Name -in $Include) -or
-                                (-not $Literal -and $Include.foreach{ $Node.Name -like $_ })
+                                (-not $Literal -and $Include.where({ $Node.Name -like $_ }, 'first'))
                             )
                         ) -and -not (
                             $Exclude -and (
                                 ($Literal -and $Node.Name -in $Exclude) -or
-                                (-not $Literal -and $Exclude.foreach{ $Node.Name -like $_ })
+                                (-not $Literal -and $Exclude.where({ $Node.Name -like $_ }, 'first'))
                             )
                         )
                     )

@@ -40,7 +40,7 @@ Describe 'Get-ChildNode' {
         }
     }
 
-    Context 'Parameters' {
+    Context 'Basic selection' {
 
         it 'All child nodes' {
             $Nodes = $Object | Get-ChildNode
@@ -100,6 +100,57 @@ Describe 'Get-ChildNode' {
         it 'All decedent map nodes named index' {
             $Nodes = $Object | Get-ChildNode -Include Index -Recurse
             $Nodes.Value | Should -Be 1, 2, 3
+        }
+    }
+
+    Context 'By name' {
+
+        it 'Include single literal' {
+            $Nodes = $Object | Get-ChildNode -Recurse -Include Comment -Literal
+            $Nodes.Count | Should -Be 4
+            $Nodes.Name | Sort-Object -Unique | Should -Be Comment
+        }
+
+        it 'Exclude single literal' {
+            $Nodes = $Object | Get-ChildNode -Recurse -Exclude Comment -Literal
+            $Nodes.Count | Should -Be 7
+            $Nodes.Name | Sort-Object -Unique | Should -Be 'Data', 'Index', 'Name'
+        }
+
+        it 'Include single wildcard' {
+            $Nodes = $Object | Get-ChildNode -Recurse -Include Comm?nt
+            $Nodes.Count | Should -Be 4
+            $Nodes.Name | Sort-Object -Unique | Should -Be Comment
+        }
+
+        it 'Exclude single wildcard' {
+            $Nodes = $Object | Get-ChildNode -Recurse -Exclude Comm?nt
+            $Nodes.Count | Should -Be 7
+            $Nodes.Name | Sort-Object -Unique | Should -Be 'Data', 'Index', 'Name'
+        }
+
+        it 'Include multiple literal' {
+            $Nodes = $Object | Get-ChildNode -Recurse -Include Comment, Name -Literal
+            $Nodes.Count | Should -Be 7
+            $Nodes.Name | Sort-Object -Unique | Should -Be Comment, Name
+        }
+
+        it 'Exclude multiple literal' {
+            $Nodes = $Object | Get-ChildNode -Recurse -Exclude Comment, Name -Literal
+            $Nodes.Count | Should -Be 4
+            $Nodes.Name | Sort-Object -Unique | Should -Be 'Data', 'Index'
+        }
+
+        it 'Include multiple wildcard' {
+            $Nodes = $Object | Get-ChildNode -Recurse -Include Com*, Nam?
+            $Nodes.Count | Should -Be 7
+            $Nodes.Name | Sort-Object -Unique | Should -Be Comment, Name
+        }
+
+        it 'Exclude multiple wildcard' {
+            $Nodes = $Object | Get-ChildNode -Recurse -Exclude Com*, Nam?
+            $Nodes.Count | Should -Be 4
+            $Nodes.Name | Sort-Object -Unique | Should -Be 'Data', 'Index'
         }
     }
 }

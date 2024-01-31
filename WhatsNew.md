@@ -1,10 +1,18 @@
+## 2024-01-30 0.0.14 (iRon)
+  - Fixes
+    - #36 Multiple `Get-ChildNode -Include` and `-Exclude` pattern don't work
+
+  - Enhancements
+    - if `$MaxDepth` (in `[PSNode]::ParseInput($InputObject, $MaxDepth)`) is 0 or less, the current/default maximum depth is used.
+    - Added [`Get-NodeWhere` cmdlet](./Docs/Get-NodeWhere.md)
+
 ## 2024-01-30 0.0.13 (iRon)
   - Fixes
     - If no path is supplied for the `Get-Node` cmdlet, the root node is returned
 
   - Enhancements
-    - Get-Node: Added (commented) [help](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md)
-    - Get-ChildNode: Added (commented) [help](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-ChildNode.md)
+    - Get-Node: Added (commented) [help](./Docs/Get-Node.md)
+    - Get-ChildNode: Added (commented) [help](./Docs/Get-ChildNode.md)
 
 ## 2024-01-29 0.0.12 (iRon)
   - Fixes
@@ -20,7 +28,7 @@
   - Enhancements
     - Object parser: uniform `MaxDepth` property (might only be set at the root node)
     - Object parser: added: `GetDescendentNode(<path>)` (alias: `Get(<path>)`) method
-    - Object parser: added [help](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md)
+    - Object parser: added [help](./Docs/ObjectParser.md)
     - Get-ChildNode: Added `-Path` parameter
     - Get-ChildNode: Added `-AtDepth` parameter
     - Get-ChildNode: Added `-IncludeSelf` parameter
