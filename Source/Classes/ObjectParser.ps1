@@ -280,30 +280,29 @@ Class PSNode {
         else                                                        { return 'PSLeafNode' }
     }
 
-    static [PSNode] ParseInput($Object) {
-        if     ($Object -is [PSNode]) { return $Object }
-        switch ([PSNode]::getPSNodeType($object)) {
-            'PSObjectNode'     { return [PSObjectNode]::new($Object) }
-            'PSDictionaryNode' { return [PSDictionaryNode]::new($Object) }
-            'PSListNode'       { return [PSListNode]::new($Object) }
-            Default            { return [PSLeafNode]::new($Object) }
-        }
-        Throw 'Unknown structure'
-    }
-
-    static [PSNode] ParseInput($Object, [int]$MaxDepth) {
-        $Node = [PSNode]::parseInput($Object)
+    static [PSNode] ParseInput($Object, $MaxDepth) {
+        $Node =
+            if ($Object -is [PSNode]) { $Object }
+            else {
+                switch ([PSNode]::getPSNodeType($object)) {
+                    'PSObjectNode'     { [PSObjectNode]::new($Object) }
+                    'PSDictionaryNode' { [PSDictionaryNode]::new($Object) }
+                    'PSListNode'       { [PSListNode]::new($Object) }
+                    Default            { [PSLeafNode]::new($Object) }
+                }
+            }
         $Node.RootNode  = $Node
-        $Node._MaxDepth = $MaxDepth
+        if ($MaxDepth -gt 0) { $Node._MaxDepth = $MaxDepth }
         return $Node
     }
+
+    static [PSNode] ParseInput($Object) { return [PSNode]::parseInput($Object, 0) }
 
     hidden [PSNode] Append($Object) {
         $Node = [PSNode]::ParseInput($Object)
         $Node.Depth      = $this.Depth + 1
         $Node.RootNode   = $this.RootNode
         $Node.ParentNode = $this
-
         return $Node
     }
 

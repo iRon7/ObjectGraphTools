@@ -5,10 +5,11 @@ Copy object graph
 
 ## Syntax
 
-```JavaScript
+```PowerShell
+Copy-ObjectGraph
     -InputObject <Object>
     [-ListAs <Object>]
-    [-DictionaryAs <Object>]
+    [-MapAs <Object>]
     [-ExcludeLeafs]
     [-MaxDepth <Int32> = 10]
     [<CommonParameters>]
@@ -22,19 +23,16 @@ Recursively ("deep") copies a object graph.
 
 ### Example 1: Deep copy a complete object graph into a new object graph
 
-```PowerShell
 $NewObjectGraph = Copy-ObjectGraph $ObjectGraph
 ```
 
 ### Example 2: Copy (convert) an object graph using common PowerShell arrays and PSCustomObjects
 
-```PowerShell
 $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObject
 ```
 
 ### Example 3: Convert a Json string to an object graph with (case insensitive) ordered dictionaries
 
-```PowerShell
 $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
 ```
 
@@ -66,12 +64,7 @@ If supplied, lists will be converted to the given type (or type of the supplied 
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
-### <a id="-dictionaryas">**`-DictionaryAs <Object>`**</a>
-
-If supplied, dictionaries will be converted to the given type (or type of the supplied object example).
-This parameter also accepts the [`PSCustomObject`][1] types
-By default (if the [-DictionaryAs](#-dictionaryas) parameters is omitted),
-[`Component`][2] objects will be converted to a [`PSCustomObject`][1] type.
+### <a id="-mapas">**`-MapAs <Object>`**</a>
 
 <table>
 <tr><td>Type:</td><td></td></tr>

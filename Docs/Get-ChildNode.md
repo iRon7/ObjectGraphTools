@@ -36,7 +36,7 @@ Gets the items and child items in one or more specified locations of an object-g
 
 ## Examples
 
-### Example 1: Select all leaf node in a object graph
+### Example 1: Select all leaf nodes in a object graph
 
 Given the following object graph:
 

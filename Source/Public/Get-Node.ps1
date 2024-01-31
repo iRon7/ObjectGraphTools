@@ -31,7 +31,7 @@ Using NameSpace System.Management.Automation.Language
         .My[1]      1     2     2
 
 
-.PARAMETER ObjectGraph
+.PARAMETER InputObject
     The concerned object graph or node.
 
 .PARAMETER Path
@@ -60,7 +60,7 @@ function Get-Node {
     [OutputType([PSNode])]
     [CmdletBinding()] param(
         [Parameter(Mandatory = $true)]
-        $ObjectGraph,
+        $InputObject,
 
         [Parameter(ValueFromPipeLine = $true, ValueFromPipelineByPropertyName = $true)]
         $Path,
@@ -74,18 +74,9 @@ function Get-Node {
             elseif ($Exception -isnot [Exception]) { $Exception = [ArgumentException]$Exception }
             $PSCmdlet.ThrowTerminatingError([System.Management.Automation.ErrorRecord]::new($Exception, $Id, $Group, $Object))
         }
-
-        if ($PSBoundParameters.ContainsKey('MaxDepth')) {
-            $Node = [PSNode]::ParseInput($ObjectGraph, $MaxDepth)
-        }
-        else {
-            $Node = [PSNode]::ParseInput($ObjectGraph)
-        }
     }
     process {
-        if ($ObjectGraph -is [PSNode]) { $Node = $ObjectGraph }
-        else { $Node = [PSNode]::ParseInput($ObjectGraph) }
-        # try { $Node.GetDescendentNode($Path) } catch { StopError $_ }
+        $Node = [PSNode]::ParseInput($InputObject, $MaxDepth)
         if ($Null -eq $Path) { $Node } else { $Node.GetDescendentNode($Path) }
     }
 }

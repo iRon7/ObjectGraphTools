@@ -7,7 +7,7 @@ Get a node
 
 ```PowerShell
 Get-Node
-    -ObjectGraph <Object>
+    -InputObject <Object>
     [-Path <Object>]
     [-MaxDepth <Int32>]
     [<CommonParameters>]
@@ -46,7 +46,7 @@ PathName Name Depth Value
 
 ## Parameter
 
-### <a id="-objectgraph">**`-ObjectGraph <Object>`**</a>
+### <a id="-InputObject">**`-InputObject <Object>`**</a>
 
 The concerned object graph or node.
 

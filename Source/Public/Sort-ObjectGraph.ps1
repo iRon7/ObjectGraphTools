@@ -104,8 +104,8 @@ function ConvertTo-SortedObjectGraph {
     }
 
     process {
-        $PSNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
-        SortObject $PSNode -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending
+        $Node = [PSNode]::ParseInput($InputObject, $MaxDepth)
+        SortObject $Node -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending
     }
 }
 
