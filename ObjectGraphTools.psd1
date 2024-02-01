@@ -3,7 +3,7 @@
     RootModule = 'ObjectGraphTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.0.14'
+    ModuleVersion = '0.0.15'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -60,7 +60,7 @@
     # NestedModules = @()
 
     # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-    FunctionsToExport = @('Compare-ObjectGraph', 'Copy-ObjectGraph', 'Get-ChildNode', 'Get-Node', 'Merge-ObjectGraph', 'ConvertTo-SortedObjectGraph', 'Get-NodeWhere')
+    FunctionsToExport = @('Compare-ObjectGraph', 'Copy-ObjectGraph', 'Get-ChildNode', 'Get-Node', 'Merge-ObjectGraph', 'ConvertTo-SortedObjectGraph')
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
     CmdletsToExport = @()
@@ -69,7 +69,7 @@
     VariablesToExport = '*'
 
     # Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
-    AliasesToExport = @('Sort-ObjectGraph', 'Where-NodeValue')
+    AliasesToExport = @('Sort-ObjectGraph')
 
     # DSC resources to export from this module
     # DscResourcesToExport = @()
@@ -120,6 +120,7 @@
     # DefaultCommandPrefix = ''
 
 }
+
 
 
 

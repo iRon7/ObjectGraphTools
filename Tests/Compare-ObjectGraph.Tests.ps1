@@ -1,4 +1,4 @@
-#Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.0.0"}
+#Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.5.0"}
 
 using module ..\..\ObjectGraphTools
 
@@ -382,6 +382,30 @@ Describe 'Compare-ObjectGraph' {
             $Result[0].Discrepancy | Should -Be 'Value'
             $Result[0].InputObject | Should -Be 'PresentX'
             $Result[0].Reference   | Should -Be 'PresentY'
+        }
+
+        It "#20 Case insensitive" {
+            $Object = @{
+                Comment = 'SAMPLE ObjectGraph'
+                Data = @(
+                    @{
+                        Index = 1
+                        Name = 'One'
+                        Comment = 'First item'
+                    }
+                    @{
+                        Index = 2
+                        Name = 'Two'
+                        Comment = 'Second item'
+                    }
+                    @{
+                        Index = 3
+                        Name = 'Three'
+                        Comment = 'Third item'
+                    }
+                )
+            }
+            $Object | Compare-ObjectGraph $Reference | Should -BeNullOrEmpty
         }
     }
 }
