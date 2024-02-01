@@ -248,11 +248,11 @@ Class PSNode {
         }
     }
 
-    [Object] get_Name() {
+    hidden [Object] get_Name() {
         return ,$this._Name
     }
 
-    [Object] get_MaxDepth() {
+    hidden [Object] get_MaxDepth() {
         return $this.RootNode._MaxDepth
     }
 

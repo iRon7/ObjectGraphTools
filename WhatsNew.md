@@ -1,3 +1,13 @@
+
+## 2024-02-01 0.0.15 (iRon)
+  - Break changes
+    - (compared to 0.0.14) removed `Get-NodeWhere` cmdlet as it appears easier to use `Where-Object` on a leaf node and select its parent
+
+  - Fixed
+    - #20 Compare-ObjectGraph seems to be case sensitive, even when not using the MatchCase parameter
+    - #23 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.5.0"}
+    - #38 Some methods as get_MaxDepth and get_Name supposed to be hidden
+
 ## 2024-01-30 0.0.14 (iRon)
   - Fixes
     - #36 Multiple `Get-ChildNode -Include` and `-Exclude` pattern don't work

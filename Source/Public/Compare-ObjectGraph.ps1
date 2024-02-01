@@ -111,7 +111,7 @@ function Compare-ObjectGraph {
                 }
             }
             if ($ObjectNode -is [PSLeafNode] -and $ReferenceNode -is [PSLeafNode]) {
-                $NotEqual = if ($MatchCase) { $ReferenceNode.Value -cne $ObjectNode.Value } else { $ReferenceNode.Value -cne $ObjectNode.Value }
+                $NotEqual = if ($MatchCase) { $ReferenceNode.Value -cne $ObjectNode.Value } else { $ReferenceNode.Value -ne $ObjectNode.Value }
                 if ($NotEqual) { # $ReferenceNode dictates the type
                     if ($IsEqual) { return $false }
                     [PSCustomObject]@{
