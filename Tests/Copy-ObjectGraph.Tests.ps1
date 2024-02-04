@@ -62,4 +62,11 @@ Describe 'Copy-ObjectGraph' {
             $Copy | Compare-ObjectGraph $Object -IsEqual | Should -BeTrue
         }
     }
+    Context 'Issues' {
+
+        It '#40: Numeric keys' {
+            $PSCustomObject = @{ 1 = 'a' } | Copy-ObjectGraph -MapAs PSCustomObject
+            $PSCustomObject.1 | Should -Be a
+        }
+    }
 }

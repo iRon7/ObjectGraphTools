@@ -1,3 +1,9 @@
+## 2024-02-04 0.0.16 (iRon)
+  - Fixed
+    - #40 Numeric keys don't convert to PSCustomObject
+
+  - Enhancements
+    - Add Windows&Core test
 
 ## 2024-02-01 0.0.15 (iRon)
   - Break changes

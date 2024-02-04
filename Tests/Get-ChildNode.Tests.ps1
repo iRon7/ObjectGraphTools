@@ -74,12 +74,12 @@ Describe 'Get-ChildNode' {
 
         it 'All decedent list child nodes' {
             $Nodes = $Object | Get-ChildNode -ListChild -Recurse
-            $Nodes.Name  | Should -Be 0, 1, 2
+            $Nodes.Name | Sort-Object | Should -Be 0, 1, 2
         }
 
         it 'All map child nodes' {
             $Nodes = $Object | Get-ChildNode -Include *
-            $Nodes.Name  | Should -Be Data, Comment
+            $Nodes.Name | Sort-Object | Should -Be Comment, Data
         }
 
         it 'All map leaf nodes' {
@@ -99,7 +99,7 @@ Describe 'Get-ChildNode' {
 
         it 'All decedent map nodes named index' {
             $Nodes = $Object | Get-ChildNode -Include Index -Recurse
-            $Nodes.Value | Should -Be 1, 2, 3
+            $Nodes.Value | Sort-Object | Should -Be 1, 2, 3
         }
     }
 

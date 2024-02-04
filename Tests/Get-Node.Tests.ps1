@@ -44,16 +44,16 @@ Describe 'Get-Node' {
 
         it 'String' {
             $Node = Get-Node 'Hello World'
-            $Node       | Should -BeOfType PSNode
+            $Node -is [PSNode] | Should -BeTrue
             $Node.Value | Should -Be 'Hello World'
         }
 
         it 'Object' {
             $Node = Get-Node $Object
-            $Node | Should -BeOfType PSNode
-            $Node | Should -BeOfType PSCollectionNode
-            $Node | Should -BeOfType PSMapNode
-            $Node | Should -BeOfType PSDictionaryNode
+            $Node -is [PSNode]           | Should -BeTrue
+            $Node -is [PSCollectionNode] | Should -BeTrue
+            $Node -is [PSMapNode]        | Should -BeTrue
+            $Node -is [PSDictionaryNode] | Should -BeTrue
         }
     }
 
@@ -61,7 +61,7 @@ Describe 'Get-Node' {
 
         it 'Get data node' {
             $Data = '.Data' | Get-Node $Object
-            $Data | Should -BeOfType PSListNode
+            $Data -is [PSListNode] | Should -BeTrue
         }
 
         it 'Get the first comment node' {
@@ -74,7 +74,7 @@ Describe 'Get-Node' {
 
         it 'Get data node' {
             $Data = 'Data' | Get-Node $Object
-            $Data | Should -BeOfType PSListNode
+            $Data -is [PSListNode] | Should -BeTrue
         }
 
         it 'Get the first comment node' {
