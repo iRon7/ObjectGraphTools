@@ -1,13 +1,10 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.5.0"}
 
-# using module ..\..\ObjectGraphTools
+using module ..\..\ObjectGraphTools
 
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object', Justification = 'False positive')]
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Node',   Justification = 'False positive')]
 param()
-
-. $PSScriptRoot\..\Source\Private\Use-ClassAccessors.ps1
-. $PSScriptRoot\..\Source\Classes\ObjectParser.ps1
 
 Describe 'PSNode' {
 
@@ -36,7 +33,7 @@ Describe 'PSNode' {
     Context 'Sanity Check' {
 
         It 'Loaded' {
-            [PSNode]::new() | Should -BeOfType PSNode
+            [PSNode]::new() -is [PSNode] | Should -BeTrue
         }
     }
 
@@ -47,7 +44,7 @@ Describe 'PSNode' {
         }
 
         it 'PSNode' {
-            $Node | Should -BeOfType PSNode
+            $Node -is [PSNode] | Should -BeTrue
         }
 
         it "Value" {
@@ -67,35 +64,35 @@ Describe 'PSNode' {
 
         it 'String' {
             $ItemNode = $Node.GetChildNode('String')
-            $ItemNode | Should -BeOfType PSNode
-            $ItemNode | Should -BeOfType PSLeafNode
+            $ItemNode -is [PSNode]     | Should -BeTrue
+            $ItemNode -is [PSLeafNode] | Should -BeTrue
             $ItemNode.Value     | Should -Be $Object.String
             $ItemNode.ValueType | Should -Be $Object.String.GetType()
         }
 
         it 'Array' {
             $ItemNode = $Node.GetChildNode('Array')
-            $ItemNode | Should -BeOfType PSNode
-            $ItemNode | Should -BeOfType PSCollectionNode
-            $ItemNode | Should -BeOfType PSListNode
+            $ItemNode -is [PSNode]           | Should -BeTrue
+            $ItemNode -is [PSCollectionNode] | Should -BeTrue
+            $ItemNode -is [PSListNode]       | Should -BeTrue
             $ItemNode.ValueType | Should -Be $Object.Array.GetType()
         }
 
         it 'HashTable' {
             $ItemNode = $Node.GetChildNode('HashTable')
-            $ItemNode | Should -BeOfType PSNode
-            $ItemNode | Should -BeOfType PSCollectionNode
-            $ItemNode | Should -BeOfType PSMapNode
-            $ItemNode | Should -BeOfType PSDictionaryNode
+            $ItemNode -is [PSNode]           | Should -BeTrue
+            $ItemNode -is [PSCollectionNode] | Should -BeTrue
+            $ItemNode -is [PSMapNode]        | Should -BeTrue
+            $ItemNode -is [PSDictionaryNode] | Should -BeTrue
             $ItemNode.ValueType | Should -Be $Object.HashTable.GetType()
         }
 
         it 'PSCustomObject' {
             $ItemNode = $Node.GetChildNode('PSCustomObject')
-            $ItemNode | Should -BeOfType PSNode
-            $ItemNode | Should -BeOfType PSCollectionNode
-            $ItemNode | Should -BeOfType PSMapNode
-            $ItemNode | Should -BeOfType PSObjectNode
+            $ItemNode -is [PSNode]           | Should -BeTrue
+            $ItemNode -is [PSCollectionNode] | Should -BeTrue
+            $ItemNode -is [PSMapNode]        | Should -BeTrue
+            $ItemNode -is [PSObjectNode]     | Should -BeTrue
             $ItemNode.ValueType | Should -Be $Object.PSCustomObject.GetType()
         }
     }
@@ -107,24 +104,24 @@ Describe 'PSNode' {
 
         it 'String' {
             $ItemNode = $Node.GetDescendentNode('String')
-            $ItemNode | Should -BeOfType PSNode
-            $ItemNode | Should -BeOfType PSLeafNode
+            $ItemNode -is [PSNode]     | Should -BeTrue
+            $ItemNode -is [PSLeafNode] | Should -BeTrue
             $ItemNode.Value     | Should -Be $Object.String
             $ItemNode.ValueType | Should -Be $Object.String.GetType()
         }
 
         it 'String' {
             $ItemNode = $Node.GetDescendentNode('.String')
-            $ItemNode | Should -BeOfType PSNode
-            $ItemNode | Should -BeOfType PSLeafNode
+            $ItemNode -is [PSNode]     | Should -BeTrue
+            $ItemNode -is [PSLeafNode] | Should -BeTrue
             $ItemNode.Value     | Should -Be $Object.String
             $ItemNode.ValueType | Should -Be $Object.String.GetType()
         }
 
         it 'Array' {
             $ItemNode = $Node.GetDescendentNode('.Array[0].Comment')
-            $ItemNode | Should -BeOfType PSNode
-            $ItemNode | Should -BeOfType PSLeafNode
+            $ItemNode -is [PSNode]     | Should -BeTrue
+            $ItemNode -is [PSLeafNode] | Should -BeTrue
             $ItemNode.Value     | Should -Be $Object.Array[0].Comment
             $ItemNode.ValueType | Should -Be $Object.Array[0].Comment.GetType()
         }

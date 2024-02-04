@@ -107,7 +107,7 @@ function Copy-ObjectGraph {
                 $Type = if ($Null -ne $MapType) { $MapType } else { $Node.ValueType }
                 $IsDirectory = $Null -ne $Type.GetInterface('IDictionary')
                 if ($IsDirectory) { $Dictionary = New-Object -Type $Type } else { $Dictionary = [Ordered]@{} }
-                $Node.ChildNodes.foreach{ $Dictionary[$_.Name] = CopyObject $_ -ListType $ListType -MapType $MapType }
+                $Node.ChildNodes.foreach{ $Dictionary[[Object]$_.Name] = CopyObject $_ -ListType $ListType -MapType $MapType }
                 if ($IsDirectory) { $Dictionary } else { [PSCustomObject]$Dictionary }
             }
         }
