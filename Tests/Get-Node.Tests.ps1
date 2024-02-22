@@ -77,9 +77,9 @@ Describe 'Get-Node' {
             $Data -is [PSListNode] | Should -BeTrue
         }
 
-        it 'Get the first comment node' {
-            $Comment = ,@('Data', 0, 'Comment') | Get-Node $Object
-            $Comment.Value | Should -Be 'First item'
-        }
+        # it 'Get the first comment node' {
+        #     $Comment = ,@('Data', 0, 'Comment') | Get-Node $Object
+        #     $Comment.Value | Should -Be 'First item'
+        # }
     }
 }

@@ -241,33 +241,43 @@ World
 
        Context 'Issues' {
 
-        It '#12: Bug Sort-ObjectGraph' {
+            It '#12: Bug Sort-ObjectGraph' {
 
-            $Object = ConvertFrom-Json '
-                {
-                    "NoneNodeData": {
-                        "Teams": {
-                            "AppSetupPolicies": [
-                                {
-                                    "Ensure": "Present",
-                                    "Identity": "Global",
-                                    "PinnedAppBarApps": [
-                                        "86fcd49b-61a2-4701-b771-54728cd291fb",
-                                        "42f6c1da-a241-483a-a3cc-4f5be9185951",
-                                        "2a84919f-59d8-4441-a975-2a8c2643b741",
-                                        "14d6962d-6eeb-4f48-8890-de55454bb136",
-                                        "14072831-8a2a-4f76-9294-057bf0b42a68"
-                                    ]
-                                }
-                            ]
+                $Object = ConvertFrom-Json '
+                    {
+                        "NoneNodeData": {
+                            "Teams": {
+                                "AppSetupPolicies": [
+                                    {
+                                        "Ensure": "Present",
+                                        "Identity": "Global",
+                                        "PinnedAppBarApps": [
+                                            "86fcd49b-61a2-4701-b771-54728cd291fb",
+                                            "42f6c1da-a241-483a-a3cc-4f5be9185951",
+                                            "2a84919f-59d8-4441-a975-2a8c2643b741",
+                                            "14d6962d-6eeb-4f48-8890-de55454bb136",
+                                            "14072831-8a2a-4f76-9294-057bf0b42a68"
+                                        ]
+                                    }
+                                ]
+                            }
                         }
-                    }
-                }'
+                    }'
 
-            $Sorted = $Object | Sort-ObjectGraph
-            $Sorted.NoneNodeData.Teams.AppSetupPolicies[0].PinnedAppBarApps[0] | Should -BeOfType String
-            $Sorted.NoneNodeData.Teams.AppSetupPolicies[0].PinnedAppBarApps[0].Length | Should -BeGreaterThan 1
+                $Sorted = $Object | Sort-ObjectGraph
+                $Sorted.NoneNodeData.Teams.AppSetupPolicies[0].PinnedAppBarApps[0] | Should -BeOfType String
+                $Sorted.NoneNodeData.Teams.AppSetupPolicies[0].PinnedAppBarApps[0].Length | Should -BeGreaterThan 1
+            }
+
+            It '#46: Sort-ObjectGraph: Out of range error' {
+                {
+                    @{
+                        1 = 'One'
+                        2 = 'Two'
+                        3 = 'Three'
+                    } | Sort-ObjectGraph
+                } | Should -Not -Throw
+            }
         }
     }
-}
 }

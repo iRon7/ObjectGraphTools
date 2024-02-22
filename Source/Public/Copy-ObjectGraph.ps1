@@ -53,7 +53,7 @@ function Copy-ObjectGraph {
 
         [Switch]$ExcludeLeafs,
 
-        [Alias('Depth')][int]$MaxDepth = 10
+        [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
     )
     begin {
         function StopError($Exception, $Id = 'IncorrectArgument', $Group = [Management.Automation.ErrorCategory]::SyntaxError, $Object){

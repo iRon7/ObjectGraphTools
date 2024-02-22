@@ -91,7 +91,7 @@ Describe 'Compare-ObjectGraph' {
             $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
             $Result = $Object   | Compare-ObjectGraph $Reference
             @($Result).Count    | Should -Be 1
-            $Result.Path        | Should -Be '.Comment'
+            $Result.Path        | Should -Be 'Comment'
             $Result.Discrepancy | Should -Be 'Value'
             $Result.InputObject | Should -Be 'Something else'
             $Result.Reference   | Should -Be 'Sample ObjectGraph'
@@ -117,11 +117,11 @@ Describe 'Compare-ObjectGraph' {
         $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
         $Result = $Object      | Compare-ObjectGraph $Reference
         $Result.Count          | Should -Be 2
-        $Result[0].Path        | Should -Be '.Data'
+        $Result[0].Path        | Should -Be 'Data'
         $Result[0].Discrepancy | Should -Be 'Size'
         $Result[0].InputObject | Should -Be 2
         $Result[0].Reference   | Should -Be 3
-        $Result[1].Path        | Should -Be '.Data[2]'
+        $Result[1].Path        | Should -Be 'Data[2]'
         $Result[1].Discrepancy | Should -Be 'Value'
         $Result[1].InputObject | Should -BeNullOrEmpty
         $Result[1].Reference   | Should -Be '[HashTable]'
@@ -155,11 +155,11 @@ Describe 'Compare-ObjectGraph' {
         $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
         $Result = $Object      | Compare-ObjectGraph $Reference
         $Result.Count          | Should -Be 2
-        $Result[0].Path        | Should -Be '.Data'
+        $Result[0].Path        | Should -Be 'Data'
         $Result[0].Discrepancy | Should -Be 'Size'
         $Result[0].InputObject | Should -Be 4
         $Result[0].Reference   | Should -Be 3
-        $Result[1].Path        | Should -Be '.Data[3]'
+        $Result[1].Path        | Should -Be 'Data[3]'
         $Result[1].Discrepancy | Should -Be 'Value'
         $Result[1].InputObject | Should -Be '[HashTable]'
         $Result[1].Reference   | Should -Be $Null
@@ -188,7 +188,7 @@ Describe 'Compare-ObjectGraph' {
         $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
         $Result = $Object      | Compare-ObjectGraph $Reference
         @($Result).Count       | Should -Be 1
-        $Result[0].Path        | Should -Be '.Data[2].Name'
+        $Result[0].Path        | Should -Be 'Data[2].Name'
         $Result[0].Discrepancy | Should -Be 'Value'
         $Result[0].InputObject | Should -Be 'Zero'
         $Result[0].Reference   | Should -Be 'Three'
@@ -378,7 +378,7 @@ Describe 'Compare-ObjectGraph' {
             $Obj1 | Compare-ObjectGraph $Obj2 -IsEqual | Should -Be $False
             $Result = $Obj1 | Compare-ObjectGraph $Obj2
             @($Result).Count       | Should -Be 1
-            $Result[0].Path        | Should -Be '.NonNodeData.Exchange.AcceptedDomains[0].Ensure'
+            $Result[0].Path        | Should -Be 'NonNodeData.Exchange.AcceptedDomains[0].Ensure'
             $Result[0].Discrepancy | Should -Be 'Value'
             $Result[0].InputObject | Should -Be 'PresentX'
             $Result[0].Reference   | Should -Be 'PresentY'

@@ -1,5 +1,7 @@
 $Expression = {
     Param($TestFolder)
+    Write-Host
+    Write-Host "Testing with PowerShell version $($PSVersionTable.PSVersion)"
     Import-Module $TestFolder\.. -Force
     Invoke-Pester $TestFolder
 }.ToString()

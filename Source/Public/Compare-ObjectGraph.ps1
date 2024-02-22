@@ -76,7 +76,7 @@ function Compare-ObjectGraph {
 
         [Switch]$MatchOrder,
 
-        [Alias('Depth')][int]$MaxDepth = 10
+        [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
     )
     begin {
         function CompareObject(

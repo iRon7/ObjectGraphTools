@@ -46,7 +46,7 @@ function Merge-ObjectGraph {
 
         [Switch]$MatchCase,
 
-        [Alias('Depth')][int]$MaxDepth = 10
+        [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
     )
     begin {
         function MergeObject ([PSNode]$TemplateNode, [PSNode]$ObjectNode, [String[]]$PrimaryKey, [Switch]$MatchCase) {

@@ -149,7 +149,7 @@ function Use-ClassAccessors {
                             $Expression =  $Accessor.Body.EndBlock.Extent.Text
                         }
                         else {
-                            $Expression = ",[$ReturnType](& { $($Accessor.Body.EndBlock.Extent.Text) })"
+                            $Expression = "[$ReturnType](& { $($Accessor.Body.EndBlock.Extent.Text) })"
                         }
                         if (-not $PropertyAccessors.Contains($MemberName)) { $PropertyAccessors[$MemberName] = @{} }
                         $PropertyAccessors[$MemberName].Value = [ScriptBlock]::Create($Expression)

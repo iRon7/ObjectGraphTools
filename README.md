@@ -20,7 +20,7 @@ Currently the tool set includes:
 * [`Merge-ObjectGraph`](./Docs/Merge-ObjectGraph.md)
 * [`Sort-ObjectGraph`](./Docs/Sort-ObjectGraph.md)
 * [`Copy-ObjectGraph`](./Docs/Copy-ObjectGraph.md)
-* [`ConvertTo-Expression`](https://www.powershellgallery.com/packages/ConvertTo-Expression/) (under renovation, not yet included)
+* [`ConvertTo-Expression`](./Docs/ConvertTo-Expression.md)
 
 ## Installation
 

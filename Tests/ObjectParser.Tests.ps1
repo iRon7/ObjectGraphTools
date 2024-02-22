@@ -97,13 +97,13 @@ Describe 'PSNode' {
         }
     }
 
-    Context 'Get descendent node' {
+    Context 'Get descendant node' {
         BeforeAll {
             $Node = [PSNode]::ParseInput($Object)
         }
 
         it 'String' {
-            $ItemNode = $Node.GetDescendentNode('String')
+            $ItemNode = $Node.GetNode('String')
             $ItemNode -is [PSNode]     | Should -BeTrue
             $ItemNode -is [PSLeafNode] | Should -BeTrue
             $ItemNode.Value     | Should -Be $Object.String
@@ -111,7 +111,7 @@ Describe 'PSNode' {
         }
 
         it 'String' {
-            $ItemNode = $Node.GetDescendentNode('.String')
+            $ItemNode = $Node.GetNode('.String')
             $ItemNode -is [PSNode]     | Should -BeTrue
             $ItemNode -is [PSLeafNode] | Should -BeTrue
             $ItemNode.Value     | Should -Be $Object.String
@@ -119,7 +119,7 @@ Describe 'PSNode' {
         }
 
         it 'Array' {
-            $ItemNode = $Node.GetDescendentNode('.Array[0].Comment')
+            $ItemNode = $Node.GetNode('.Array[0].Comment')
             $ItemNode -is [PSNode]     | Should -BeTrue
             $ItemNode -is [PSLeafNode] | Should -BeTrue
             $ItemNode.Value     | Should -Be $Object.Array[0].Comment
@@ -184,7 +184,7 @@ Describe 'PSNode' {
 
         it 'Array' {
             $ItemNodes = $Node.GetChildNode('Array').ChildNodes
-            $ItemNodes -is [PSNode[]] | Should -BeTrue
+            $ItemNodes -is [Object[]] | Should -BeTrue
             $ItemNodes.Count          | Should -Be 3
             $ItemNodes.Value.Index    | Should -Contain 2
             $ItemNodes.Value.Name     | Should -Be 'One', 'Two', 'Three'
@@ -192,7 +192,7 @@ Describe 'PSNode' {
 
         it 'HashTable' {
             $ItemNodes = $Node.GetChildNode('HashTable').ChildNodes
-            $ItemNodes -is [PSNode[]] | Should -BeTrue
+            $ItemNodes -is [Object[]] | Should -BeTrue
             $ItemNodes.Count          | Should -Be 3
             $ItemNodes.Name           | Should -Contain 'One'
             $ItemNodes.Name           | Should -Contain 'Two'
@@ -202,13 +202,45 @@ Describe 'PSNode' {
             $ItemNodes.Value          | Should -Contain 3
         }
 
-
         it 'PSCustomObject' {
             $ItemNodes = $Node.GetChildNode('PSCustomObject').ChildNodes
-            $ItemNodes -is [PSNode[]] | Should -BeTrue
+            $ItemNodes -is [Object[]] | Should -BeTrue
             $ItemNodes.Count          | Should -Be 3
-            $ItemNodes.Name      | Should -Be 'One', 'Two', 'Three'
+            $ItemNodes.Name           | Should -Be 'One', 'Two', 'Three'
             $ItemNodes.Value          | Should -Be 1, 2, 3
+        }
+    }
+
+    Context 'Get descendant nodes' {
+        BeforeAll {
+            $Node = [PSNode]::ParseInput($Object)
+        }
+
+        it 'All' {
+            $ItemNodes = $Node.DescendantNodes
+            $ItemNodes.Count | Should -Be 22
+        }
+    }
+
+    Context 'Get list child nodes' {
+        BeforeAll {
+            $Node = [PSNode]::ParseInput($Object)
+        }
+
+        it 'All' {
+            $ItemNodes = $Node.ListChildNodes
+            $ItemNodes.Count | Should -Be 3
+        }
+    }
+
+    Context 'Get map child nodes' {
+        BeforeAll {
+            $Node = [PSNode]::ParseInput($Object)
+        }
+
+        it 'Array' {
+            $ItemNodes = $Node.GetChildNode('Array').MapChildNodes
+            $ItemNodes.Count | Should -Be 9
         }
     }
 
@@ -217,9 +249,17 @@ Describe 'PSNode' {
             $Node = [PSNode]::ParseInput($Object)
         }
 
+        it 'Root path' {
+            $Node.GetChildNode('Array').ChildNodes[1].GetChildNode('Comment').GetPathName() | Should -Be 'Array[1].Comment'
+        }
+
+        it 'Using variable name' {
+            $Node.GetChildNode('Array').ChildNodes[1].GetChildNode('Comment').GetPathName('$MyObject') | Should -Be '$MyObject.Array[1].Comment'
+        }
+
         it 'Array' {
             $ItemNode = $Node.GetChildNode('Array').GetChildNode(2)
-            $ItemNode.PathName | Should -Be '.Array[2]'
+            $ItemNode.PathName | Should -Be 'Array[2]'
             $ItemNode.Path[0]  | Should -Be $ItemNode.RootNode
             $ItemNode.Path[-1] | Should -Be $ItemNode
             $ItemNode.Path[-2] | Should -Be $ItemNode.ParentNode
@@ -227,7 +267,7 @@ Describe 'PSNode' {
 
         it 'HashTable' {
             $ItemNode = $Node.GetChildNode('HashTable').GetChildNode('Two')
-            $ItemNode.PathName | Should -Be '.HashTable.Two'
+            $ItemNode.PathName | Should -Be 'HashTable.Two'
             $ItemNode.Path[0]  | Should -Be $ItemNode.RootNode
             $ItemNode.Path[-1] | Should -Be $ItemNode
             $ItemNode.Path[-2] | Should -Be $ItemNode.ParentNode
@@ -235,14 +275,14 @@ Describe 'PSNode' {
 
         it 'PSCustomObject' {
             $ItemNode = $Node.GetChildNode('PSCustomObject').GetChildNode('Two')
-            $ItemNode.PathName | Should -Be '.PSCustomObject.Two'
+            $ItemNode.PathName | Should -Be 'PSCustomObject.Two'
             $ItemNode.Path[0]  | Should -Be $ItemNode.RootNode
             $ItemNode.Path[-1] | Should -Be $ItemNode
             $ItemNode.Path[-2] | Should -Be $ItemNode.ParentNode
         }
 
         it 'Path with space' {
-            [PSNode]::ParseInput(@{ 'Hello World' = 42 }).ChildNodes[0].PathName | Should -Be ".'Hello World'"
+            [PSNode]::ParseInput(@{ 'Hello World' = 42 }).ChildNodes[0].PathName | Should -Be "'Hello World'"
         }
     }
 
@@ -250,7 +290,7 @@ Describe 'PSNode' {
 
         it 'Get node paths' {
             $Actual = Iterate ([PSNode]::ParseInput($Object))
-            $Expected = '', '.PSCustomObject', '.PSCustomObject.One', '.PSCustomObject.Two', '.PSCustomObject.Three', '.Array', '.Array[0]', '.Array[0].Comment', '.Array[0].Name', '.Array[0].Index', '.Array[1]', '.Array[1].Comment', '.Array[1].Name', '.Array[1].Index', '.Array[2]', '.Array[2].Comment', '.Array[2].Name', '.Array[2].Index', '.HashTable', '.HashTable.One', '.HashTable.Three', '.HashTable.Two', '.String'
+            $Expected = '', 'PSCustomObject', 'PSCustomObject.One', 'PSCustomObject.Two', 'PSCustomObject.Three', 'Array', 'Array[0]', 'Array[0].Comment', 'Array[0].Name', 'Array[0].Index', 'Array[1]', 'Array[1].Comment', 'Array[1].Name', 'Array[1].Index', 'Array[2]', 'Array[2].Comment', 'Array[2].Name', 'Array[2].Index', 'HashTable', 'HashTable.One', 'HashTable.Three', 'HashTable.Two', 'String'
             $Actual | Compare-Object $Expected | Should -BeNullOrEmpty
         }
     }
@@ -298,25 +338,19 @@ Describe 'PSNode' {
         it 'Empty Array' {
             $ArrayNode = $Node.GetChildNode('Array')
             $ItemNodes = $ArrayNode.ChildNodes
-            $ItemNodes -is [PSNode[]]   | Should -BeTrue
-            $ItemNodes.Count            | Should -Be 0
-            $ItemNodes.foreach{ $true } | Should -BeNullOrEmpty
+            $ItemNodes | Should -BeNullOrEmpty
         }
 
         it 'Empty HashTable' {
             $HashTableNode = $Node.GetChildNode('HashTable')
             $ItemNodes = $HashTableNode.ChildNodes
-            $ItemNodes -is [PSNode[]]   | Should -BeTrue
-            $ItemNodes.Count            | Should -Be 0
-            $ItemNodes.foreach{ $true } | Should -BeNullOrEmpty
+            $ItemNodes | Should -BeNullOrEmpty
         }
 
         it 'Empty PSCustomObject' {
             $PSCustomObjectNode = $Node.GetChildNode('PSCustomObject')
             $ItemNodes = $PSCustomObjectNode.ChildNodes
-            $ItemNodes -is [PSNode[]]   | Should -BeTrue
-            $ItemNodes.Count            | Should -Be 0
-            $ItemNodes.foreach{ $true } | Should -BeNullOrEmpty
+            $ItemNodes | Should -BeNullOrEmpty
         }
     }
 
@@ -329,19 +363,19 @@ Describe 'PSNode' {
         It 'Default Depth' {
             $Output = Iterate ([PSNode]::ParseInput($Cycle)) 3>&1
             $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*maximum depth*10*'
-            $Output.where{$_ -isnot [System.Management.Automation.WarningRecord]}         | Should -Contain '.Parent.Parent.Parent.Name'
+            $Output.where{$_ -isnot [System.Management.Automation.WarningRecord]}         | Should -Contain 'Parent.Parent.Parent.Name'
         }
 
         It '-Depth 5' {
             $Output = Iterate ([PSNode]::ParseInput($Cycle, 5)) 3>&1
             $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*maximum depth*5*'
-            $Output.where{$_ -isnot [System.Management.Automation.WarningRecord]}         | Should -Contain '.Parent.Parent.Parent.Name'
+            $Output.where{$_ -isnot [System.Management.Automation.WarningRecord]}         | Should -Contain 'Parent.Parent.Parent.Name'
         }
 
         It '-Depth 15' {
             $Output = Iterate ([PSNode]::ParseInput($Cycle, 15)) 3>&1
             $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*maximum depth*15*'
-            $Output.where{$_ -isnot [System.Management.Automation.WarningRecord]}         | Should -Contain '.Parent.Parent.Parent.Name'
+            $Output.where{$_ -isnot [System.Management.Automation.WarningRecord]}         | Should -Contain 'Parent.Parent.Parent.Name'
         }
     }
 }
