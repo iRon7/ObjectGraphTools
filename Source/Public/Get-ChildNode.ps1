@@ -192,11 +192,11 @@ function Get-ChildNode {
     process {
         $Self = [PSNode]::ParseInput($InputObject, $MaxDepth)
 
-        if ($PSBoundParameters.ContainsKey('Path')) { $Self = $Self.GetDescendentNode($Path) }
+        if ($PSBoundParameters.ContainsKey('Path')) { $Self = $Self.GetNode($Path) }
         $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
             [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
         } elseif ($Recurse) { -1 } else { 0 }
-        $Nodes = $Self.GetDescendentNodes($SearchDepth)
+        $Nodes = $Self.GetNodes($SearchDepth)
         if ($IncludeSelf) {
             $ChildNodes = $Nodes
             $Nodes = [Collections.Generic.List[PSNode]]$Self

@@ -113,7 +113,7 @@ The type of the value embedded by the PSNode.
 
 ### `NodeOrigin` (ReadOnly)
 
-Defines whether the parent node is a `[PSListNode]` type, a `[PSMapNode]` type.
+Defines whether the parent node is a list (`[PSListNode]` type) or a map (`[PSMapNode]` type).
 The NodeOrigin is `Root` if the current node has no parent node.
 
 ### `ParentNode` (ReadOnly)

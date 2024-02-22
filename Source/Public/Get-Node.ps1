@@ -52,7 +52,7 @@ Using NameSpace System.Management.Automation.Language
     The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 
     > [!Note]
-    > The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendent node
+    > The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
     > at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
 #>
 
@@ -77,7 +77,7 @@ function Get-Node {
     }
     process {
         $Node = [PSNode]::ParseInput($InputObject, $MaxDepth)
-        if ($Null -eq $Path) { $Node } else { $Node.GetDescendentNode($Path) }
+        if ($Null -eq $Path) { $Node } else { $Node.GetNode($Path) }
     }
 }
 

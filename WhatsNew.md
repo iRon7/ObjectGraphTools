@@ -1,3 +1,18 @@
+## 2024-02-22 0.0.17 (iRon)
+  - Break changes (fixes)
+    - Changed naming Descendent --> Descendant
+    - Remove leading dot from `PathName`, use: `.GetPathName('$MyObject')` or `.GetPathName('')` to get a relative path
+    - Depleted `.GetDescendantNode(<Path>)`, use: `.GetNode(<XdnPath>)`
+
+  - Fixed
+    - #17 The call to MergeObject used incorrect `Depth` parameter
+    - #46 Sort-ObjectGraph: Out of range error
+
+  - Enhancements
+    - Increased: [PSNode]::DefaultMaxDepth = 20
+    - Prerelease: Extended-Dot-Notation Path (`XdnPath` Class)
+    - Prerelease: ConvertTo-Expression (based on `PSNode` class)
+
 ## 2024-02-04 0.0.16 (iRon)
   - Fixed
     - #40 Numeric keys don't convert to PSCustomObject

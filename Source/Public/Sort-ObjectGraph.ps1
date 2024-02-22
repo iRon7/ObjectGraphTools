@@ -47,7 +47,7 @@ function ConvertTo-SortedObjectGraph {
 
         [Switch]$Descending,
 
-        [Alias('Depth')][int]$MaxDepth = 10
+        [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
     )
     begin {
         $Primary = @{}
@@ -67,7 +67,7 @@ function ConvertTo-SortedObjectGraph {
                 $SortKey = if ($Null -eq $($Node.Value)) { [Char]27 + '$Null' } elseif ($MatchCase) { "$($Node.Value)".ToUpper() } else { "$($Node.Value)" }
                 $Output = @{ $SortKey = $($Node.Value) }
             }
-            elseif ($Node -is [PSListNode]) {                                           # This will convert the list to an (fixed) array
+            elseif ($Node -is [PSListNode]) {                                   # This will convert the list to an (fixed) array
                 $Items = $Node.ChildNodes.foreach{ SortObject $_ -SortIndex -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending }
                 $Items = $Items | Sort-Object -CaseSensitive:$MatchCase -Descending:$Descending { $_.Keys[0] }
                 $String = [Collections.Generic.List[String]]::new()
@@ -80,7 +80,7 @@ function ConvertTo-SortedObjectGraph {
                 $Name = $String -Join [Char]255
                 $Output = @{ $Name = @($List) }
             }
-            elseif ($Node -is [PSMapNode]) {                     # This will convert a dictionary to a PSCustomObject
+            elseif ($Node -is [PSMapNode]) {                                    # This will convert a dictionary to a PSCustomObject
                 $HashTable = [HashTable]::New(0, [StringComparer]::Ordinal)
                 $Node.ChildNodes.foreach{
                     $SortObject = SortObject $_ -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending -SortIndex
@@ -93,10 +93,10 @@ function ConvertTo-SortedObjectGraph {
                 @($SortedKeys).foreach{
                     $Item = $HashTable[$_]
                     $Name = $Item.GetEnumerator().Name
-                    $Properties[$Name] = $Item[$Name]
+                    $Properties[[Object]$Name] = $Item[$Name]                   # https://github.com/PowerShell/PowerShell/issues/14791
                 }
                 $Name = $SortedKeys -Join [Char]255
-                $Output = @{ $Name = [PSCustomObject]$Properties }          # https://github.com/PowerShell/PowerShell/issues/20753
+                $Output = @{ $Name = [PSCustomObject]$Properties }              # https://github.com/PowerShell/PowerShell/issues/20753
             }
             else { Write-Error 'Should not happen' }
             if ($SortIndex) { $Output } else { $Output.get_Values() }
