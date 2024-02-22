@@ -228,7 +228,7 @@ World
 
             It 'Default Depth' {
                 $Records = Sort-ObjectGraph $Object 3>&1
-                $Records.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike '*maximum depth*10*'
+                $Records.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike "*maximum depth*$([PSNode]::DefaultMaxDepth)*"
                 $Records.where{$_ -isnot [System.Management.Automation.WarningRecord]}.Name    | Should -Be     'Test'
             }
 

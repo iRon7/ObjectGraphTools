@@ -149,7 +149,7 @@ Describe 'Merge-ObjectGraph' {
             $InputObject = @{ Name = 'Test' }
             $InputObject.Parent = $InputObject
             $Records = $InputObject | Merge-ObjectGraph $Template 3>&1
-            $Records.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike '*maximum depth*10*'
+            $Records.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike "*maximum depth*$([PSNode]::DefaultMaxDepth)*"
             $Records.where{$_ -isnot [System.Management.Automation.WarningRecord]}.Name    | Should -Be     'Test'
         }
    }

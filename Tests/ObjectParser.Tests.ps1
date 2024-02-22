@@ -362,7 +362,7 @@ Describe 'PSNode' {
 
         It 'Default Depth' {
             $Output = Iterate ([PSNode]::ParseInput($Cycle)) 3>&1
-            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*maximum depth*10*'
+            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  "*maximum depth*$([PSNode]::DefaultMaxDepth)*"
             $Output.where{$_ -isnot [System.Management.Automation.WarningRecord]}         | Should -Contain 'Parent.Parent.Parent.Name'
         }
 
