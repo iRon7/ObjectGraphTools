@@ -83,7 +83,7 @@ function ConvertTo-Expression {
         ) {
             if ($Node -is [PSListNode]) {
                 $Indent1 = if ($Indent -or $Prefix) { $Indent + $Script:Indent }
-                $ChildNodes = $Node.ChildNodes
+                $ChildNodes = $Node.get_ChildNodes()
                 if ($ChildNodes) {
                     if ($Indent1) { "$Indent$Prefix@(" }
                     for ($i = 0; $i -lt $ChildNodes.Count; $i++) {
@@ -96,7 +96,7 @@ function ConvertTo-Expression {
             }
             elseif ($Node -is [PSMapNode]) {
                 $Indent1 = $Indent + $Script:Indent
-                $ChildNodes = $Node.ChildNodes
+                $ChildNodes = $Node.get_ChildNodes()
                 if ($ChildNodes) {
                     "$Indent$Prefix@{"
                     foreach ($ChildNode in $ChildNodes) {

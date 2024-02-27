@@ -1,4 +1,11 @@
-## 2024-02-22 0.0.17 (iRon)
+## 2024-02-22 0.0.19 (iRon)
+  - Fixed
+    - `ConvertTo-Expression` adding `$Null` entries
+
+  - Enhancements
+    - Use reflection for `Use-ClassAccessors`, see: https://github.com/iRon7/Use-ClassAccessors/issues/4
+
+## 2024-02-22 0.0.18 (iRon)
   - Break changes (fixes)
     - Changed naming Descendent --> Descendant
     - Remove leading dot from `PathName`, use: `.GetPathName('$MyObject')` or `.GetPathName('')` to get a relative path

@@ -19,6 +19,8 @@ using namespace System.Collections.Generic
 using namespace System.Management.Automation
 using namespace System.Management.Automation.Language
 
+Set-Alias -Name Use-ClassAccessors -Value $PSScriptRoot\..\Private\Use-ClassAccessors.ps1
+
 enum XdnPredecessor { Root; Parent; Ancestor }
 enum XdnType { Root; Ancestor; Index; Child; Descendant }
 
@@ -170,6 +172,7 @@ class XdnPath {
     [String] ToColorString([String]$VariableName) { return $this.ToString($VariableName, $true)}
 
     static XdnPath() { # https://stackoverflow.com/questions/77752014/how-to-type-convert-a-derived-class
+        Use-ClassAccessors
         $FormatData = @'
         <Configuration>
         <ViewDefinitions>
@@ -206,6 +209,8 @@ enum PSNodeOrigin { Root; List; Map }
 
 
 Class PSNode {
+    hidden static PSNode() { Use-ClassAccessors }
+
     static [int]$DefaultMaxDepth = 20
     hidden $_Name
     [Int]$Depth
@@ -213,7 +218,7 @@ Class PSNode {
     hidden [Int]$_MaxDepth = [PSNode]::DefaultMaxDepth
     hidden [PSNodeOrigin]$_NodeOrigin
     [PSNode]$ParentNode
-    [PSNode]$RootNode = $this               # This will be overwritten by the Append method
+    [PSNode]$RootNode = $this
     hidden [PSNode[]]$_Path = @()
     hidden [String]$_PathName
     hidden [Bool]$WarnedMaxDepth            # Warn ones per item branch
@@ -285,16 +290,20 @@ Class PSNode {
     hidden [PSNode] Append($Object) {
         $Node = [PSNode]::ParseInput($Object)
         $Node.Depth       = $this.Depth + 1
-        $Node.RootNode    = $this.RootNode
+        $Node.RootNode    = [PSNode]$this.RootNode
         $Node.ParentNode  = $this
         $Node._NodeOrigin = if ($this -is [PSListNode]) { 'List' } elseif ($this -is [PSMapNode]) { 'Map' }
         return $Node
     }
 
-    hidden [List[PSNode]] get_Path() {
+    hidden [Object] get_Path() {
         if ($this._Path.Count -eq 0) {
-            if ($this.ParentNode) { $ParentPath = $this.ParentNode.get_Path() } else { $ParentPath =  @() }
-            $this._Path = $ParentPath + $this # This will shallow copy the parent path
+            if ($this.ParentNode) {
+                $this._Path = $this.ParentNode.get_Path() + $this # This will shallow copy the parent path
+            }
+            else {
+                $this._Path = $this
+            }
         }
         return $this._Path
     }
@@ -390,6 +399,7 @@ Class PSNode {
 }
 
 Class PSLeafNode : PSNode {
+
     hidden PSLeafNode($Object) {
         if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
     }
@@ -400,6 +410,8 @@ Class PSLeafNode : PSNode {
 }
 
 Class PSCollectionNode : PSNode {
+    hidden static PSCollectionNode() { Use-ClassAccessors }
+
     hidden [bool]MaxDepthReached() {
         $MaxDepthReached = $this.Depth -ge $this.RootNode._MaxDepth
         if ($MaxDepthReached -and -not $this.WarnedMaxDepth) {
@@ -441,25 +453,27 @@ Class PSCollectionNode : PSNode {
         return $List
     }
 
-    [List[PSNode]]GetNodes() {
-        return $this.GetNodes(0, 0, $false)
+    [List[PSNode]]GetChildNodes() {
+        return $this.GetChildNodes(0, 0, $false)
     }
-    [List[PSNode]]GetNodes([Int]$Levels) {
-        return $this.GetNodes($Levels, 0, $false)
+    [List[PSNode]]GetChildNodes([Int]$Levels) {
+        return $this.GetChildNodes($Levels, 0, $false)
     }
-    [List[PSNode]]GetNodes([PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
-        return $this.GetNodes(0, $NodeOrigin, $Leaf)
+    [List[PSNode]]GetChildNodes([PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
+        return $this.GetChildNodes(0, $NodeOrigin, $Leaf)
     }
-    hidden [Object]get_ChildNodes()      { return [PSNode[]]$this.GetNodes(0,  0,      $false) }
-    hidden [Object]get_ListChildNodes()  { return [PSNode[]]$this.GetNodes(0,  'List', $false) }
-    hidden [Object]get_MapChildNodes()   { return [PSNode[]]$this.GetNodes(0,  'Map',  $false) }
-    hidden [Object]get_DescendantNodes() { return [PSNode[]]$this.GetNodes(-1, 0,      $false) }
-    hidden [Object]get_LeafNodes()       { return [PSNode[]]$this.GetNodes(-1, 0,      $true) }
+    hidden [Object]get_ChildNodes()      { return [PSNode[]]$this.GetChildNodes(0,  0,      $false) }
+    hidden [Object]get_ListChildNodes()  { return [PSNode[]]$this.GetChildNodes(0,  'List', $false) }
+    hidden [Object]get_MapChildNodes()   { return [PSNode[]]$this.GetChildNodes(0,  'Map',  $false) }
+    hidden [Object]get_DescendantNodes() { return [PSNode[]]$this.GetChildNodes(-1, 0,      $false) }
+    hidden [Object]get_LeafNodes()       { return [PSNode[]]$this.GetChildNodes(-1, 0,      $true) }
     hidden [Object]_($Name)              { return [PSNode]$this.GetChildNode($Name) }       # CLI Shorthand ("alias") for GetChildNode (don't use in scripts)
     # hidden [Object]Get($Path)                { return $this.GetDescendantNode($Path) }  # CLI Shorthand ("alias") for GetDescendantNode (don't use in scripts)
 }
 
 Class PSListNode : PSCollectionNode {
+    hidden static PSListNode() { Use-ClassAccessors }
+
     hidden PSListNode($Object) {
         if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
     }
@@ -488,16 +502,16 @@ Class PSListNode : PSCollectionNode {
         $this._Value[$Index] = $Value
     }
 
-    [List[PSNode]]GetNodes([Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
+    [List[PSNode]]GetChildNodes([Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
         $List = [List[PSNode]]::new()
         if (-not $this.MaxDepthReached()) {
-            for ($Index = 0; $Index -lt $this._Value.Get_Count(); $Index++) {
+            for ($Index = 0; $Index -lt $this._Value.get_Count(); $Index++) {
                 $Node = $this.Append($this._Value[$Index])
                 $Node._Name = $Index
                 if ($NodeOrigin -in 0, 'List' -or ($Leaf -and $Node -is [PSLeafNode])) { $List.Add($Node) }
                 if ($Node -is [PSCollectionNode] -and ($Levels -ne 0 -or $NodeOrigin -eq 'Map')) { # $NodeOrigin -eq 'Map' --> Member Access Enumeration
                     $Levels_1 = if ($Levels -gt 0) { $Levels - 1 } else { $Levels }
-                    $list.AddRange($Node.GetNodes($Levels_1, $NodeOrigin, $Leaf))
+                    $list.AddRange($Node.GetChildNodes($Levels_1, $NodeOrigin, $Leaf))
                 }
             }
         }
@@ -517,7 +531,7 @@ Class PSListNode : PSCollectionNode {
 
     [Int]GetHashCode() {
         $HashCode = '@()'.GetHashCode()
-        foreach ($Node in $this.GetNodes(-1)) {
+        foreach ($Node in $this.GetChildNodes(-1)) {
             $HashCode = $HashCode -bxor $Node.GetHashCode()
         }
         # Shift the bits to make the level unique
@@ -527,10 +541,11 @@ Class PSListNode : PSCollectionNode {
 }
 
 Class PSMapNode : PSCollectionNode {
+    hidden static PSMapNode() { Use-ClassAccessors }
 
     [Int]GetHashCode() {
         $HashCode = '@{}'.GetHashCode()
-        foreach ($Node in $this.GetNodes(-1)) {
+        foreach ($Node in $this.GetChildNodes(-1)) {
             $HashCode = $HashCode -bxor "$($Node._Name)=$($Node.GetHashCode())".GetHashCode()
         }
         return $HashCode
@@ -538,6 +553,8 @@ Class PSMapNode : PSCollectionNode {
 }
 
 Class PSDictionaryNode : PSMapNode {
+    hidden static PSDictionaryNode() { Use-ClassAccessors }
+
     hidden PSDictionaryNode($Object) {
         if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
     }
@@ -566,7 +583,7 @@ Class PSDictionaryNode : PSMapNode {
         $this._Value[$Key] = $Value
     }
 
-    [List[PSNode]]GetNodes([Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
+    [List[PSNode]]GetChildNodes([Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
         $List = [List[PSNode]]::new()
         if (-not $this.MaxDepthReached()) {
             foreach($Key in $this._Value.get_Keys()) {
@@ -575,7 +592,7 @@ Class PSDictionaryNode : PSMapNode {
                 if ($NodeOrigin -in 0, 'Map' -or ($Leaf -and $Node -is [PSLeafNode])) { $List.Add($Node) }
                 if ($Node -is [PSCollectionNode] -and ($Levels -ne 0 -or $NodeOrigin -eq 'List')) {
                     $Levels_1 = if ($Levels -gt 0) { $Levels - 1 } else { $Levels }
-                    $list.AddRange($Node.GetNodes($Levels_1, $NodeOrigin, $Leaf))
+                    $list.AddRange($Node.GetChildNodes($Levels_1, $NodeOrigin, $Leaf))
                 }
             }
         }
@@ -594,6 +611,8 @@ Class PSDictionaryNode : PSMapNode {
 }
 
 Class PSObjectNode : PSMapNode {
+    hidden static PSObjectNode() { Use-ClassAccessors }
+
     hidden PSObjectNode($Object) {
         if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
     }
@@ -622,7 +641,7 @@ Class PSObjectNode : PSMapNode {
         $this._Value.PSObject.Properties[$Name].Value = $Value
     }
 
-    [List[PSNode]]GetNodes([Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
+    [List[PSNode]]GetChildNodes([Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
         $List = [List[PSNode]]::new()
         if (-not $this.MaxDepthReached()) {
             foreach($Property in $this._Value.PSObject.Properties) {
@@ -631,7 +650,7 @@ Class PSObjectNode : PSMapNode {
                 if ($NodeOrigin -in 0, 'Map' -or ($Leaf -and $Node -is [PSLeafNode])) { $List.Add($Node) }
                 if ($Node -is [PSCollectionNode] -and ($Levels -ne 0 -or $NodeOrigin -eq 'List')) {
                     $Levels_1 = if ($Levels -gt 0) { $Levels - 1 } else { $Levels }
-                    $list.AddRange($Node.GetNodes($Levels_1, $NodeOrigin, $Leaf))
+                    $list.AddRange($Node.GetChildNodes($Levels_1, $NodeOrigin, $Leaf))
                 }
             }
         }
@@ -648,7 +667,5 @@ Class PSObjectNode : PSMapNode {
         return $Node
     }
 }
-
-Use-ClassAccessors -Force
 
 Update-TypeData -TypeName PSNode -DefaultDisplayPropertySet PathName, Name, Depth, Value -Force
