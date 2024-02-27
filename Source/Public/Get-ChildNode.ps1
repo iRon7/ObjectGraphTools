@@ -196,7 +196,7 @@ function Get-ChildNode {
         $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
             [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
         } elseif ($Recurse) { -1 } else { 0 }
-        $Nodes = $Self.GetNodes($SearchDepth)
+        $Nodes = $Self.GetChildNodes($SearchDepth)
         if ($IncludeSelf) {
             $ChildNodes = $Nodes
             $Nodes = [Collections.Generic.List[PSNode]]$Self

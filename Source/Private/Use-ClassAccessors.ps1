@@ -1,3 +1,20 @@
+<#PSScriptInfo
+.Version 0.1.0
+.Guid 19631007-aef4-42ec-9be2-1cc2854222cc
+.Author Ronald Bode (iRon)
+.CompanyName
+.Copyright
+.Tags Accessors Getter Setter Class get_ set_ TypeData
+.License https://github.com/iRon7/Use-ClassAccessors/LICENSE.txt
+.ProjectUri https://github.com/iRon7/Use-ClassAccessors
+.Icon https://raw.githubusercontent.com/iRon7/Use-ClassAccessors/master/Use-ClassAccessors.png
+.ExternalModuleDependencies
+.RequiredScripts
+.ExternalScriptDependencies
+.ReleaseNotes
+.PrivateData
+#>
+
 <#
     .SYNOPSIS
         Implements class getter and setter accessors.
@@ -14,6 +31,11 @@
               return <variable>
             }
 
+        or (which performs a little faster):
+
+            [Object] get_<property name>() {
+              return ,[<Type>]<variable>
+            }
         ### setter syntax
 
             set_<property name>(<variable>) {
@@ -33,6 +55,8 @@
         The following example defines a getter and setter for a `value` property
         and a _readonly_ property for the type of the type of the contained value.
 
+            Install-Script -Name Use-ClassAccessors
+
             Class ExampleClass {
                 hidden $_Value
                 hidden [Object] get_Value() {
@@ -45,9 +69,8 @@
                   if ($Null -eq $this.Value) { return $Null }
                   else { return $this._Value.GetType() }
                 }
+                hidden static ExampleClass() { Use-ClassAccessors }
             }
-
-            .\Use-ClassAccessors.ps1 # -Force
 
             $Example = [ExampleClass]::new()
 
@@ -56,20 +79,15 @@
             $Example.Type               # Returns [Int] type info
             $Example.Type = 'Something' # Throws readonly error
 
-    .PARAMETER ClassName
+    .PARAMETER Class
 
-        Specifies the name of the class that contain the accessors.
-        Default: All class in the (current) script (see also: [Script] parameter)
+        Specifies the class from which the accessor need to be initialized.
+        Default: The class from which this function is invoked (by its static initializer).
 
-    .PARAMETER PropertyName
+    .PARAMETER Property
 
-        Specifies the property name to update with the accessors.
-        Default: All properties in the given class or classes (see also: [ClassName] parameter)
-
-    .PARAMETER Script
-
-        Specifies the script (block or path) that contains the class source.
-        Default: the script where this command is invoked
+        Filters the property that requires to be (re)initialized.
+        Default: All properties in the given class
 
     .PARAMETER Force
 
@@ -82,101 +100,84 @@
         [3]: https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_classes#hidden-keyword "Hidden keyword in classes"
 #>
 
-using namespace System.Management.Automation
-using namespace System.Management.Automation.Language
+param(
+    [Parameter(ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
+    [ValidateNotNullOrEmpty()]
+    [string[]]$Class,
 
-function Use-ClassAccessors {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('InjectionRisk.Create',    '', Justification = 'script blocks are created from class methods')]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'false positives')]
-    [OutputType([System.Void])]
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
-        [ValidateNotNullOrEmpty()]
-        [string[]]$ClassName,
+    [Parameter(ValueFromPipelineByPropertyName=$true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$Property,
 
-        [Parameter(ValueFromPipelineByPropertyName=$true)]
-        [ValidateNotNullOrEmpty()]
-        [string]$PropertyName,
+    [switch]$Force
+)
 
-        [ValidateNotNullOrEmpty()]
-        $Script,
-
-        [switch]$Force
-    )
-
-    begin {
-        function StopError($Exception, $Id = 'IncorrectArgument', [ErrorCategory]$Group = [ErrorCategory]::SyntaxError, $Object){
-            if ($Exception -is [ErrorRecord]) { $Exception = $Exception.Exception }
-            elseif ($Exception -isnot [Exception]) { $Exception = [ArgumentException]$Exception }
-            $PSCmdlet.ThrowTerminatingError([ErrorRecord]::new($Exception, $Id, $Group, $Object))
-        }
-    }
-
-    process {
-        $Callers = Get-PSCallStack | Select-Object -Skip 1
-        if (-Not $Script) { $Script = $Callers.InvocationInfo.MyCommand.where({ $_.CommandType -eq 'ExternalScript' }, 'first').ScriptBlock }
-
-        if ($Script -is [ScriptBlock]) {
-            $Ast = [System.Management.Automation.Language.Parser]::ParseInput($Script, [ref]$Null, [ref]$Null)
-        }
-        elseif ($Script) {
-            $PathInfo = Resolve-Path $Script -ErrorAction SilentlyContinue
-            if (-Not $PathInfo) { StopError "Cannot find path '$Script' because it does not exist." }
-            $Errors =  $Null
-            $Ast = [Parser]::ParseFile($PathInfo.Path, [ref]$Null, [ref]$Errors)
-            if ($Errors) { StopError $Errors[0].Message }
-        }
+process {
+    $ClassNames =
+        if ($Class) { $Class }
         else {
-            StopError 'This Cmdlet should be called from within the script that contains the concerned classes or the script parameter should be provided.'
+            $Caller = (Get-PSCallStack)[1]
+            if ($Caller.FunctionName -ne '<ScriptBlock>') {
+                $Caller.FunctionName
+            }
+            elseif ($Caller.ScriptName) {
+                $Ast = [System.Management.Automation.Language.Parser]::ParseFile($Caller.ScriptName, [ref]$Null, [ref]$Null)
+                $Ast.EndBlock.Statements.where{ $_.IsClass }.Name
+            }
         }
-
-        foreach ($Class in $Ast.EndBlock.Statements.where{ $_.IsClass -and (-not $ClassName -or $_.Name -in $ClassName) }) {
-            $PropertyAccessors = @{}
-            $Accessors = $Class.Members.where{
-                $_ -is [FunctionMemberAst] -and
-                $_.IsPublic -and
-                -not $_.IsConstructor -and
-                -not $_.IsStatic -and
-                -Not $PropertyName -or $_.Name -like '?et_$Property$Name'
+    foreach ($ClassName in $ClassNames) {
+        $TargetType = $ClassName -as [Type]
+        if (-not $TargetType) { Write-Warning "Class not found: $ClassName" }
+        $TypeData = Get-TypeData -TypeName $ClassName
+        $Members = if ($TypeData -and $TypeData.Members) { $TypeData.Members.get_Keys() } else { @() }
+        $Methods =
+            if ($Property) {
+                $TargetType.GetMethod("get_$Property")
+                $TargetType.GetMethod("set_$Property")
             }
-            foreach ($Accessor in $Accessors) {
-                if ($Accessor.Name -like 'get_*') {
-                    if ($Accessor.Parameters.Count -eq 0) {
-                        $MemberName = $Accessor.Name.SubString(4)
-                        $ReturnType = $Accessor.ReturnType.TypeName.Name -as [Type]
-                        if ($Null -eq $ReturnType -or $ReturnType.FullName -eq 'System.Object') {
-                            $Expression =  $Accessor.Body.EndBlock.Extent.Text
-                        }
-                        else {
-                            $Expression = "[$ReturnType](& { $($Accessor.Body.EndBlock.Extent.Text) })"
-                        }
-                        if (-not $PropertyAccessors.Contains($MemberName)) { $PropertyAccessors[$MemberName] = @{} }
-                        $PropertyAccessors[$MemberName].Value = [ScriptBlock]::Create($Expression)
-                    }
-                    else { Write-Warning "The method '$($Accessor.Name)' is skipped as it is not parameter-less." }
-                }
-                if ($Accessor.Name -like 'set_*') {
-                    if ($Accessor.Parameters.Count -eq 1) {
-                        $MemberName = $Accessor.Name.SubString(4)
-                        $Expression = "param($($Accessor.Parameters[0].Extent.Text)) $($Accessor.Body.EndBlock.Extent.Text)"
-                        if (-not $PropertyAccessors.Contains($MemberName)) { $PropertyAccessors[$MemberName] = @{} }
-                        $PropertyAccessors[$MemberName].SecondValue = [ScriptBlock]::Create($Expression)
-                    }
-                    else { Write-Warning "The method '$($Accessor.Name)' is skipped as it does not have a single parameter" }
-                }
+            else {
+                $targetType.GetMethods().where{ ($_.Name -Like 'get_*' -or  $_.Name -Like 'set_*') -and $_.Name -NotLike '???__*' }
             }
-            foreach ($MemberName in $PropertyAccessors.get_Keys()) {
-                $TypeData = $PropertyAccessors[$MemberName]
-                if ($TypeData.Contains('Value')) {
-                    $TypeData.TypeName   = $Class.Name
-                    $TypeData.MemberType = 'ScriptProperty'
-                    $TypeData.MemberName = $MemberName
-                    $TypeData.Force      = $Force
-                    Update-TypeData @TypeData
+        $Accessors = @{}
+        foreach ($Method in $Methods) {
+            $Member = $Method.Name.SubString(4)
+            if (-not $Force -and $Member -in $Members) { continue }
+            $Parameters = $Method.GetParameters()
+            if ($Method.Name -Like 'get_*') {
+                if ($Parameters.Count -eq 0) {
+                    $Expression = @"
+`$TargetType = '$ClassName' -as [Type]
+`$Method = `$TargetType.GetMethod('$($Method.Name)')
+[$($Method.ReturnType.FullName)]`$Method.Invoke(`$this, `$Null)
+"@
+                    if (-not $Accessors.Contains($Member)) { $Accessors[$Member] = @{} }
+                    $Accessors[$Member].Value = [ScriptBlock]::Create($Expression)
                 }
-                else { Write-Warning "A 'set_$MemberName()' accessor requires a 'get_$MemberName()' accessor." }
+                else { Write-Warning "The getter '$($Method.Name)' is skipped as it is not parameter-less." }
             }
+            elseif ($Method.Name -Like 'set_*') {
+                if ($Parameters.Count -eq 1) {
+                    $Expression = @"
+`$TargetType = '$ClassName' -as [Type]
+`$Method = `$TargetType.GetMethod('$($Method.Name)')
+`$Method.Invoke(`$this, `$Args)
+"@
+                    if (-not $Accessors.Contains($Member)) { $Accessors[$Member] = @{} }
+                    $Accessors[$Member].SecondValue = [ScriptBlock]::Create($Expression)
+                }
+                else { Write-Warning "The setter '$($Method.Name)' is skipped as it does not have a single parameter" }
+            }
+        }
+        foreach ($MemberName in $Accessors.get_Keys()) {
+            $TypeData = $Accessors[$MemberName]
+            if ($TypeData.Contains('Value')) {
+                $TypeData.TypeName   = $ClassName
+                $TypeData.MemberType = 'ScriptProperty'
+                $TypeData.MemberName = $MemberName
+                $TypeData.Force      = $Force
+                Update-TypeData @TypeData
+            }
+            else { Write-Warning "A 'set_$MemberName()' accessor requires a 'get_$MemberName()' accessor." }
         }
     }
 }
