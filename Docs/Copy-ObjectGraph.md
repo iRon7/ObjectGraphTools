@@ -11,7 +11,7 @@ Copy-ObjectGraph
     [-ListAs <Object>]
     [-MapAs <Object>]
     [-ExcludeLeafs]
-    [-MaxDepth <Int32> = 10]
+    [-MaxDepth <Int32> = [PSNode]::DefaultMaxDepth]
     [<CommonParameters>]
 ```
 
@@ -23,16 +23,22 @@ Recursively ("deep") copies a object graph.
 
 ### Example 1: Deep copy a complete object graph into a new object graph
 
+
+```PowerShell
 $NewObjectGraph = Copy-ObjectGraph $ObjectGraph
 ```
 
 ### Example 2: Copy (convert) an object graph using common PowerShell arrays and PSCustomObjects
 
+
+```PowerShell
 $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObject
 ```
 
 ### Example 3: Convert a Json string to an object graph with (case insensitive) ordered dictionaries
 
+
+```PowerShell
 $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
 ```
 
@@ -95,7 +101,7 @@ If omitted, each leaf will be shallow copied
 <tr><td>Type:</td><td></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td><code>10</code></td></tr>
+<tr><td>Default value:</td><td><code>[PSNode]::DefaultMaxDepth</code></td></tr>
 <tr><td>Accept pipeline input:</td><td></td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
@@ -107,3 +113,5 @@ If omitted, each leaf will be shallow copied
 
 [1]: https://learn.microsoft.com/dotnet/api/system.management.automation.pscustomobject "PSCustomObject Class"
 [2]: https://learn.microsoft.com/dotnet/api/system.componentmodel.component "Component Class"
+
+[comment]: <> (Created with Get-MarkdownHelp: Install-Script -Name Get-MarkdownHelp)
