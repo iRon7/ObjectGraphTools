@@ -47,9 +47,9 @@ function Copy-ObjectGraph {
         [Parameter(Mandatory = $true, ValueFromPipeLine = $true)]
         $InputObject,
 
-        $ListAs,
+        [ValidateNotNull()]$ListAs,
 
-        $MapAs,
+        [ValidateNotNull()]$MapAs,
 
         [Switch]$ExcludeLeafs,
 
@@ -62,19 +62,9 @@ function Copy-ObjectGraph {
             $PSCmdlet.ThrowTerminatingError([System.Management.Automation.ErrorRecord]::new($Exception, $Id, $Group, $Object))
         }
 
-        $ListNode = if ($PSBoundParameters.ContainsKey('ListAs')) {
-            if ($ListAs -is [String] -or $ListAs -is [Type]) {
-                try { $ListAs = New-Object -Type $ListAs } catch { StopError $_ }
-            }
-            [PSNode]::ParseInput($ListAs)
-        }
+        $ListType = if ($ListAs -is [String] -or $ListAs -is [Type]) { $ListAs -as [Type] } elseif ($Null -ne $ListAs) { $ListAs.GetType() }
+        $MapType  = if ($MapAs  -is [String] -or $MapAs  -is [Type]) { $MapAs  -as [Type] } elseif ($Null -ne $MapAs)  { $MapAs.GetType() }
 
-        $MapNode = if ($PSBoundParameters.ContainsKey('MapAs')) {
-            if ($MapAs -is [String] -or $MapAs -is [Type]) {
-                try { $MapAs = New-Object -Type $MapAs } catch { StopError $_ }
-            }
-            [PSNode]::ParseInput($MapAs)
-        }
 
         if (($ListNode -is [PSMapNode] -and $MapNode -isnot [PSMapNode]) -or ($MapNode -is [PSListNode] -and $ListNode -isnot [PSListNode])) {
             $ListNode, $DictionaryNode = $DictionaryNode, $ListNode
@@ -114,6 +104,6 @@ function Copy-ObjectGraph {
     }
     process {
         $PSNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
-        CopyObject $PSNode -ListType $ListNode.ValueType -MapType $MapNode.ValueType -ExcludeLeafs:$ExcludeLeafs
+        CopyObject $PSNode -ListType $ListType -MapType $MapType -ExcludeLeafs:$ExcludeLeafs
     }
 }

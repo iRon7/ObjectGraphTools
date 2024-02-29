@@ -120,7 +120,7 @@ PowerShell representation. The default value is 9.
 ## Inputs
 
 Any. Each objects provided through the pipeline will converted to an
-expression. To concatinate all piped objects in a single expression,
+expression. To concatenate all piped objects in a single expression,
 use the unary comma operator,  e.g.: ,$Object | ConvertTo-Expression
 
 ## Outputs
@@ -131,3 +131,5 @@ for each input object.
 ## Related Links
 
 * https://www.powershellgallery.com/packages/ConvertFrom-Expression
+
+[comment]: <> (Created with Get-MarkdownHelp: Install-Script -Name Get-MarkdownHelp)

@@ -5,12 +5,13 @@ Merges two object graphs into one
 
 ## Syntax
 
-```JavaScript
+```PowerShell
+Merge-ObjectGraph
     -InputObject <Object>
     -Template <Object>
     [-PrimaryKey <String[]>]
     [-MatchCase]
-    [-MaxDepth <Int32> = 10]
+    [-MaxDepth <Int32> = [PSNode]::DefaultMaxDepth]
     [<CommonParameters>]
 ```
 
@@ -94,7 +95,9 @@ The maximal depth to recursively compare each embedded property (default: 10).
 <tr><td>Type:</td><td></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td><code>10</code></td></tr>
+<tr><td>Default value:</td><td><code>[PSNode]::DefaultMaxDepth</code></td></tr>
 <tr><td>Accept pipeline input:</td><td></td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
+
+[comment]: <> (Created with Get-MarkdownHelp: Install-Script -Name Get-MarkdownHelp)

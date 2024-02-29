@@ -7,7 +7,7 @@ Gets the child nodes of an object-graph
 
 ```PowerShell
 Get-ChildNode
-    -ObjectGraph <Object>
+    -InputObject <Object>
     [-Path <Object>]
     [-Recurse]
     [-AtDepth <Int32[]>]
@@ -37,6 +37,8 @@ Gets the items and child items in one or more specified locations of an object-g
 ## Examples
 
 ### Example 1: Select all leaf nodes in a object graph
+
+```
 
 Given the following object graph:
 
@@ -84,6 +86,8 @@ PathName         Name    Depth Value
 
 ### Example 2: update a property
 
+```
+
 The following example selects all child nodes named `Comment` at a depth of `3`.
 Than filters the one that has an `Index` sibling with the value `2` and eventually
 sets the value (of the `Comment` node) to: 'Two to the Loo'.
@@ -120,7 +124,7 @@ See the [PowerShell Object Parser][1] For details on the `[PSNode]` properties a
 
 ## Parameter
 
-### <a id="-objectgraph">**`-ObjectGraph <Object>`**</a>
+### <a id="-inputobject">**`-InputObject <Object>`**</a>
 
 The concerned object graph or node.
 
@@ -158,7 +162,7 @@ The maximum depth of of a specific node that might be retrieved is define by the
 of the (root) node. To change the maximum depth the (root) node needs to be loaded first, e.g.:
 
 ```PowerShell
-Get-Node <ObjectGraph> -Depth 20 | Get-ChildNode ...
+Get-Node <InputObject> -Depth 20 | Get-ChildNode ...
 ```
 
 (See also: [`Get-Node`][2])
@@ -194,7 +198,7 @@ When defined, only returns nodes at the given depth(s).
 
 ### <a id="-listchild">**`-ListChild`**</a>
 
-Returns only nodes derived from a **list node**.
+Returns the closest nodes derived from a **list node**.
 
 <table>
 <tr><td>Type:</td><td></td></tr>
@@ -289,3 +293,5 @@ Includes the current node with the returned child nodes.
 
 [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
 [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md "Get-Node"
+
+[comment]: <> (Created with Get-MarkdownHelp: Install-Script -Name Get-MarkdownHelp)

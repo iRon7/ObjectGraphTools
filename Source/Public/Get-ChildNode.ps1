@@ -116,7 +116,7 @@ Using NameSpace System.Management.Automation.Language
     > The nodes below the `MaxDepth` can not be retrieved.
 
 .PARAMETER ListChild
-    Returns only nodes derived from a **list node**.
+    Returns the closest nodes derived from a **list node**.
 
 .PARAMETER Include
     Returns only nodes derived from a **map node** including only the ones specified by one or more
@@ -153,7 +153,7 @@ Using NameSpace System.Management.Automation.Language
 function Get-ChildNode {
     [OutputType([PSNode[]])]
     [CmdletBinding(DefaultParameterSetName='ListChild')] param(
-        [Parameter(Position = 0, Mandatory = $true, ValueFromPipeLine = $true)]
+        [Parameter(Mandatory = $true, ValueFromPipeLine = $true)]
         $InputObject,
 
         [ValidateNotNull()]
@@ -170,7 +170,7 @@ function Get-ChildNode {
         [switch]
         $ListChild,
 
-        [Parameter(ParameterSetName='MapChild')]
+        [Parameter(ParameterSetName='MapChild', Position = 0)]
         [string[]]
         $Include,
 
@@ -189,45 +189,40 @@ function Get-ChildNode {
         $IncludeSelf
     )
 
-    process {
-        $Self = [PSNode]::ParseInput($InputObject, $MaxDepth)
-
-        if ($PSBoundParameters.ContainsKey('Path')) { $Self = $Self.GetNode($Path) }
+    begin {
         $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
             [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
         } elseif ($Recurse) { -1 } else { 0 }
-        $Nodes = $Self.GetChildNodes($SearchDepth)
-        if ($IncludeSelf) {
-            $ChildNodes = $Nodes
-            $Nodes = [Collections.Generic.List[PSNode]]$Self
-            $Nodes.AddRange($ChildNodes)
+        $NodeOrigin =
+            if ($ListChild) { [PSNodeOrigin]'List' }
+            elseif ($Null -ne $Include -or $Null -ne $Exclude) { [PSNodeOrigin]'Map' }
+            else { [PSNodeOrigin]0 }
+    }
+
+    process {
+        $Self = [PSNode]::ParseInput($InputObject, $MaxDepth)
+        if ($PSBoundParameters.ContainsKey('Path')) { $Self = $Self.GetNode($Path) }
+
+        $NodeList = [System.Collections.Generic.List[PSNode]]::new()
+        if ($IncludeSelf) { $NodeList.Add($Self) }
+        if ($Self -is [PSLeafNode]) { Write-Warning "The node '$($Self.PathName)' is a leaf node which does not contain any child nodes." }
+        else {
+            $Self.CollectChildNodes($NodeList, $SearchDepth, $NodeOrigin, $Leaf)
         }
-        foreach ($Node in $Nodes) {
+        foreach ($Node in $NodeList) {
             if (
                 (
                     -not $PSBoundParameters.ContainsKey('AtDepth') -or $Node.Depth -in $AtDepth
                 ) -and
                 (
-                    -not $Leaf -or $Node -is [PSLeafNode]
-                ) -and
-                (
-                    $Node.NodeOrigin -eq 'Root' -or
-                    (
-                        $Node.NodeOrigin -eq 'List' -and -not ($Include -or $Exclude)
-                    ) -or
-                    (
-                        $Node.NodeOrigin -eq 'Map' -and -Not $ListChild -and
-                        (
-                            -not $Include -or (
-                                ($Literal -and $Node.Name -in $Include) -or
-                                (-not $Literal -and $Include.where({ $Node.Name -like $_ }, 'first'))
-                            )
-                        ) -and -not (
-                            $Exclude -and (
-                                ($Literal -and $Node.Name -in $Exclude) -or
-                                (-not $Literal -and $Exclude.where({ $Node.Name -like $_ }, 'first'))
-                            )
-                        )
+                    -not $Include -or (
+                        ($Literal -and $Node.Name -in $Include) -or
+                        (-not $Literal -and $Include.where({ $Node.Name -like $_ }, 'first'))
+                    )
+                ) -and -not (
+                    $Exclude -and (
+                        ($Literal -and $Node.Name -in $Exclude) -or
+                        (-not $Literal -and $Exclude.where({ $Node.Name -like $_ }, 'first'))
                     )
                 )
             ) { $Node }

@@ -21,6 +21,8 @@ The Get-Node cmdlet gets the node at the specified property location of the supp
 
 ### Example 1: Parse a object graph to a node instance
 
+```
+
 The following example parses a hash table to `[PSNode]` instance:
 
 ```PowerShell
@@ -32,6 +34,8 @@ PathName Name Depth Value
 ```
 
 ### Example 2: select a sub node in an object graph
+
+```
 
 The following example parses a hash table to `[PSNode]` instance and selects the second (`0` indexed)
 item in the `My` map node
@@ -46,7 +50,7 @@ PathName Name Depth Value
 
 ## Parameter
 
-### <a id="-InputObject">**`-InputObject <Object>`**</a>
+### <a id="-inputobject">**`-InputObject <Object>`**</a>
 
 The concerned object graph or node.
 
@@ -101,3 +105,5 @@ The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 <tr><td>Accept pipeline input:</td><td></td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
+
+[comment]: <> (Created with Get-MarkdownHelp: Install-Script -Name Get-MarkdownHelp)

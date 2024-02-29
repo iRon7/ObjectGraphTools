@@ -68,5 +68,11 @@ Describe 'Copy-ObjectGraph' {
             $PSCustomObject = @{ 1 = 'a' } | Copy-ObjectGraph -MapAs PSCustomObject
             $PSCustomObject.1 | Should -Be a
         }
+
+        It '#50 -ListAs Array gives error' {
+            $Copy = Copy-ObjectGraph $Object -ListAs array
+            ,$Copy.Array | Should -BeOfType Array
+            $Copy | Compare-ObjectGraph $Object -IsEqual | Should -BeTrue
+        }
     }
 }

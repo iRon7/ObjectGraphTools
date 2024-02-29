@@ -31,7 +31,7 @@
               return <variable>
             }
 
-        or (which performs a little faster):
+        or:
 
             [Object] get_<property name>() {
               return ,[<Type>]<variable>
@@ -145,11 +145,22 @@ process {
             $Parameters = $Method.GetParameters()
             if ($Method.Name -Like 'get_*') {
                 if ($Parameters.Count -eq 0) {
-                    $Expression = @"
+                    if ($Method.ReturnType.IsArray) {
+                        $Expression = @"
 `$TargetType = '$ClassName' -as [Type]
 `$Method = `$TargetType.GetMethod('$($Method.Name)')
-[$($Method.ReturnType.FullName)]`$Method.Invoke(`$this, `$Null)
+`$Invoke = `$Method.Invoke(`$this, `$Null)
+`$Output = `$Invoke -as '$($Method.ReturnType.FullName)'
+if (@(`$Invoke).Count -gt 1) { `$Output } else { ,`$Output }
 "@
+                    }
+                    else {
+                        $Expression = @"
+`$TargetType = '$ClassName' -as [Type]
+`$Method = `$TargetType.GetMethod('$($Method.Name)')
+`$Method.Invoke(`$this, `$Null) -as '$($Method.ReturnType.FullName)'
+"@
+                    }
                     if (-not $Accessors.Contains($Member)) { $Accessors[$Member] = @{} }
                     $Accessors[$Member].Value = [ScriptBlock]::Create($Expression)
                 }
