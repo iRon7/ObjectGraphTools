@@ -233,6 +233,17 @@ Describe 'PSNode' {
         }
     }
 
+    Context 'Get leaf nodes' {
+        BeforeAll {
+            $Node = [PSNode]::ParseInput($Object)
+        }
+
+        it 'All' {
+            $ItemNodes = $Node.LeafNodes
+            $ItemNodes.Count | Should -Be 16
+        }
+    }
+
     Context 'Get map child nodes' {
         BeforeAll {
             $Node = [PSNode]::ParseInput($Object)

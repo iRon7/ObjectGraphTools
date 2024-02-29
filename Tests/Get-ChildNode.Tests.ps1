@@ -69,7 +69,7 @@ Describe 'Get-ChildNode' {
 
         it 'All list child nodes' {
             $Nodes = $Object | Get-ChildNode -ListChild
-            $Nodes | Should -BeNullOrEmpty
+            $Nodes.Name | Sort-Object | Should -Be 0, 1, 2
         }
 
         it 'All decedent list child nodes' {
@@ -151,6 +151,15 @@ Describe 'Get-ChildNode' {
             $Nodes = $Object | Get-ChildNode -Recurse -Exclude Com*, Nam?
             $Nodes.Count | Should -Be 4
             $Nodes.Name | Sort-Object -Unique | Should -Be 'Data', 'Index'
+        }
+    }
+
+    Context 'Warnings' {
+
+        it 'Is a leaf node' {
+            $LeafNode = $Object | Get-ChildNode Comment
+            $Output = $LeafNode | Get-ChildNode 3>&1
+            $Output.where{$_ -is [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*is a leaf node*'
         }
     }
 }

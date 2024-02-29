@@ -21,8 +21,7 @@ using namespace System.Management.Automation.Language
 
 Set-Alias -Name Use-ClassAccessors -Value $PSScriptRoot\..\Private\Use-ClassAccessors.ps1
 
-enum XdnPredecessor { Root; Parent; Ancestor }
-enum XdnType { Root; Ancestor; Index; Child; Descendant }
+enum XdnType { Root; Ancestor; Index; Child; Descendant; Equals; Error = 99 }
 
 class Literal {
     hidden [String]$_String
@@ -48,38 +47,40 @@ class XdnPath {
 
     hidden [Object]get_Entries() { return ,$this._Entries }
 
-    Add ([XdnType]$XdnType, $Value) {
-        $KeyValuePair = [KeyValuePair[XdnType, Object]]::new($XdnType, $Value)
+    Add ($EntryType, $Value) {
+        $XdnType = Switch ($EntryType) { '-' { 'Descendant' } '=' { 'Equals' } '.' { 'Child' } default { $EntryType } }
+        $KeyValuePair = Try   { [KeyValuePair[XdnType, Object]]::new($XdnType, $Value) }
+                        Catch { [KeyValuePair[XdnType, Object]]::new('Error', $Value) }
         $this._Entries.Add($KeyValuePair)
     }
 
     XdnPath ([String]$Path) {
         if (-not $this._Entries.Count -and $Path -notmatch '^(?<=([^`]|^)(``)*)[\.]') { $this.Add('Root', $Null) }
         $Length = [Int]::MaxValue
-        [XdnPredecessor]$Predecessor = 'Root'
+        $Prefix = $Null
         while ($Path) {
             if ($Path.Length -ge $Length) { break }
             $Length = $Path.Length
             if ($Path[0] -in "'", '"') {
+                if (-not $Prefix) { $Prefix = 'Child' }
                 $Ast = [Parser]::ParseInput($Path, [ref]$Null, [ref]$Null)
                 $StringAst = $Ast.EndBlock.Statements.PipelineElements.Find({ $args[0] -is [StringConstantExpressionAst] }, $false)[0]
                 if ($Null -ne $StringAst) {
-                    if ($Predecessor -eq 'Ancestor') { $this.Add('Descendant', [Literal]$StringAst.Value) }
-                    else { $this.Add('Child', [Literal]$StringAst.Value) }
+                    $this.Add($Prefix, [Literal]$StringAst.Value)
                     $Path = $Path.SubString($StringAst.Extent.EndOffset)
                 }
-                else { # Likely a quoting error
-                    if ($Predecessor -eq 'Ancestor') { $this.Add('Descendant', [Literal]$Path) }
-                    else { $this.Add('Child', [Literal]$Path) }
+                else { # Probably a quoting error
+                    $this.Add($Prefix, [Literal]$Path)
                     $Path = $Null
                 }
             }
             else {
-                $Match = [regex]::Match($Path, '(?<=([^`]|^)(``)*)[\.\[\-]')
+                $Match = [regex]::Match($Path, '(?<=([^`]|^)(``)*)[\.\[\-\=]')
                 if ($Match.Success -and $Match.Index -eq 0) {
                     $IndexEnd  = if ($Match.Value -eq '[') { $Path.IndexOf(']') }
                     $Ancestors = if ($Match.Value -eq '.' -and $Path -Match '^\.\.+') { $Matches[0].Length - 1 }
-                    if ($IndexEnd -gt 0 -and $Predecessor -ne 'Ancestor') {
+                    if ($IndexEnd -gt 0) {
+                        $Prefix = $Null
                         $Index = $Path.SubString(1, ($IndexEnd - 1))
                         $CommandAst = [Parser]::ParseInput($Index, [ref]$Null, [ref]$Null).EndBlock.Statements.PipelineElements
                         if ($CommandAst -is [CommandExpressionAst]) { $Index = $CommandAst.expression.Value }
@@ -87,30 +88,28 @@ class XdnPath {
                         $Path = $Path.SubString(($IndexEnd + 1))
                     }
                     elseif ($Ancestors) {
-                        $Predecessor = 'Parent'
+                        $Prefix = 'Child'
                         $this.Add('Ancestor', $Ancestors)
                         $Path = $Path.Substring($Ancestors + 1)
                     }
-                    elseif ($Match.Value -eq '.') {
-                        $Predecessor = 'Parent'
+                    elseif ($Match.Value -in '.', '-', '=' -and $Match.Value -ne $Prefix) {
+                        $Prefix = $Match.Value
                         $Path = $Path.Substring(1)
                     }
-                    elseif ($Match.Value -eq '-' -and ($this._Entries.Count -and $this._Entries[-1].Key -ne 'Descendant')) {
-                        $Predecessor = 'Ancestor'
-                        $Path = $Path.Substring(1)
-                    }
-                    else { # Likely a selector error
-                        if ($Predecessor -eq 'Ancestor') { $this.Add('Descendant', $Match.Value) } else { $this.Add('Child', $Match.Value) }
+                    else {
+                        $Prefix = 'Error'
+                        $this.Add($Prefix, $Match.Value)
                         $Path = $Path.Substring(1)
                     }
                 }
                 elseif ($Match.Success) {
+                    if (-not $Prefix) { $Prefix = 'Child' }
                     $Name = $Path.SubString(0, $Match.Index)
-                    if ($Predecessor -eq 'Ancestor') { $this.Add('Descendant', $Name) } else { $this.Add('Child', $Name) }
+                    $this.Add($Prefix, $Name)
                     $Path = $Path.SubString($Match.Index)
                 }
                 else {
-                    if ($Predecessor -eq 'Ancestor') { $this.Add('Descendant',$Path) } else { $this.Add('Child', $Path) }
+                    $this.Add($Prefix, $Path)
                     $Path = $Null
                 }
             }
@@ -128,7 +127,7 @@ class XdnPath {
         if (-not $Option) { $Color = $false }
         $RegularColor  = if ($Color) { $Option.VariableColor }
         $WildcardColor = if ($Color) { $Option.EmphasisColor }
-        $SpecialColor  = if ($Color) { $option.CommandColor }
+        $CommandColor  = if ($Color) { $option.CommandColor }
         $ErrorColor    = if ($Color) { $Option.ErrorColor }
         $ResetColor    = if ($Color) { [char]0x1b + '[39m' }
 
@@ -138,13 +137,13 @@ class XdnPath {
             $Value = $Entry.Value
             $Append = Switch ($Entry.Key) {
                 Root {
-                    "$SpecialColor$VariableName$ResetColor"
+                    "$CommandColor$VariableName$ResetColor"
                 }
                 Ancestor {
-                    "$SpecialColor$('.' * $Value)$ResetColor"
+                    "$CommandColor$('.' * $Value)$ResetColor"
                 }
                 Index {
-                    $Dot = if (-not $PreviousEntry -or $PreviousEntry.Key -eq 'Ancestor') { "$SpecialColor." }
+                    $Dot = if (-not $PreviousEntry -or $PreviousEntry.Key -eq 'Ancestor') { "$CommandColor." }
                     if ([int]::TryParse($Value, [Ref]$Null)) { "$Dot$RegularColor[$Value]$ResetColor" }
                     else { "$ErrorColor[$Value]$ResetColor" }
                 }
@@ -155,10 +154,19 @@ class XdnPath {
                     else                                          { "$RegularColor.$Value$ResetColor" }
                 }
                 Descendant {
-                    if ($Value -is [Literal])                     { "$SpecialColor-$ErrorColor$($Value.Quoted())$ResetColor" }
-                    elseif ($Value -NotMatch [XdnPath]::Verbatim) { "$SpecialColor-$ErrorColor$Value$ResetColor" }
-                    elseif ($Value -Match '[\?\*]')               { "$SpecialColor-$WildcardColor$Value$ResetColor" }
-                    else                                          { "$SpecialColor-$RegularColor$Value$ResetColor" }
+                    if ($Value -is [Literal])                     { "$CommandColor-$ErrorColor$($Value.Quoted())$ResetColor" }
+                    elseif ($Value -NotMatch [XdnPath]::Verbatim) { "$CommandColor-$ErrorColor$Value$ResetColor" }
+                    elseif ($Value -Match '[\?\*]')               { "$CommandColor-$WildcardColor$Value$ResetColor" }
+                    else                                          { "$CommandColor-$RegularColor$Value$ResetColor" }
+                }
+                Equals {
+                    if ($Value -is [Literal])                     { "$CommandColor=$ErrorColor$($Value.Quoted())$ResetColor" }
+                    elseif ($Value -NotMatch [XdnPath]::Verbatim) { "$CommandColor=$ErrorColor$Value$ResetColor" }
+                    elseif ($Value -Match '[\?\*]')               { "$CommandColor=$WildcardColor$Value$ResetColor" }
+                    else                                          { "$CommandColor=$RegularColor$Value$ResetColor" }
+                }
+                Default {
+                    "$ErrorColor$($Value)$ResetColor"
                 }
             }
             $Path.Append($Append)
@@ -338,34 +346,34 @@ Class PSNode {
     }
     hidden [String] get_PathName() { return $this.GetPathName() }
 
-    hidden CollectNodes($PathNodes, [XdnPath]$Path, [Int]$PathIndex) {
+    hidden CollectNodes($NodeTable, [XdnPath]$Path, [Int]$PathIndex) {
         $Entry = $Path._Entries[$PathIndex]
         $NextIndex = if ($PathIndex -lt $Path._Entries.Count -1) { $PathIndex + 1 }
         switch ($Entry.Key) {
             Root {
                 $Node = $this.RootNode
-                if ($NextIndex) { $Node.CollectNodes($PathNodes, $Path, $NextIndex) }
-                else { $PathNodes[$Node.get_PathName()] = $Node }
+                if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
+                else { $NodeTable[$Node.get_PathName()] = $Node }
             }
             Ancestor {
                 $Node = $this
                 for($i = $Entry.Value; $i -gt 0 -and $Node.ParentNode; $i--) { $Node = $Node.ParentNode }
                 if ($i -eq 0) { # else: reached root boundary
-                    if ($NextIndex) { $Node.CollectNodes.GetNode($PathNodes, $Path, $NextIndex) }
-                    else { $PathNodes[$Node.get_PathName()] = $Node }
+                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
+                    else { $NodeTable[$Node.get_PathName()] = $Node }
                 }
             }
             Index {
                 if ($this -is [PSListNode] -and [Int]::TryParse($Entry.Value, [Ref]$Null)) {
                     $Node = $this.GetChildNode([Int]$Entry.Value)
-                    if ($NextIndex) { $Node.CollectNodes($PathNodes, $Path, $NextIndex) }
-                    else { $PathNodes[$Node.get_PathName()] = $Node }
+                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
+                    else { $NodeTable[$Node.get_PathName()] = $Node }
                 }
             }
             Default { # Child, Descendant
                 if ($this -is [PSListNode]) { # Member access enumeration
                     foreach ($Node in $this.get_ChildNodes()) {
-                        $Node.CollectNodes($PathNodes, $Path, $PathIndex)
+                        $Node.CollectNodes($NodeTable, $Path, $PathIndex)
                     }
                 }
                 elseif ($this -is [PSMapNode]) {
@@ -375,13 +383,13 @@ Class PSNode {
                         $Exists = if ($Entry.Value -is [Literal]) { $Node.Name -eq $Entry.Value } else { $Node.Name -like $Entry.Value }
                         if ($Exists) {
                             $Found = $True
-                            if ($NextIndex) { $Node.CollectNodes($PathNodes, $Path, $NextIndex) }
-                            else { $PathNodes[$Node.get_PathName()] = $Node }
+                            if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
+                            else { $NodeTable[$Node.get_PathName()] = $Node }
                         }
                     }
                     if (-not $Found -and $Entry.Key -eq 'Descendant') {
                         foreach ($Node in $ChildNodes) {
-                            $Node.CollectNodes($PathNodes, $Path, $PathIndex)
+                            $Node.CollectNodes($NodeTable, $Path, $PathIndex)
                         }
                     }
                 }
@@ -390,11 +398,11 @@ Class PSNode {
     }
 
     [Object] GetNode([XdnPath]$Path) {
-        $PathNodes = [system.collections.generic.dictionary[String, PSNode]]::new() # Case sensitive (case insensitive map nodes use the same name)
-        $this.CollectNodes($PathNodes, $Path, 0)
-        if ($PathNodes.Count -eq 0) { return @() }
-        if ($PathNodes.Count -eq 1) { return $PathNodes[$PathNodes.Keys] }
-        else                        { return [PSNode[]]$PathNodes.Values }
+        $NodeTable = [system.collections.generic.dictionary[String, PSNode]]::new() # Case sensitive (case insensitive map nodes use the same name)
+        $this.CollectNodes($NodeTable, $Path, 0)
+        if ($NodeTable.Count -eq 0) { return @() }
+        if ($NodeTable.Count -eq 1) { return $NodeTable[$NodeTable.Keys] }
+        else                        { return [PSNode[]]$NodeTable.Values }
     }
 }
 
@@ -453,21 +461,21 @@ Class PSCollectionNode : PSNode {
         return $List
     }
 
-    [List[PSNode]]GetChildNodes() {
-        return $this.GetChildNodes(0, 0, $false)
+    [List[PSNode]]GetChildNodes($Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
+        $NodeList = [List[PSNode]]::new()
+        $this.CollectChildNodes($NodeList, $Levels, $NodeOrigin, $Leaf)
+        return $NodeList
     }
-    [List[PSNode]]GetChildNodes([Int]$Levels) {
-        return $this.GetChildNodes($Levels, 0, $false)
-    }
-    [List[PSNode]]GetChildNodes([PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
-        return $this.GetChildNodes(0, $NodeOrigin, $Leaf)
-    }
-    hidden [Object]get_ChildNodes()      { return [PSNode[]]$this.GetChildNodes(0,  0,      $false) }
-    hidden [Object]get_ListChildNodes()  { return [PSNode[]]$this.GetChildNodes(0,  'List', $false) }
-    hidden [Object]get_MapChildNodes()   { return [PSNode[]]$this.GetChildNodes(0,  'Map',  $false) }
-    hidden [Object]get_DescendantNodes() { return [PSNode[]]$this.GetChildNodes(-1, 0,      $false) }
-    hidden [Object]get_LeafNodes()       { return [PSNode[]]$this.GetChildNodes(-1, 0,      $true) }
-    hidden [Object]_($Name)              { return [PSNode]$this.GetChildNode($Name) }       # CLI Shorthand ("alias") for GetChildNode (don't use in scripts)
+    [List[PSNode]]GetChildNodes()                                       { return $this.GetChildNodes(0, 0, $false) }
+    [List[PSNode]]GetChildNodes([Int]$Levels)                           { return $this.GetChildNodes($Levels, 0, $false) }
+    [List[PSNode]]GetChildNodes([PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) { return $this.GetChildNodes(0, $NodeOrigin, $Leaf) }
+
+    hidden [PSNode[]]get_ChildNodes()      { return $this.GetChildNodes(0,  0,      $false) }
+    hidden [PSNode[]]get_ListChildNodes()  { return [PSNode[]]$this.GetChildNodes(0,  'List', $false) }
+    hidden [PSNode[]]get_MapChildNodes()   { return [PSNode[]]$this.GetChildNodes(0,  'Map',  $false) }
+    hidden [PSNode[]]get_DescendantNodes() { return $this.GetChildNodes(-1, 0,      $false) }
+    hidden [PSNode[]]get_LeafNodes()       { return $this.GetChildNodes(-1, 0,      $true) }
+    hidden [PSNode]_($Name)                { return $this.GetChildNode($Name) }       # CLI Shorthand ("alias") for GetChildNode (don't use in scripts)
     # hidden [Object]Get($Path)                { return $this.GetDescendantNode($Path) }  # CLI Shorthand ("alias") for GetDescendantNode (don't use in scripts)
 }
 
@@ -502,20 +510,18 @@ Class PSListNode : PSCollectionNode {
         $this._Value[$Index] = $Value
     }
 
-    [List[PSNode]]GetChildNodes([Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
-        $List = [List[PSNode]]::new()
+    hidden CollectChildNodes($NodeList, [Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
         if (-not $this.MaxDepthReached()) {
             for ($Index = 0; $Index -lt $this._Value.get_Count(); $Index++) {
                 $Node = $this.Append($this._Value[$Index])
                 $Node._Name = $Index
-                if ($NodeOrigin -in 0, 'List' -or ($Leaf -and $Node -is [PSLeafNode])) { $List.Add($Node) }
+                if ($NodeOrigin -in 0, 'List' -and (-not $Leaf -or $Node -is [PSLeafNode])) { $NodeList.Add($Node) }
                 if ($Node -is [PSCollectionNode] -and ($Levels -ne 0 -or $NodeOrigin -eq 'Map')) { # $NodeOrigin -eq 'Map' --> Member Access Enumeration
                     $Levels_1 = if ($Levels -gt 0) { $Levels - 1 } else { $Levels }
-                    $list.AddRange($Node.GetChildNodes($Levels_1, $NodeOrigin, $Leaf))
+                    $Node.CollectChildNodes($NodeList, $Levels_1, $NodeOrigin, $Leaf)
                 }
             }
         }
-        return $List
     }
 
     [Object]GetChildNode([Int]$Index) {
@@ -583,20 +589,18 @@ Class PSDictionaryNode : PSMapNode {
         $this._Value[$Key] = $Value
     }
 
-    [List[PSNode]]GetChildNodes([Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
-        $List = [List[PSNode]]::new()
+    hidden CollectChildNodes($NodeList, [Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
         if (-not $this.MaxDepthReached()) {
             foreach($Key in $this._Value.get_Keys()) {
                 $Node = $this.Append($this._Value[$Key])
                 $Node._Name = $Key
-                if ($NodeOrigin -in 0, 'Map' -or ($Leaf -and $Node -is [PSLeafNode])) { $List.Add($Node) }
+                if ($NodeOrigin -in 0, 'Map' -and (-not $Leaf -or $Node -is [PSLeafNode])) { $NodeList.Add($Node) }
                 if ($Node -is [PSCollectionNode] -and ($Levels -ne 0 -or $NodeOrigin -eq 'List')) {
                     $Levels_1 = if ($Levels -gt 0) { $Levels - 1 } else { $Levels }
-                    $list.AddRange($Node.GetChildNodes($Levels_1, $NodeOrigin, $Leaf))
+                    $Node.CollectChildNodes($NodeList, $Levels_1, $NodeOrigin, $Leaf)
                 }
             }
         }
-        return $List
     }
 
     [Object]GetChildNode($Key) {
@@ -641,20 +645,18 @@ Class PSObjectNode : PSMapNode {
         $this._Value.PSObject.Properties[$Name].Value = $Value
     }
 
-    [List[PSNode]]GetChildNodes([Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
-        $List = [List[PSNode]]::new()
+    hidden CollectChildNodes($NodeList, [Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
         if (-not $this.MaxDepthReached()) {
             foreach($Property in $this._Value.PSObject.Properties) {
                 $Node = $this.Append($Property.Value)
                 $Node._Name = $Property.Name
-                if ($NodeOrigin -in 0, 'Map' -or ($Leaf -and $Node -is [PSLeafNode])) { $List.Add($Node) }
+                if ($NodeOrigin -in 0, 'Map' -and (-not $Leaf -or $Node -is [PSLeafNode])) { $NodeList.Add($Node) }
                 if ($Node -is [PSCollectionNode] -and ($Levels -ne 0 -or $NodeOrigin -eq 'List')) {
                     $Levels_1 = if ($Levels -gt 0) { $Levels - 1 } else { $Levels }
-                    $list.AddRange($Node.GetChildNodes($Levels_1, $NodeOrigin, $Leaf))
+                    $Node.CollectChildNodes($NodeList, $Levels_1, $NodeOrigin, $Leaf)
                 }
             }
         }
-        return $List
     }
 
     [Object]GetChildNode([String]$Name) {

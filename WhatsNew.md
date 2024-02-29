@@ -1,4 +1,14 @@
-## 2024-02-22 0.0.19 (iRon)
+## 2024-02-28 0.0.20 (iRon)
+  - Fixed
+    - `ConvertTo-Expression` adding `$Null` entries
+    - #50 Copy-ObjectGraph -ListAs Array gives error
+    - #51 Document (markdown) issue in: Copy-ObjectGraph.md (fixed `Get-MarkdownHelp`))
+
+  - Enhancements
+    - Improved .ChildNode and related properties by one-by-one collecting sub nodes
+    - #53 return a warning (rather than an error) when Get-ChildNode is a leaf node
+
+## 2024-02-26 0.0.19 (iRon)
   - Fixed
     - `ConvertTo-Expression` adding `$Null` entries
 

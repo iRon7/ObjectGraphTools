@@ -30,7 +30,7 @@
 
 .INPUTS
     Any. Each objects provided through the pipeline will converted to an
-    expression. To concatinate all piped objects in a single expression,
+    expression. To concatenate all piped objects in a single expression,
     use the unary comma operator,  e.g.: ,$Object | ConvertTo-Expression
 
 .OUTPUTS
