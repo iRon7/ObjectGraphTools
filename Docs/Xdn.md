@@ -50,10 +50,10 @@ Xdn supplies some extra features on top of the native PowerShell dot notation by
 * **Absolute** vs **relative** paths selection
 * **Wildcards**, limited to question marks (`?`) and asterisks (`*`)
 * A set of additional operators:
-    - Multiple consecutive dots (e.g. `..`) to select the parent node or an ancestor
-    - A **tilde** (`~`) to select a (deep) descendant node
-    - An **equals sign** (`=`) to select a (leaf) node with a specific value
-    - A **comma** (`,`) to represent a list of possible names or values
+    - A **ancestor (`..`) selector** to select the parent node or an ancestor
+    - A **descendant (`~`) selector** to select a (deep) descendant node
+    - An **equals (`=`) filter** to select a (leaf) node with a specific value
+    - A **Or (`/`) selection list** to represent a list of possible names or values
 
 
 ### Absolute vs relative paths selection
