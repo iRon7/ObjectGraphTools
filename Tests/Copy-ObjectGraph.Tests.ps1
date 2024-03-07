@@ -22,7 +22,7 @@ Describe 'Copy-ObjectGraph' {
         }
     }
 
-    Context 'Sanity Check' {
+    Context 'Existence Check' {
 
         It 'Help' {
             Copy-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS

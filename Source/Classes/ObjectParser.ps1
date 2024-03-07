@@ -15,27 +15,85 @@
     [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Xdn.md "Extended Dot Notation"
 #>
 
+using namespace System.Collections
 using namespace System.Collections.Generic
 using namespace System.Management.Automation
 using namespace System.Management.Automation.Language
 
-Set-Alias -Name Use-ClassAccessors -Value $PSScriptRoot\..\Private\Use-ClassAccessors.ps1
-
 enum XdnType { Root; Ancestor; Index; Child; Descendant; Equals; Error = 99 }
 
-class Literal {
-    hidden [String]$_String
+enum XdnColorName { Reset; Regular; Literal; WildCard; Operator; Error = 99 }
 
-    Literal([String]$String) {
-        $this._String = $String
+class XdnColor {
+    Static [String]$Regular
+    Static [String]$Literal
+    Static [String]$Wildcard
+    Static [String]$Extended
+    Static [String]$Operator
+    Static [String]$Error
+    Static [String]$Reset
+
+    static XdnColor() {
+        $PSReadLineOption = try { Get-PSReadLineOption -ErrorAction SilentlyContinue } catch { $Null }
+        [XdnColor]::Reset    = [char]0x1b + '[39m'
+        [XdnColor]::Regular  = $PSReadLineOption.VariableColor
+        [XdnColor]::WildCard = $PSReadLineOption.EmphasisColor
+        [XdnColor]::Extended = $PSReadLineOption.StringColor
+        [XdnColor]::Operator = $PSReadLineOption.CommandColor
+        [XdnColor]::Error    = $PSReadLineOption.ErrorColor
+    }
+}
+
+class XdnValue {
+    hidden static $Verbatim = '^[\?\*\p{L}\p{Lt}\p{Lm}\p{Lo}_][\?\*\p{L}\p{Lt}\p{Lm}\p{Lo}\p{Nd}_]*$' # https://stackoverflow.com/questions/62754771/unquoted-key-rules-and-best-practices
+    hidden [Bool]$_IsLiteral
+    hidden $_IsWildcard
+    hidden $_Value
+
+    XdnValue($Value) {
+        $this._IsLiteral = $False
+        $this._IsWildcard = $Null
+        $this._Value = $Value -replace '(?<=[^`](``)*)`(?=[\.\[\~\=\/])' # Remove any (odd number of) escapes from Xdn operators
     }
 
-    [String] ToString() {
-        return $this._String
+    XdnValue($Value, [Bool]$Literal) {
+        $this._IsLiteral = $Literal
+        $this._IsWildcard = $False
+        $this._Value = $Value
     }
 
-    [String] Quoted() {
-        return "'" + $this._String.Replace("'", "''") + "'"
+    [Bool] IsWildcard() {
+        if ($this._IsLiteral) { $this._IsWildcard = $False }
+        elseif ($Null -eq $this._IsWildcard) {
+            $this._IsWildcard = $this._Value -is [String] -and $this._Value -Match '(?<=([^`]|^)(``)*)[\?\*]'
+        }
+        return $this._IsWildcard
+    }
+
+    [Bool] Equals($Object) {
+        if ($this._IsLiteral)       { return $this._Value -eq $Object }
+        elseif ($this.IsWildcard()) { return $Object -Like $this._Value }
+        else                        { return $this._Value -eq $Object }
+    }
+
+    [String] ToString($Colored) {
+        $Color = if ($Colored) {
+            if ($this._IsLiteral)                                { [XdnColor]::Regular }
+            elseif ($this._Value -NotMatch [XdnValue]::Verbatim) { [XdnColor]::Extended }
+            elseif ($this.IsWildcard())                          { [XdnColor]::Wildcard }
+            else                                                 { [XdnColor]::Regular }
+        }
+        $String =
+            if ($this._IsLiteral) { "'" + "$($this._Value)".Replace("'", "''") + "'" }
+            else { "$($this._Value)" -replace '(?<!([^`]|^)(``)*)[\.\[\~\=\/]', '`${0}' } # Escape any Xdn operator (that isn't yet escaped)
+        $Reset = if ($Colored) { [XdnColor]::Reset }
+        return $Color + $String + $Reset
+    }
+    [String] ToString()        { return $this.ToString($False) }
+    [String] ToColoredString() { return $this.ToString($True) }
+
+    static XdnValue() {
+        Set-View { $_.ToString($True) }
     }
 }
 
@@ -47,174 +105,172 @@ class XdnPath {
 
     hidden [Object]get_Entries() { return ,$this._Entries }
 
-    Add ($EntryType, $Value) {
-        $XdnType = Switch ($EntryType) { '-' { 'Descendant' } '=' { 'Equals' } '.' { 'Child' } default { $EntryType } }
-        $KeyValuePair = Try   { [KeyValuePair[XdnType, Object]]::new($XdnType, $Value) }
-                        Catch { [KeyValuePair[XdnType, Object]]::new('Error', $Value) }
-        $this._Entries.Add($KeyValuePair)
+    hidden AddError($Value) {
+        $this._Entries.Add([KeyValuePair[XdnType, Object]]::new('Error', $Value))
     }
 
-    XdnPath ([String]$Path) {
-        if (-not $this._Entries.Count -and $Path -notmatch '^(?<=([^`]|^)(``)*)[\.]') { $this.Add('Root', $Null) }
-        $Length = [Int]::MaxValue
-        $Prefix = $Null
+    Add ($EntryType, $Value) {
+        if ($EntryType -eq '/') {
+            if ($this._Entries.Count -eq 0) { $this.AddError($Value) }
+            elseif ($this._Entries[-1].Key -NotIn 'Child', 'Descendant', 'Equals') { $this.AddError($Value) }
+            else {
+                $EntryValue = $this._Entries[-1].Value
+                if ($EntryValue -IsNot [IList]) { $EntryValue = [List[Object]]$EntryValue }
+                $EntryValue.Add($Value)
+                $this._Entries[-1] = [KeyValuePair[XdnType, Object]]::new($this._Entries[-1].Key, $EntryValue)
+            }
+        }
+        else {
+            $XdnType = Switch ($EntryType) { '.' { 'Child' } '~' { 'Descendant' } '=' { 'Equals' } default { $EntryType } }
+            if ($XdnType -in [XdnType].GetEnumNames()) {
+                $this._Entries.Add([KeyValuePair[XdnType, Object]]::new($XdnType, $Value))
+            } else { $this.AddError($Value) }
+
+        }
+    }
+
+    hidden FromString ([String]$Path, [Bool]$Literal) {
+        $XdnOperator = $Null
+        if (-not $this._Entries.Count) {
+            $IsRoot = if ($Literal) { $Path -NotMatch '^\.' } else { $Path -NotMatch '^(?<=([^`]|^)(``)*)\.' }
+            if ($IsRoot) {
+                $this.Add('Root', $Null)
+                $XdnOperator = 'Child'
+            }
+        }
+        $Length  = [Int]::MaxValue
         while ($Path) {
             if ($Path.Length -ge $Length) { break }
             $Length = $Path.Length
             if ($Path[0] -in "'", '"') {
-                if (-not $Prefix) { $Prefix = 'Child' }
+                if (-not $XdnOperator) { $XdnOperator = 'Child' }
                 $Ast = [Parser]::ParseInput($Path, [ref]$Null, [ref]$Null)
-                $StringAst = $Ast.EndBlock.Statements.PipelineElements.Find({ $args[0] -is [StringConstantExpressionAst] }, $false)[0]
+                $StringAst = $Ast.EndBlock.Statements.PipelineElements.Find({ $args[0] -is [StringConstantExpressionAst] }, $False)[0]
                 if ($Null -ne $StringAst) {
-                    $this.Add($Prefix, [Literal]$StringAst.Value)
+                    $this.Add($XdnOperator, [XdnValue]::new($StringAst.Value, $True))
                     $Path = $Path.SubString($StringAst.Extent.EndOffset)
                 }
                 else { # Probably a quoting error
-                    $this.Add($Prefix, [Literal]$Path)
+                    $this.Add($XdnOperator, [XdnValue]::new($Path, $True))
                     $Path = $Null
                 }
             }
             else {
-                $Match = [regex]::Match($Path, '(?<=([^`]|^)(``)*)[\.\[\-\=]')
-                if ($Match.Success -and $Match.Index -eq 0) {
+                $Match = if ($Literal) { [regex]::Match($Path, '[\.\[]') } else { [regex]::Match($Path, '(?<=([^`]|^)(``)*)[\.\[\~\=\/]') }
+                $Match = [regex]::Match($Path, '(?<=([^`]|^)(``)*)[\.\[\~\=\/]')
+                if ($Match.Success -and $Match.Index -eq 0) { # Operator
                     $IndexEnd  = if ($Match.Value -eq '[') { $Path.IndexOf(']') }
                     $Ancestors = if ($Match.Value -eq '.' -and $Path -Match '^\.\.+') { $Matches[0].Length - 1 }
                     if ($IndexEnd -gt 0) {
-                        $Prefix = $Null
                         $Index = $Path.SubString(1, ($IndexEnd - 1))
                         $CommandAst = [Parser]::ParseInput($Index, [ref]$Null, [ref]$Null).EndBlock.Statements.PipelineElements
                         if ($CommandAst -is [CommandExpressionAst]) { $Index = $CommandAst.expression.Value }
                         $this.Add('Index', $Index)
                         $Path = $Path.SubString(($IndexEnd + 1))
+                        $XdnOperator = $Null
                     }
                     elseif ($Ancestors) {
-                        $Prefix = 'Child'
                         $this.Add('Ancestor', $Ancestors)
                         $Path = $Path.Substring($Ancestors + 1)
+                        $XdnOperator = 'Child'
                     }
-                    elseif ($Match.Value -in '.', '-', '=' -and $Match.Value -ne $Prefix) {
-                        $Prefix = $Match.Value
+                    elseif ($Match.Value -in '.', '~', '=', '/' -and $Match.Value -ne $XdnOperator) {
+                        $XdnOperator = $Match.Value
                         $Path = $Path.Substring(1)
                     }
                     else {
-                        $Prefix = 'Error'
-                        $this.Add($Prefix, $Match.Value)
+                        $XdnOperator = 'Error'
+                        $this.Add($XdnOperator, $Match.Value)
                         $Path = $Path.Substring(1)
                     }
                 }
                 elseif ($Match.Success) {
-                    if (-not $Prefix) { $Prefix = 'Child' }
+                    if (-not $XdnOperator) { $XdnOperator = 'Child' }
                     $Name = $Path.SubString(0, $Match.Index)
-                    $this.Add($Prefix, $Name)
+                    $Value = if ($Literal) { [XdnValue]::new($Name, $True) } else { [XdnValue]$Name }
+                    $this.Add($XdnOperator, $Value)
                     $Path = $Path.SubString($Match.Index)
+                    $XdnOperator = $Null
                 }
                 else {
-                    $this.Add($Prefix, $Path)
+                    $Value = if ($Literal) { [XdnValue]::new($Path, $True) } else { [XdnValue]$Path }
+                    $this.Add($XdnOperator, $Value)
                     $Path = $Null
                 }
             }
         }
     }
-    [String] ToString([String]$VariableName, [Bool]$Color) {
-        if ($Null -eq [XdnPath]::_PSReadLineOption) {
-            if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) {
-                [XdnPath]::_PSReadLineOption = Get-PSReadLineOption
-            }
-            else { [XdnPath]::_PSReadLineOption = $false }
-        }
+    XdnPath ([String]$Path)                 { $this.FromString($Path, $False) }
+    XdnPath ([String]$Path, [Bool]$Literal) { $this.FromString($Path, $Literal) }
 
-        $Option = [XdnPath]::_PSReadLineOption
-        if (-not $Option) { $Color = $false }
-        $RegularColor  = if ($Color) { $Option.VariableColor }
-        $WildcardColor = if ($Color) { $Option.EmphasisColor }
-        $CommandColor  = if ($Color) { $option.CommandColor }
-        $ErrorColor    = if ($Color) { $Option.ErrorColor }
-        $ResetColor    = if ($Color) { [char]0x1b + '[39m' }
+    [String] ToString([String]$VariableName, [Bool]$Colored) {
+        $RegularColor  = if ($Colored) { [XdnColor]::Regular }
+        $OperatorColor = if ($Colored) { [XdnColor]::Operator }
+        $ErrorColor    = if ($Colored) { [XdnColor]::Error }
+        $ResetColor    = if ($Colored) { [char]0x1b + '[39m' }
 
         $Path = [System.Text.StringBuilder]::new()
         $PreviousEntry = $Null
         foreach ($Entry in $this._Entries) {
             $Value = $Entry.Value
             $Append = Switch ($Entry.Key) {
-                Root {
-                    "$CommandColor$VariableName$ResetColor"
-                }
-                Ancestor {
-                    "$CommandColor$('.' * $Value)$ResetColor"
-                }
-                Index {
-                    $Dot = if (-not $PreviousEntry -or $PreviousEntry.Key -eq 'Ancestor') { "$CommandColor." }
-                    if ([int]::TryParse($Value, [Ref]$Null)) { "$Dot$RegularColor[$Value]$ResetColor" }
-                    else { "$ErrorColor[$Value]$ResetColor" }
-                }
-                Child {
-                    if ($Value -is [Literal])                     { "$RegularColor.$($Value.Quoted())$ResetColor" }
-                    elseif ($Value -NotMatch [XdnPath]::Verbatim) { "$ErrorColor.$Value$ResetColor" }
-                    elseif ($Value -Match '[\?\*]')               { "$WildcardColor.$Value$ResetColor" }
-                    else                                          { "$RegularColor.$Value$ResetColor" }
-                }
-                Descendant {
-                    if ($Value -is [Literal])                     { "$CommandColor-$ErrorColor$($Value.Quoted())$ResetColor" }
-                    elseif ($Value -NotMatch [XdnPath]::Verbatim) { "$CommandColor-$ErrorColor$Value$ResetColor" }
-                    elseif ($Value -Match '[\?\*]')               { "$CommandColor-$WildcardColor$Value$ResetColor" }
-                    else                                          { "$CommandColor-$RegularColor$Value$ResetColor" }
-                }
-                Equals {
-                    if ($Value -is [Literal])                     { "$CommandColor=$ErrorColor$($Value.Quoted())$ResetColor" }
-                    elseif ($Value -NotMatch [XdnPath]::Verbatim) { "$CommandColor=$ErrorColor$Value$ResetColor" }
-                    elseif ($Value -Match '[\?\*]')               { "$CommandColor=$WildcardColor$Value$ResetColor" }
-                    else                                          { "$CommandColor=$RegularColor$Value$ResetColor" }
-                }
-                Default {
-                    "$ErrorColor$($Value)$ResetColor"
-                }
+                Root        { "$OperatorColor$VariableName$ResetColor" }
+                Ancestor    { "$OperatorColor$('.' * $Value)$ResetColor" }
+                Index       {
+                                $Dot = if (-not $PreviousEntry -or $PreviousEntry.Key -eq 'Ancestor') { "$OperatorColor." }
+                                if ([int]::TryParse($Value, [Ref]$Null)) { "$Dot$RegularColor[$Value]$ResetColor" }
+                                else { "$ErrorColor[$Value]$ResetColor" }
+                            }
+                Child       { "$RegularColor.$(@($Value).foreach{ $_.ToString($Colored) }  -Join ""$OperatorColor/"")" }
+                Descendant  { "$OperatorColor~$(@($Value).foreach{ $_.ToString($Colored) } -Join ""$OperatorColor/"")" }
+                Equals      { "$OperatorColor=$(@($Value).foreach{ $_.ToString($Colored) } -Join ""$OperatorColor/"")" }
+                Default     { "$ErrorColor$($Value)$ResetColor" }
             }
             $Path.Append($Append)
             $PreviousEntry = $Entry
         }
         return $Path.ToString()
     }
-    [String] ToString()                           { return $this.ToString($Null        , $false)}
-    [String] ToString([String]$VariableName)      { return $this.ToString($VariableName, $false)}
-    [String] ToColorString()                      { return $this.ToString($Null,         $true)}
-    [String] ToColorString([String]$VariableName) { return $this.ToString($VariableName, $true)}
+    [String] ToString()                             { return $this.ToString($Null        , $False)}
+    [String] ToString([String]$VariableName)        { return $this.ToString($VariableName, $False)}
+    [String] ToColoredString()                      { return $this.ToString($Null,         $True)}
+    [String] ToColoredString([String]$VariableName) { return $this.ToString($VariableName, $True)}
 
-    static XdnPath() { # https://stackoverflow.com/questions/77752014/how-to-type-convert-a-derived-class
+    static XdnPath() {
         Use-ClassAccessors
-        $FormatData = @'
-        <Configuration>
-        <ViewDefinitions>
-            <View>
-            <Name>XdnPath</Name>
-            <OutOfBand />
-            <ViewSelectedBy>
-                <TypeName>XdnPath</TypeName>
-            </ViewSelectedBy>
-                <CustomControl>
-                <CustomEntries>
-                    <CustomEntry>
-                    <CustomItem>
-                        <ExpressionBinding>
-                        <ScriptBlock>
-                            <![CDATA[$_.ToColorString('<Root>')]]>
-                        </ScriptBlock>
-                        </ExpressionBinding>
-                    </CustomItem>
-                    </CustomEntry>
-                </CustomEntries>
-                </CustomControl>
-            </View>
-            </ViewDefinitions>
-        </Configuration>
-'@
-        $TempFile = [IO.Path]::GetTempPath() + "XdnPath.ps1xml"
-        Out-File -InputObject $FormatData -LiteralPath $TempFile -Encoding ASCII
-        Update-FormatData -PrependPath $TempFile
+        Set-View { $_.ToColoredString('<Root>') }
     }
 }
 
 enum PSNodeOrigin { Root; List; Map }
 
+Class PSNodePath {
+    hidden [PSNode[]]$Nodes
+    hidden [String]$_String
+
+    hidden PSNodePath($Nodes) { $this.Nodes = [PSNode[]]$Nodes }
+
+    [String] ToString() {
+        if ($Null -eq $this._String) {
+            $Count = $this.Nodes.Count
+            $this._String = if ($Count -gt 1) { $this.Nodes[-2].Path.ToString() }
+            $Node = $this.Nodes[-1]
+            $this._String +=
+                if ($Node._NodeOrigin -eq 'List') {
+                    "[$($Node._Name)]"
+                }
+                elseif ($Node._NodeOrigin -eq 'Map') {
+                    $Dot = if ($Count -gt 2) { '.' }
+                    if     ($Node.Name -is [ValueType])        { "$Dot$($Node._Name)" }
+                    elseif ($Node.Name -isnot [String])        { "$Dot[$($Node._Name.GetType())]'$($Node._Name)'" }
+                    elseif ($Node.Name -Match '^[_,a-z]+\w*$') { "$Dot$($Node._Name)" }
+                    else                                       { "$Dot'$($Node._Name)'" }
+                }
+        }
+        return $this._String
+    }
+
+}
 
 Class PSNode {
     hidden static PSNode() { Use-ClassAccessors }
@@ -227,7 +283,7 @@ Class PSNode {
     hidden [PSNodeOrigin]$_NodeOrigin
     [PSNode]$ParentNode
     [PSNode]$RootNode = $this
-    hidden [PSNode[]]$_Path = @()
+    hidden [PSNodePath]$_Path
     hidden [String]$_PathName
     hidden [Bool]$WarnedMaxDepth            # Warn ones per item branch
 
@@ -305,50 +361,37 @@ Class PSNode {
     }
 
     hidden [Object] get_Path() {
-        if ($this._Path.Count -eq 0) {
+        if ($Null -eq $this._Path) {
             if ($this.ParentNode) {
-                $this._Path = $this.ParentNode.get_Path() + $this # This will shallow copy the parent path
+                $this._Path = [PSNodePath]($this.ParentNode.get_Path().Nodes + $this)
             }
             else {
-                $this._Path = $this
+                $this._Path = [PSNodePath]$this
             }
         }
         return $this._Path
     }
 
-    [String] GetPathName() {
-        if ($Null -eq $this._PathName) {
-            $ParentPathName = if ($this.ParentNode) { $this.ParentNode.GetPathName() }
-            $Name =
-                if ($this._NodeOrigin -eq 'List') {
-                    "[$($this._Name)]"
-                }
-                elseif ($this._NodeOrigin -eq 'Map') {
-                    $Dot = if ($this.ParentNode.ParentNode) { '.' }
-                    if     ($this.Name -is [ValueType])        { "$Dot$($this._Name)" }
-                    elseif ($this.Name -isnot [String])        { "$Dot[$($this._Name.GetType())]'$($this._Name)'" }
-                    elseif ($this.Name -Match '^[_,a-z]+\w*$') { "$Dot$($this._Name)" }
-                    else                                       { "$Dot'$($this._Name)'" }
-                }
-            $this._PathName = $ParentPathName + $Name
-        }
-        return $this._PathName
-    }
+    hidden [String] get_PathName() { return $this.get_Path().ToString() }
 
     [String] GetPathName($VariableName) {
-        $PathName = $this.GetPathName()
-        if ($PathName -and $PathName[0] -in '.', '-', '[' ) {
+        $PathName = $this.get_Path().ToString()
+        if ($PathName -and $PathName.StartsWith('.') ) {
             return "$VariableName$PathName"
         }
         else {
             return "$VariableName.$PathName"
         }
     }
-    hidden [String] get_PathName() { return $this.GetPathName() }
 
     hidden CollectNodes($NodeTable, [XdnPath]$Path, [Int]$PathIndex) {
         $Entry = $Path._Entries[$PathIndex]
         $NextIndex = if ($PathIndex -lt $Path._Entries.Count -1) { $PathIndex + 1 }
+        $NextEntry = if ($NextIndex) { $Path._Entries[$NextIndex] }
+        $Equals    = if ($NextEntry -and $NextEntry.Key -eq 'Equals') {
+            $NextEntry.Value
+            $NextIndex = if ($NextIndex -lt $Path._Entries.Count -1) { $NextIndex + 1 }
+        }
         switch ($Entry.Key) {
             Root {
                 $Node = $this.RootNode
@@ -380,8 +423,7 @@ Class PSNode {
                     $Found = $False
                     $ChildNodes = $this.get_ChildNodes()
                     foreach ($Node in $ChildNodes) {
-                        $Exists = if ($Entry.Value -is [Literal]) { $Node.Name -eq $Entry.Value } else { $Node.Name -like $Entry.Value }
-                        if ($Exists) {
+                        if ($Entry.Value -eq $Node.Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
                             $Found = $True
                             if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
                             else { $NodeTable[$Node.get_PathName()] = $Node }
@@ -424,7 +466,7 @@ Class PSCollectionNode : PSNode {
         $MaxDepthReached = $this.Depth -ge $this.RootNode._MaxDepth
         if ($MaxDepthReached -and -not $this.WarnedMaxDepth) {
             Write-Warning "$($this.Path) reached the maximum depth of $($this.RootNode._MaxDepth)."
-            $this.WarnedMaxDepth = $true
+            $this.WarnedMaxDepth = $True
         }
         return $MaxDepthReached
     }
@@ -466,15 +508,15 @@ Class PSCollectionNode : PSNode {
         $this.CollectChildNodes($NodeList, $Levels, $NodeOrigin, $Leaf)
         return $NodeList
     }
-    [List[PSNode]]GetChildNodes()                                       { return $this.GetChildNodes(0, 0, $false) }
-    [List[PSNode]]GetChildNodes([Int]$Levels)                           { return $this.GetChildNodes($Levels, 0, $false) }
+    [List[PSNode]]GetChildNodes()                                       { return $this.GetChildNodes(0, 0, $False) }
+    [List[PSNode]]GetChildNodes([Int]$Levels)                           { return $this.GetChildNodes($Levels, 0, $False) }
     [List[PSNode]]GetChildNodes([PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) { return $this.GetChildNodes(0, $NodeOrigin, $Leaf) }
 
-    hidden [PSNode[]]get_ChildNodes()      { return $this.GetChildNodes(0,  0,      $false) }
-    hidden [PSNode[]]get_ListChildNodes()  { return [PSNode[]]$this.GetChildNodes(0,  'List', $false) }
-    hidden [PSNode[]]get_MapChildNodes()   { return [PSNode[]]$this.GetChildNodes(0,  'Map',  $false) }
-    hidden [PSNode[]]get_DescendantNodes() { return $this.GetChildNodes(-1, 0,      $false) }
-    hidden [PSNode[]]get_LeafNodes()       { return $this.GetChildNodes(-1, 0,      $true) }
+    hidden [PSNode[]]get_ChildNodes()      { return $this.GetChildNodes(0,  0,      $False) }
+    hidden [PSNode[]]get_ListChildNodes()  { return [PSNode[]]$this.GetChildNodes(0,  'List', $False) }
+    hidden [PSNode[]]get_MapChildNodes()   { return [PSNode[]]$this.GetChildNodes(0,  'Map',  $False) }
+    hidden [PSNode[]]get_DescendantNodes() { return $this.GetChildNodes(-1, 0,      $False) }
+    hidden [PSNode[]]get_LeafNodes()       { return $this.GetChildNodes(-1, 0,      $True) }
     hidden [PSNode]_($Name)                { return $this.GetChildNode($Name) }       # CLI Shorthand ("alias") for GetChildNode (don't use in scripts)
     # hidden [Object]Get($Path)                { return $this.GetDescendantNode($Path) }  # CLI Shorthand ("alias") for GetDescendantNode (don't use in scripts)
 }
@@ -670,4 +712,4 @@ Class PSObjectNode : PSMapNode {
     }
 }
 
-Update-TypeData -TypeName PSNode -DefaultDisplayPropertySet PathName, Name, Depth, Value -Force
+Update-TypeData -TypeName PSNode -DefaultDisplayPropertySet Path, Name, Depth, Value -Force

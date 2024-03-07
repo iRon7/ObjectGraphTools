@@ -30,7 +30,7 @@ Describe 'PSNode' {
         }
     }
 
-    Context 'Sanity Check' {
+    Context 'Existence Check' {
 
         It 'Loaded' {
             [PSNode]::new() -is [PSNode] | Should -BeTrue
@@ -260,8 +260,8 @@ Describe 'PSNode' {
             $Node = [PSNode]::ParseInput($Object)
         }
 
-        it 'Root path' {
-            $Node.GetChildNode('Array').ChildNodes[1].GetChildNode('Comment').GetPathName() | Should -Be 'Array[1].Comment'
+        it 'Comment path' {
+            $Node.GetChildNode('Array').ChildNodes[1].GetChildNode('Comment').Path | Should -Be 'Array[1].Comment'
         }
 
         it 'Using variable name' {
@@ -270,26 +270,29 @@ Describe 'PSNode' {
 
         it 'Array' {
             $ItemNode = $Node.GetChildNode('Array').GetChildNode(2)
-            $ItemNode.PathName | Should -Be 'Array[2]'
-            $ItemNode.Path[0]  | Should -Be $ItemNode.RootNode
-            $ItemNode.Path[-1] | Should -Be $ItemNode
-            $ItemNode.Path[-2] | Should -Be $ItemNode.ParentNode
+            $ItemNode.PathName       | Should -Be 'Array[2]'
+            $ItemNode.Path           | Should -Be 'Array[2]'
+            $ItemNode.Path.Nodes[0]  | Should -Be $ItemNode.RootNode
+            $ItemNode.Path.Nodes[-1] | Should -Be $ItemNode
+            $ItemNode.Path.Nodes[-2] | Should -Be $ItemNode.ParentNode
         }
 
         it 'HashTable' {
             $ItemNode = $Node.GetChildNode('HashTable').GetChildNode('Two')
-            $ItemNode.PathName | Should -Be 'HashTable.Two'
-            $ItemNode.Path[0]  | Should -Be $ItemNode.RootNode
-            $ItemNode.Path[-1] | Should -Be $ItemNode
-            $ItemNode.Path[-2] | Should -Be $ItemNode.ParentNode
+            $ItemNode.PathName       | Should -Be 'HashTable.Two'
+            $ItemNode.Path           | Should -Be 'HashTable.Two'
+            $ItemNode.Path.Nodes[0]  | Should -Be $ItemNode.RootNode
+            $ItemNode.Path.Nodes[-1] | Should -Be $ItemNode
+            $ItemNode.Path.Nodes[-2] | Should -Be $ItemNode.ParentNode
         }
 
         it 'PSCustomObject' {
             $ItemNode = $Node.GetChildNode('PSCustomObject').GetChildNode('Two')
-            $ItemNode.PathName | Should -Be 'PSCustomObject.Two'
-            $ItemNode.Path[0]  | Should -Be $ItemNode.RootNode
-            $ItemNode.Path[-1] | Should -Be $ItemNode
-            $ItemNode.Path[-2] | Should -Be $ItemNode.ParentNode
+            $ItemNode.PathName       | Should -Be 'PSCustomObject.Two'
+            $ItemNode.Path           | Should -Be 'PSCustomObject.Two'
+            $ItemNode.Path.Nodes[0]  | Should -Be $ItemNode.RootNode
+            $ItemNode.Path.Nodes[-1] | Should -Be $ItemNode
+            $ItemNode.Path.Nodes[-2] | Should -Be $ItemNode.ParentNode
         }
 
         it 'Path with space' {

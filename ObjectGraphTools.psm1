@@ -1,4 +1,4 @@
-. $PSScriptRoot\Source\Private\Use-ClassAccessors.ps1
+. $PSScriptRoot\Source\Private\ClassTools.ps1
 . $PSScriptRoot\Source\Classes\ObjectParser.ps1
 . $PSScriptRoot\Source\Public\ConvertTo-Expression.ps1
 . $PSScriptRoot\Source\Public\Compare-ObjectGraph.ps1

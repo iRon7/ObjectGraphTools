@@ -12,7 +12,7 @@ Describe 'Sort-ObjectGraph' {
         Set-StrictMode -Version Latest
     }
 
-    Context 'Sanity Check' {
+    Context 'Existence Check' {
 
         It 'Help' {
             Sort-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
