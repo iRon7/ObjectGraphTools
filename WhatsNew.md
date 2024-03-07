@@ -1,3 +1,19 @@
+## 2024-02-22 0.1.0 (iRon)
+  - Break changes
+    - #55 `Get-Node` retrieves no long the path but the Object/Node from the pipeline
+    - #56 Removed -Path parameter from Get-ChildNode (Use: `<Object-Graph or PSNode> | Get-Node <XdnPath> | Get-ChildNode ...` )
+
+  -Enhancements
+    - Full **Extended dot notation** (`Xdn`) implementation (see: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Xdn.md)
+    - #57 Added `-Literal` parameter to `Get-Node`
+    - Added `Xdn` document
+    - Added `Xdn` Tests
+    - Added `[PSNodePath]` class for `[PSNode]$Node.Path`
+    - Added `Get-Node` tests
+
+  - Fixed
+    - #59 ConvertTo-Expression quoting bug
+
 ## 2024-02-28 0.0.20 (iRon)
   - Fixed
     - `ConvertTo-Expression` adding `$Null` entries

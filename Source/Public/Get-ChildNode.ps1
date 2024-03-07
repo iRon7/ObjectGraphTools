@@ -5,10 +5,11 @@ Using NameSpace System.Management.Automation.Language
     Gets the child nodes of an object-graph
 
 .DESCRIPTION
-    Gets the items and child items in one or more specified locations of an object-graph
+    Gets the (unique) nodes and child nodes in one or more specified locations of an object-graph
+    The returned nodes are unique even if the provide list of input parent nodes have an overlap.
 
 .EXAMPLE
-        # Select all leaf nodes in a object graph
+    # Select all leaf nodes in a object graph
 
     Given the following object graph:
 
@@ -51,7 +52,7 @@ Using NameSpace System.Management.Automation.Language
         .Comment         Comment     1 Sample ObjectGraph
 
 .EXAMPLE
-        # update a property
+    # update a property
 
     The following example selects all child nodes named `Comment` at a depth of `3`.
     Than filters the one that has an `Index` sibling with the value `2` and eventually
@@ -87,14 +88,6 @@ Using NameSpace System.Management.Automation.Language
 
 .PARAMETER InputObject
     The concerned object graph or node.
-
-.PARAMETER Path
-    Specifies the path to a specific node in the object graph.
-    The path might be either:
-
-    * As [String] a "dot-property" selection as defined by the `PathName` property a specific node.
-    * A array of strings (dictionary keys or Property names) and/or Integers (list indices).
-    * A object (`PSNode[]`) list where each `Name` property defines the path
 
 .PARAMETER Recurse
     Recursively iterates through all embedded property objects (nodes) to get the selected nodes.
@@ -156,9 +149,6 @@ function Get-ChildNode {
         [Parameter(Mandatory = $true, ValueFromPipeLine = $true)]
         $InputObject,
 
-        [ValidateNotNull()]
-        $Path,
-
         [switch]
         $Recurse,
 
@@ -190,6 +180,7 @@ function Get-ChildNode {
     )
 
     begin {
+        $UniqueNodes = [System.Collections.Generic.Dictionary[Int, System.Collections.Generic.HashSet[String]]]::new()
         $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
             [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
         } elseif ($Recurse) { -1 } else { 0 }
@@ -200,8 +191,12 @@ function Get-ChildNode {
     }
 
     process {
-        $Self = [PSNode]::ParseInput($InputObject, $MaxDepth)
-        if ($PSBoundParameters.ContainsKey('Path')) { $Self = $Self.GetNode($Path) }
+        if ($InputObject -is [PSNode]) { $Self = $InputObject }
+        else { $Self = [PSNode]::ParseInput($InputObject, $MaxDepth) }
+        $ValueHash = $Self.RootNode.Value.GetHashCode()
+        if (-Not $UniqueNodes.ContainsKey($ValueHash)) {
+            $UniqueNodes[$ValueHash] = [System.Collections.Generic.HashSet[String]]::new() # Note: this HashSet is case sensitive (as any -nested- dictionary might be)
+        }
 
         $NodeList = [System.Collections.Generic.List[PSNode]]::new()
         if ($IncludeSelf) { $NodeList.Add($Self) }
@@ -225,7 +220,9 @@ function Get-ChildNode {
                         (-not $Literal -and $Exclude.where({ $Node.Name -like $_ }, 'first'))
                     )
                 )
-            ) { $Node }
+            ) {
+                if ($UniqueNodes[$ValueHash].Add($Node.PathName)) { $Node }
+            }
         }
     }
 }

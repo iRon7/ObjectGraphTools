@@ -8,7 +8,6 @@ Gets the child nodes of an object-graph
 ```PowerShell
 Get-ChildNode
     -InputObject <Object>
-    [-Path <Object>]
     [-Recurse]
     [-AtDepth <Int32[]>]
     [-Leaf]
@@ -32,13 +31,13 @@ Get-ChildNode
 
 ## Description
 
-Gets the items and child items in one or more specified locations of an object-graph
+Gets the (unique) nodes and child nodes in one or more specified locations of an object-graph
+The returned nodes are unique even if the provide list of input parent nodes have an overlap.
 
 ## Examples
 
 ### Example 1: Select all leaf nodes in a object graph
 
-```
 
 Given the following object graph:
 
@@ -86,7 +85,6 @@ PathName         Name    Depth Value
 
 ### Example 2: update a property
 
-```
 
 The following example selects all child nodes named `Comment` at a depth of `3`.
 Than filters the one that has an `Index` sibling with the value `2` and eventually
@@ -131,24 +129,6 @@ The concerned object graph or node.
 <table>
 <tr><td>Type:</td><td></td></tr>
 <tr><td>Mandatory:</td><td>True</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
-
-### <a id="-path">**`-Path <Object>`**</a>
-
-Specifies the path to a specific node in the object graph.
-The path might be either:
-
-* As [String](#string) a "dot-property" selection as defined by the `PathName` property a specific node.
-* A array of strings (dictionary keys or Property names) and/or Integers (list indices).
-* A object (`PSNode[]`) list where each `Name` property defines the path
-
-<table>
-<tr><td>Type:</td><td></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
 <tr><td>Accept pipeline input:</td><td></td></tr>

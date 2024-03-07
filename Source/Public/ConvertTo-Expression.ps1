@@ -74,6 +74,10 @@ function ConvertTo-Expression {
     )
     begin {
         $Script:Indent = $IndentChar * $IndentSize
+        function Quote ($Value) {
+            "'" + "$Value".Replace("'", "''") + "'"
+        }
+        
         function ConvertToExpression(
             [String]$Indent,
             [String]$Prefix,
@@ -115,14 +119,14 @@ function ConvertTo-Expression {
                 $Expression =
                     if ($Null -eq $Value) { '$Null' }
                     elseif ($Value -is [Boolean]) { if ($Value) { '$True' } else { '$False' } }
-                    elseif ('ADSI' -as [type] -and $Value -is [ADSI]) { "'$($Value.ADsPath)'" }
-                    elseif ($Node.Type -in 'Char', 'MailAddress', 'Regex', 'Semver', 'Type', 'Version', 'Uri') { "'$($Value)'" }
+                    elseif ('ADSI' -as [type] -and $Value -is [ADSI]) { Quote $Value.ADsPath }
+                    elseif ($Node.Type -in 'Char', 'MailAddress', 'Regex', 'Semver', 'Type', 'Version', 'Uri') { Quote $Value }
                     elseif ($Type.IsPrimitive) { "$Value" }
-                    elseif ($Value -is [String]) { "'$Value'" } # Check for here string
+                    elseif ($Value -is [String]) { Quote $Value } # Check for here string
                     #elseif ($Value -is [SecureString]) { "'$($Value | ConvertFrom-SecureString)'" -Convert 'ConvertTo-SecureString' }
                     #elseif ($Value -is [PSCredential]) { $Value.Username, $Value.Password -Convert 'New-Object PSCredential' }
-                    elseif ($Value -is [DateTime]) { "'$($Value.ToString('o'))'" }
-                    elseif ($Value -is [Enum]) { "'$Value'" }
+                    elseif ($Value -is [DateTime]) { Quote $Value.ToString('o') }
+                    elseif ($Value -is [Enum]) { Quote $Value }
                     elseif ($Value -is [ScriptBlock]) { if ($Value -match "\#.*?$") { "{ $Value$NewLine }" } else { "{ $Value }" } }
                     elseif ($Value -is [RuntimeTypeHandle]) { "$($Value.Value)" }
                     else   { $Value }

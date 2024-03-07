@@ -33,7 +33,7 @@ Describe 'Get-ChildNode' {
         }
     }
 
-    Context 'Sanity Check' {
+    Context 'Existence Check' {
 
         It 'Help' {
             Get-Node -? | Out-String -Stream | Should -Contain SYNOPSIS

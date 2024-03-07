@@ -33,7 +33,7 @@ Describe 'Compare-ObjectGraph' {
         }
     }
 
-    Context 'Sanity Check' {
+    Context 'Existence Check' {
 
         It 'Help' {
             Compare-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
