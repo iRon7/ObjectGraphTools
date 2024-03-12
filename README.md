@@ -3,7 +3,7 @@
 Object Graph Tools
 
 In PowerShell, Object Graphs are often used for applications along with modifying configurations resulted from e.g. [`Json`](https://www.json.org/json-en.html) or [DSC (Desired State Configuration)](https://learn.microsoft.com/en-us/powershell/dsc/overview?view=dsc-2.0). Yet, most existing object manipulation cmdlets (as [Sort-Object](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/sort-object) and [Compare-Object](https://learn.microsoft.com/nl-nl/powershell/module/microsoft.powershell.utility/sort-object)) are rather flat.\
-This toolkit contains an [PowerShell object parser](./Docs/ObjectParser.md) and a set of Object Graph Cmdlets to deal with these complex recursive PowerShell objects.
+This toolkit contains an [PowerShell object parser](./Docs/ObjectParser.md), an [extended dot notation (Xdn)](./Docs/Xdn.md) query selector and a set of Object Graph Cmdlets to deal with these complex recursive PowerShell objects.
 
 **Quote [Wikipedia](https://en.wikipedia.org/)**
 

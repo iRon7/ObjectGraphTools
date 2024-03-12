@@ -58,22 +58,22 @@ that gets the objects. You can also pipe one or more objects to
 ConvertTo-Expression.
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
 <tr><td>Mandatory:</td><td>True</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
 ### <a id="-expand">**`-Expand <Int32>`**</a>
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td><code>[Int]::MaxValue</code></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
@@ -82,11 +82,11 @@ ConvertTo-Expression.
 Specifies how many IndentChars to write for each level in the hierarchy.
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td><code>4</code></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
@@ -95,11 +95,11 @@ Specifies how many IndentChars to write for each level in the hierarchy.
 Specifies which character to use for indenting.
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.String">String</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td><code>' '</code></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
@@ -109,11 +109,11 @@ Specifies how many levels of contained objects are included in the
 PowerShell representation. The default value is 9.
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td><code>[PSNode]::DefaultMaxDepth</code></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 

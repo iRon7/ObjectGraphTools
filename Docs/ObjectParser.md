@@ -11,7 +11,7 @@ of an object-graph and returns the path to each object.
 
 ```PowerShell
 function Iterate([PSNode]$Node) { # Basic iterator
-    $Node.PathName
+    $Node.Path
     if ($Node -is [PSCollectionNode]) {
         $Node.ChildNodes.foreach{ Iterate $_ }
     }
@@ -153,15 +153,15 @@ A PSNode derived from a `[PSLeafNode]` type doesn't have a `Values` property.
 
 ### `Path` (ReadOnly)
 
-Returns all the branch of PSNodes starting from the root PSNode up and till
-the current PSNode
+Returns a `PSNodePath` object that the PSNode path starting from the root PSNode
+up and till the current PSNode. By default the `Path` class will act like a string
+but in fact, it contains all the nodes: `$Node.Path.Nodes`.
 
 ### `PathName` (ReadOnly)
 
-Returns an unique path (string) identifying the current node in the PSNode tree
-starting from the root node.
-The path might be used to directly target the property or item of a object-graph
-aka the value contained by the root node.
+> [!Caution]
+> The `PathName` property has been deprecated.
+> Use `[String]$Node.Path` or `$Node.GetPathName('$Object')` instead.
 
 ## Methods
 

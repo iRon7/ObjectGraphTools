@@ -130,8 +130,10 @@ function Get-Node {
 
     process {
         $Root = [PSNode]::ParseInput($InputObject, $MaxDepth)
-        if ($XdnPaths) { $XdnPaths.ForEach{ $Root.GetNode($_) } }
-        else { $Root }
+        $Node =
+            if ($XdnPaths) { $XdnPaths.ForEach{ $Root.GetNode($_) } }
+            else { $Root }
+        if ($ValueOnly) { $Node.Value } else { $Node }
     }
 }
 

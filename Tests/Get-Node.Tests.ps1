@@ -58,7 +58,7 @@ Describe 'Get-Node' {
         }
     }
 
-    Context 'by PathName' {
+    Context 'by Path' {
 
         it 'Get data node' {
             $Data = $Object | Get-Node Data
@@ -70,6 +70,14 @@ Describe 'Get-Node' {
             $Comment.Value | Should -Be 'First item'
         }
     }
+
+    # Context 'Value only' {
+
+    #     it 'Get the first comment node' {
+    #         $Comment = $Object | Get-Node Data[0].Comment -ValueOnly
+    #         $Comment | Should -Be 'First item'
+    #     }
+    # }
 
     Context 'Extended Dot Notation' {
 
@@ -108,7 +116,7 @@ Describe 'Get-Node' {
         it 'Ancestor selector' {
             $1stTitle = $ObjectGraph | Get-Node BookStore[0].Book.Title
             $1StBook = $1stTitle | Get-Node ..
-            $1stBook.PathName | Should -be BookStore[0].Book
+            $1stBook.Path | Should -be BookStore[0].Book
         }
 
         it 'Descendant selector' {
@@ -160,5 +168,74 @@ Describe 'Get-Node' {
             $NewPrice.Value | Should -Be 24.95
         }
 
+    }
+
+    Context 'Stack Overflow' {
+
+        it 'how to get the name of a JSON object a data pair is in' { # https://stackoverflow.com/q/77847823/1701026
+$Json = '
+{
+    "Team1": {
+      "John Smith": {
+        "position": "IT Manager",
+        "employees": [
+          {
+            "name": "John Doe",
+            "position": "Programmer"
+          },
+          {
+            "name": "Jane Vincent",
+            "position": "Developer"
+          }
+        ]
+      },
+      "Jane Smith": {
+        "position": "Payroll Manager",
+        "employees": [
+          {
+            "name": "John Bylaw",
+            "position": "Clerk"
+          },
+          {
+            "name": "Jane Hormel",
+            "position": "accountant"
+          }
+        ]
+      }
+    },
+    "Team2": {
+      "Bob Smith": {
+        "position": "IT Manager",
+        "employees": [
+          {
+            "name": "Bob Doe",
+            "position": "Programmer"
+          },
+          {
+            "name": "Margaret Smith",
+            "position": "Developer"
+          }
+        ]
+      },
+      "Mary Smith": {
+        "position": "Payroll Manager",
+        "employees": [
+          {
+            "name": "Henry Bylaw",
+            "position": "Clerk"
+          },
+          {
+            "name": "Eric Hormel",
+            "position": "accountant"
+          }
+        ]
+      }
+    }
+  }'
+
+            $Name = 'Eric Hormel'
+            $Eric = $Json | ConvertFrom-Json | Get-Node ~Name="$Name"
+            $Eric.GetNode('....Position').Value | Should -Be 'Payroll Manager'
+        }
     }
 }

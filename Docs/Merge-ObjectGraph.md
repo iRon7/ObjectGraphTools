@@ -35,11 +35,11 @@ The input object that will be merged with the template object (see: [-Template](
 ```
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
 <tr><td>Mandatory:</td><td>True</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
@@ -48,11 +48,11 @@ The input object that will be merged with the template object (see: [-Template](
 The template that is used to merge with the input object (see: [-InputObject](#-inputobject) parameter).
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
 <tr><td>Mandatory:</td><td>True</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
@@ -68,22 +68,22 @@ It is allowed to supply multiple primary keys where each primary key will be use
 check the relation between the [-Template](#-template) and the [-InputObject](#-inputobject).
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.String[]">String[]</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
 ### <a id="-matchcase">**`-MatchCase`**</a>
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
@@ -92,11 +92,11 @@ check the relation between the [-Template](#-template) and the [-InputObject](#-
 The maximal depth to recursively compare each embedded property (default: 10).
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td><code>[PSNode]::DefaultMaxDepth</code></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 

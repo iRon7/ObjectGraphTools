@@ -145,10 +145,10 @@ class XdnPath {
             if ($Path[0] -in "'", '"') {
                 if (-not $XdnOperator) { $XdnOperator = 'Child' }
                 $Ast = [Parser]::ParseInput($Path, [ref]$Null, [ref]$Null)
-                $StringAst = $Ast.EndBlock.Statements.PipelineElements.Find({ $args[0] -is [StringConstantExpressionAst] }, $False)[0]
+                $StringAst = $Ast.EndBlock.Statements.Find({ $args[0] -is [StringConstantExpressionAst] }, $False)
                 if ($Null -ne $StringAst) {
-                    $this.Add($XdnOperator, [XdnValue]::new($StringAst.Value, $True))
-                    $Path = $Path.SubString($StringAst.Extent.EndOffset)
+                    $this.Add($XdnOperator, [XdnValue]::new($StringAst[0].Value, $True))
+                    $Path = $Path.SubString($StringAst[0].Extent.EndOffset)
                 }
                 else { # Probably a quoting error
                     $this.Add($XdnOperator, [XdnValue]::new($Path, $True))
@@ -250,6 +250,10 @@ Class PSNodePath {
 
     hidden PSNodePath($Nodes) { $this.Nodes = [PSNode[]]$Nodes }
 
+    static [String] op_Addition([PSNodePath]$Path, [String]$String) {
+        return "$Path" + $String
+    }
+
     [String] ToString() {
         if ($Null -eq $this._String) {
             $Count = $this.Nodes.Count
@@ -297,7 +301,7 @@ Class PSNode {
             $this.ParentNode.SetItem($this._Name,  $Value)
         }
         else {
-            Throw "The supplied value has a different PSNode type than the existing $($this.PathName). Use .ParentNode.SetItem() method and reload its child item(s)."
+            Throw "The supplied value has a different PSNode type than the existing $($this.Path). Use .ParentNode.SetItem() method and reload its child item(s)."
         }
     }
 
@@ -372,7 +376,10 @@ Class PSNode {
         return $this._Path
     }
 
-    hidden [String] get_PathName() { return $this.get_Path().ToString() }
+    hidden [String] get_PathName() {
+        # Write-Warning 'The `PathName` property has been deprecated. Use the [String]$Node.Path property or the $Node.GetPathName(''$Object'') method instead.'
+        return $this.get_Path().ToString()
+    }
 
     [String] GetPathName($VariableName) {
         $PathName = $this.get_Path().ToString()
@@ -383,6 +390,8 @@ Class PSNode {
             return "$VariableName.$PathName"
         }
     }
+
+    [String] GetPathName() { return $this.get_Path().ToString() }
 
     hidden CollectNodes($NodeTable, [XdnPath]$Path, [Int]$PathIndex) {
         $Entry = $Path._Entries[$PathIndex]
@@ -396,21 +405,21 @@ Class PSNode {
             Root {
                 $Node = $this.RootNode
                 if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                else { $NodeTable[$Node.get_PathName()] = $Node }
+                else { $NodeTable[$Node.getPathName()] = $Node }
             }
             Ancestor {
                 $Node = $this
                 for($i = $Entry.Value; $i -gt 0 -and $Node.ParentNode; $i--) { $Node = $Node.ParentNode }
                 if ($i -eq 0) { # else: reached root boundary
                     if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                    else { $NodeTable[$Node.get_PathName()] = $Node }
+                    else { $NodeTable[$Node.getPathName()] = $Node }
                 }
             }
             Index {
                 if ($this -is [PSListNode] -and [Int]::TryParse($Entry.Value, [Ref]$Null)) {
                     $Node = $this.GetChildNode([Int]$Entry.Value)
                     if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                    else { $NodeTable[$Node.get_PathName()] = $Node }
+                    else { $NodeTable[$Node.getPathName()] = $Node }
                 }
             }
             Default { # Child, Descendant
@@ -426,7 +435,7 @@ Class PSNode {
                         if ($Entry.Value -eq $Node.Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
                             $Found = $True
                             if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                            else { $NodeTable[$Node.get_PathName()] = $Node }
+                            else { $NodeTable[$Node.getPathName()] = $Node }
                         }
                     }
                     if (-not $Found -and $Entry.Key -eq 'Descendant') {
@@ -480,7 +489,7 @@ Class PSCollectionNode : PSNode {
             $SelectionName  = "[$Name]"
             $CollectionType = 'list'
         }
-        Write-Warning "Expected $SelectionName to be a $CollectionType selector for: <Object>$($Node.PathName)"
+        Write-Warning "Expected $SelectionName to be a $CollectionType selector for: <Object>$($Node.Path)"
     }
 
     hidden [List[Ast]] GetAstSelectors ($Ast) {
@@ -570,7 +579,7 @@ Class PSListNode : PSCollectionNode {
         if ($this.MaxDepthReached()) { return $Null }
         $Count = $this._Value.get_Count()
         if ($Index -lt -$Count -or $Index -ge $Count) {
-            throw "The <Object>$($this.PathName) doesn't contain a child index: $Index"
+            throw "The <Object>$($this.Path) doesn't contain a child index: $Index"
         }
         $Node = $this.Append($this._Value[$Index])
         $Node._Name = $Index
@@ -648,7 +657,7 @@ Class PSDictionaryNode : PSMapNode {
     [Object]GetChildNode($Key) {
         if ($this.MaxDepthReached()) { return $Null }
         if (-not $this._Value.Contains($Key)) {
-            Throw "The <Object>$($this.PathName) doesn't contain a child named: $Key"
+            Throw "The <Object>$($this.Path) doesn't contain a child named: $Key"
         }
         $Node = $this.Append($this._Value[$Key])
         $Node._Name = $Key
@@ -704,7 +713,7 @@ Class PSObjectNode : PSMapNode {
     [Object]GetChildNode([String]$Name) {
         if ($this.MaxDepthReached()) { return $Null }
         if ($Name -NotIn $this._Value.PSObject.Properties.Name) {
-            Throw "The <Object>$($this.PathName) doesn't contain a child named: $Name"
+            Throw "The <Object>$($this.Path) doesn't contain a child named: $Name"
         }
         $Node = $this.Append($this._Value.PSObject.Properties[$Name].Value)
         $Node._Name = $Name
