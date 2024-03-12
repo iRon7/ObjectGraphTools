@@ -35,11 +35,11 @@ The input object that will be recursively sorted.
 ```
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
 <tr><td>Mandatory:</td><td>True</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
@@ -51,11 +51,11 @@ independent of the (descending) sort order.
 It is allowed to supply multiple primary keys.
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.String[]">String[]</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
@@ -64,11 +64,11 @@ It is allowed to supply multiple primary keys.
 Indicates that the sort is case-sensitive. By default, sorts aren't case-sensitive.
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
@@ -80,11 +80,11 @@ Indicates that Sort-Object sorts the objects in descending order. The default is
 > Primary keys (see: [-PrimaryKey](#-primarykey)) will always put on top.
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
@@ -93,11 +93,11 @@ Indicates that Sort-Object sorts the objects in descending order. The default is
 The maximal depth to recursively compare each embedded property (default: 10).
 
 <table>
-<tr><td>Type:</td><td></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td><code>[PSNode]::DefaultMaxDepth</code></td></tr>
-<tr><td>Accept pipeline input:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 

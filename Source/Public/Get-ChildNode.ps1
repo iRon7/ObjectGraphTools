@@ -221,7 +221,9 @@ function Get-ChildNode {
                     )
                 )
             ) {
-                if ($UniqueNodes[$ValueHash].Add($Node.PathName)) { $Node }
+                if ($UniqueNodes[$ValueHash].Add($Node.PathName)) {
+                    if ($ValueOnly) { $Node.Value } else { $Node }
+                }
             }
         }
     }

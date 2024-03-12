@@ -13,7 +13,7 @@ Describe 'Extended Dot Notation' {
         Set-StrictMode -Version Latest
 
     }
-    
+
     Context 'Existence Check' {
 
         It 'Help' {
@@ -59,7 +59,7 @@ Describe 'Extended Dot Notation' {
         it 'Ancestor selector' {
             $1stTitle = $RootNode.GetNode('BookStore[0].Book.Title')
             $1StBook = $1stTitle.GetNode('..')
-            $1stBook.PathName | Should -be BookStore[0].Book
+            $1stBook.Path | Should -be BookStore[0].Book
         }
 
         it 'Descendant selector' {

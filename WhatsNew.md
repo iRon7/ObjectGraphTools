@@ -1,4 +1,12 @@
-## 2024-02-22 0.1.0 (iRon)
+## 2024-03-09 0.1.1 (iRon)
+  - Fixes
+    - #45 Improved internal nodes collector
+    - #58 Fix issue where literal name is not found before `Equal` operator
+    - #62 Parameter tables are not properly filled
+    - #64 Update main Readme.md with Xdn
+    - #65 Update ObjectParser.md with respect to PathName deprecation
+
+## 2024-03-08 0.1.0 (iRon)
   - Break changes
     - #55 `Get-Node` retrieves no long the path but the Object/Node from the pipeline
     - #56 Removed -Path parameter from Get-ChildNode (Use: `<Object-Graph or PSNode> | Get-Node <XdnPath> | Get-ChildNode ...` )

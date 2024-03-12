@@ -23,7 +23,7 @@ Describe 'PSNode' {
         }
 
         function Iterate([PSNode]$Node) { # Basic iterator
-            $Node.PathName
+            $Node.Path
             if ($Node -is [PSCollectionNode]) {
                 $Node.ChildNodes.foreach{ Iterate $_ }
             }
@@ -270,7 +270,6 @@ Describe 'PSNode' {
 
         it 'Array' {
             $ItemNode = $Node.GetChildNode('Array').GetChildNode(2)
-            $ItemNode.PathName       | Should -Be 'Array[2]'
             $ItemNode.Path           | Should -Be 'Array[2]'
             $ItemNode.Path.Nodes[0]  | Should -Be $ItemNode.RootNode
             $ItemNode.Path.Nodes[-1] | Should -Be $ItemNode
@@ -279,7 +278,6 @@ Describe 'PSNode' {
 
         it 'HashTable' {
             $ItemNode = $Node.GetChildNode('HashTable').GetChildNode('Two')
-            $ItemNode.PathName       | Should -Be 'HashTable.Two'
             $ItemNode.Path           | Should -Be 'HashTable.Two'
             $ItemNode.Path.Nodes[0]  | Should -Be $ItemNode.RootNode
             $ItemNode.Path.Nodes[-1] | Should -Be $ItemNode
@@ -288,7 +286,6 @@ Describe 'PSNode' {
 
         it 'PSCustomObject' {
             $ItemNode = $Node.GetChildNode('PSCustomObject').GetChildNode('Two')
-            $ItemNode.PathName       | Should -Be 'PSCustomObject.Two'
             $ItemNode.Path           | Should -Be 'PSCustomObject.Two'
             $ItemNode.Path.Nodes[0]  | Should -Be $ItemNode.RootNode
             $ItemNode.Path.Nodes[-1] | Should -Be $ItemNode
@@ -296,7 +293,7 @@ Describe 'PSNode' {
         }
 
         it 'Path with space' {
-            [PSNode]::ParseInput(@{ 'Hello World' = 42 }).ChildNodes[0].PathName | Should -Be "'Hello World'"
+            [PSNode]::ParseInput(@{ 'Hello World' = 42 }).ChildNodes[0].Path | Should -Be "'Hello World'"
         }
     }
 
@@ -376,20 +373,17 @@ Describe 'PSNode' {
 
         It 'Default Depth' {
             $Output = Iterate ([PSNode]::ParseInput($Cycle)) 3>&1
-            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  "*maximum depth*$([PSNode]::DefaultMaxDepth)*"
-            $Output.where{$_ -isnot [System.Management.Automation.WarningRecord]}         | Should -Contain 'Parent.Parent.Parent.Name'
+            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message        | Should -BeLike  "*Parent.Parent.Parent*maximum depth*$([PSNode]::DefaultMaxDepth)*"
         }
 
         It '-Depth 5' {
             $Output = Iterate ([PSNode]::ParseInput($Cycle, 5)) 3>&1
-            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*maximum depth*5*'
-            $Output.where{$_ -isnot [System.Management.Automation.WarningRecord]}         | Should -Contain 'Parent.Parent.Parent.Name'
+            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message        | Should -BeLike  '*Parent.Parent.Parent*maximum depth*5*'
         }
 
         It '-Depth 15' {
             $Output = Iterate ([PSNode]::ParseInput($Cycle, 15)) 3>&1
-            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*maximum depth*15*'
-            $Output.where{$_ -isnot [System.Management.Automation.WarningRecord]}         | Should -Contain 'Parent.Parent.Parent.Name'
+            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message        | Should -BeLike  '*Parent.Parent.Parent*maximum depth*15*'
         }
     }
 }
