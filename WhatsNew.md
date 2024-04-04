@@ -1,3 +1,15 @@
+## 2024-04-04 0.1.2 (iRon)
+  - Enhancements
+    - Full implementation of `ConvertTo-Expression`
+      (still requires some code improvements with regards to hardcoded roundtrip properties)
+      Improved performance and added parameters:
+      `-LanguageMode` Restricted, Constrained, Full
+      `-ExpandDepth` Expands up till this level (collapse the rest)
+      `-Explicit` Add explicit type name
+      `-FullTypeName` Use full type name
+      `-HighFidelity` Explore all underlying properties
+      `-ExpandSingleton` Expand collection nodes with a single item
+
 ## 2024-03-09 0.1.1 (iRon)
   - Fixes
     - #45 Improved internal nodes collector
@@ -11,7 +23,7 @@
     - #55 `Get-Node` retrieves no long the path but the Object/Node from the pipeline
     - #56 Removed -Path parameter from Get-ChildNode (Use: `<Object-Graph or PSNode> | Get-Node <XdnPath> | Get-ChildNode ...` )
 
-  -Enhancements
+  - Enhancements
     - Full **Extended dot notation** (`Xdn`) implementation (see: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Xdn.md)
     - #57 Added `-Literal` parameter to `Get-Node`
     - Added `Xdn` document
