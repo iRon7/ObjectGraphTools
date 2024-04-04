@@ -3,58 +3,86 @@
     Serializes an object to a PowerShell expression.
 
 .DESCRIPTION
-    The ConvertTo-Expression cmdlet converts (serializes) an object to a
-    PowerShell expression. The object can be stored in a variable,  file or
-    any other common storage for later use or to be ported to another
-    system.
+    The ConvertTo-Expression cmdlet converts (serializes) an object to a PowerShell expression.
+    The object can be stored in a variable, (.psd1) file or any other common storage for later use or to be ported
+    to another system.
 
-    An expression can be restored to an object using the native
-    Invoke-Expression cmdlet:
+    expressions might be restored to an object using the native Invoke-Expression cmdlet:
 
         $Object = Invoke-Expression ($Object | ConvertTo-Expression)
 
-    Or Converting it to a [ScriptBlock] and invoking it with cmdlets
-    along with Invoke-Command or using the call operator (&):
+    Or using the [PSNode Object Parser][1] (*under construction*).
 
-        $Object = &([ScriptBlock]::Create($Object | ConvertTo-Expression))
-
-    An expression that is stored in a PowerShell (.ps1) file might also
-    be directly invoked by the PowerShell dot-sourcing technique,  e.g.:
-
-        $Object | ConvertTo-Expression | Out-File .\Expression.ps1
-        $Object = . .\Expression.ps1
-
-    Warning: Invoking partly trusted input with Invoke-Expression or
-    [ScriptBlock]::Create() methods could be abused by malicious code
-    injections.
+    > [!Note]
+    > Some object types can not be constructed from a a simple serialized expression
 
 .INPUTS
-    Any. Each objects provided through the pipeline will converted to an
-    expression. To concatenate all piped objects in a single expression,
-    use the unary comma operator,  e.g.: ,$Object | ConvertTo-Expression
+    Any. Each objects provided through the pipeline will converted to an expression. To concatenate all piped
+    objects in a single expression, use the unary comma operator,  e.g.: `,$Object | ConvertTo-Expression`
 
 .OUTPUTS
-    String[]. ConvertTo-Expression returns a PowerShell [String] expression
-    for each input object.
+    String[]. `ConvertTo-Expression` returns a PowerShell [String] expression for each input object.
 
 .PARAMETER InputObject
-    Specifies the objects to convert to a PowerShell expression. Enter a
-    variable that contains the objects,  or type a command or expression
-    that gets the objects. You can also pipe one or more objects to
-    ConvertTo-Expression.
+    Specifies the objects to convert to a PowerShell expression. Enter a variable that contains the objects,
+    or type a command or expression that gets the objects. You can also pipe one or more objects to
+    `ConvertTo-Expression.`
 
-.PARAMETER MaxDepth
-    Specifies how many levels of contained objects are included in the
-    PowerShell representation. The default value is 9.
+.PARAMETER LanguageMode
+    Defines which types are allowed for the serialization, see: [About language modes][2]
+    If a specific type isn't allowed in the given language mode, it will be substituted by:
+
+    * **`$Null`** in case of a null value
+    * **`$False`** in case of a boolean false
+    * **`$True`** in case of a boolean true
+    * **A number** in case of a primitive value
+    * **A string** in case of a string or any other **leaf** node
+    * `@(...)` for an array (**list** node)
+    * `@{...}` for any dictionary, PSCustomObject or Component (aka **map** node)
+
+    See the [PSNode Object Parser][1] for a detailed definition on node types.
+
+.PARAMETER ExpandDepth
+    Defines up till what level the collections will be expanded in the output.
+
+.PARAMETER Explicit
+    By default, restricted language types initializers are suppressed.
+    When the `Explicit` switch is set, *all* values will be prefixed with an initializer
+    (as e.g. `[Long]` and `[Array]`)
+
+    > [!Note]
+    > The `-Explicit` switch can not be used in **restricted** language mode
+
+.PARAMETER FullTypeName
+    In case a value is prefixed with an initializer, the full type name of the initializer is used.
+
+    > [!Note]
+    > The `-FullTypename` switch can not be used in **restricted** language mode and will only be
+    > meaningful if the initializer is used (see also the [-Explicit] switch).
+
+.PARAMETER HighFidelity
+    By default the fidelity of an object expression will end when:
+
+    1) the concerned object property is a leaf node (see: [PSNode Object Parser][1])
+    2) the concerned object property contains a constructor that accepts a single `string` parameter
+
+    If the `-HighFidelity` switch is supplied, the second condition is omitted, meaning that the
+    all nested properties a collection node will be recursively serialized.
+
+.PARAMETER ExpandSingleton
+    (List or map) collections nodes that contain a single item will not be expanded unless this
+    `-ExpandSingleton` is supplied.
 
 .PARAMETER IndentSize
-    Specifies how many IndentChars to write for each level in the hierarchy.
+    Specifies indent used for the nested properties.
 
-.PARAMETER IndentChar
-    Specifies which character to use for indenting.
+.PARAMETER MaxDepth
+    Specifies how many levels of contained objects are included in the PowerShell representation.
+    The default value is define by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`).
 
 .LINK
-    https://www.powershellgallery.com/packages/ConvertFrom-Expression
+    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+    [2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
 #>
 
 function ConvertTo-Expression {
@@ -64,80 +92,50 @@ function ConvertTo-Expression {
         [Parameter(Mandatory = $true, ValueFromPipeLine = $True)]
         $InputObject,
 
-        [Int]$Expand = [Int]::MaxValue,
+        [ValidateScript({ $_ -ne 'NoLanguage' })]
+        [PSLanguageMode]$LanguageMode = 'Restricted',
 
-        [int]$IndentSize = 4,
+        [Alias('Expand')][Int]$ExpandDepth = [Int]::MaxValue,
 
-        [string]$IndentChar = ' ',
+        [Switch]$Explicit,
+
+        [Switch]$FullTypeName,
+
+        [Switch]$HighFidelity,
+
+        [Switch]$ExpandSingleton,
+
+        [String]$Indent = '    ',
 
         [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
     )
+
     begin {
-        $Script:Indent = $IndentChar * $IndentSize
-        function Quote ($Value) {
-            "'" + "$Value".Replace("'", "''") + "'"
+        function StopError($Exception, $Id = 'IncorrectArgument', $Group = [Management.Automation.ErrorCategory]::SyntaxError, $Object){
+            if ($Exception -is [System.Management.Automation.ErrorRecord]) { $Exception = $Exception.Exception }
+            elseif ($Exception -isnot [Exception]) { $Exception = [ArgumentException]$Exception }
+            $PSCmdlet.ThrowTerminatingError([System.Management.Automation.ErrorRecord]::new($Exception, $Id, $Group, $Object))
         }
-        
-        function ConvertToExpression(
-            [String]$Indent,
-            [String]$Prefix,
-            [PSNode]$Node,
-            [String]$Suffix,
-            [Int]$Expand = $Expand
-        ) {
-            if ($Node -is [PSListNode]) {
-                $Indent1 = if ($Indent -or $Prefix) { $Indent + $Script:Indent }
-                $ChildNodes = $Node.get_ChildNodes()
-                if ($ChildNodes) {
-                    if ($Indent1) { "$Indent$Prefix@(" }
-                    for ($i = 0; $i -lt $ChildNodes.Count; $i++) {
-                        $Suffix = if ($i -lt $ChildNodes.Count - 1) { ',' }
-                        ConvertToExpression -Indent $Indent1 -Node $ChildNodes[$i] -Suffix $Suffix
-                    }
-                    if ($Indent1) { "$Indent)$Suffix" }
-                }
-                else { "$Indent$Prefix@()$Suffix" }
-            }
-            elseif ($Node -is [PSMapNode]) {
-                $Indent1 = $Indent + $Script:Indent
-                $ChildNodes = $Node.get_ChildNodes()
-                if ($ChildNodes) {
-                    "$Indent$Prefix@{"
-                    foreach ($ChildNode in $ChildNodes) {
-                        $Name =
-                            if ($ChildNode.Name -is [String] -and $ChildNode.Name -Match [XdnPath]::Verbatim) { $ChildNode.Name }
-                            elseif ($ChildNode.Type.IsPrimitive) { $ChildNode.Name }
-                            else { "'$($ChildNode.Name)'" }
-                        ConvertToExpression -Indent $Indent1 -Prefix "$Name = " -Node $ChildNode
-                    }
-                    "$Indent}$Suffix"
-                }
-                else { "$Indent$Prefix@{}$Suffix" }
-            }
-            else { # if ($Node -is [PSLeafNode])
-                $Value = $Node.Value
-                $Expression =
-                    if ($Null -eq $Value) { '$Null' }
-                    elseif ($Value -is [Boolean]) { if ($Value) { '$True' } else { '$False' } }
-                    elseif ('ADSI' -as [type] -and $Value -is [ADSI]) { Quote $Value.ADsPath }
-                    elseif ($Node.Type -in 'Char', 'MailAddress', 'Regex', 'Semver', 'Type', 'Version', 'Uri') { Quote $Value }
-                    elseif ($Type.IsPrimitive) { "$Value" }
-                    elseif ($Value -is [String]) { Quote $Value } # Check for here string
-                    #elseif ($Value -is [SecureString]) { "'$($Value | ConvertFrom-SecureString)'" -Convert 'ConvertTo-SecureString' }
-                    #elseif ($Value -is [PSCredential]) { $Value.Username, $Value.Password -Convert 'New-Object PSCredential' }
-                    elseif ($Value -is [DateTime]) { Quote $Value.ToString('o') }
-                    elseif ($Value -is [Enum]) { Quote $Value }
-                    elseif ($Value -is [ScriptBlock]) { if ($Value -match "\#.*?$") { "{ $Value$NewLine }" } else { "{ $Value }" } }
-                    elseif ($Value -is [RuntimeTypeHandle]) { "$($Value.Value)" }
-                    else   { $Value }
-                "$Indent$Prefix$Expression$Suffix"
-            }
+
+        if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
+        if (-not ('ConstrainedLanguage', 'FullLanguage' -eq $LanguageMode)) {
+            if ($Explicit)     { StopError 'The Explicit switch requires Constrained - or FullLanguage mode.' }
+            if ($FullTypeName) { StopError 'The FullTypeName switch requires Constrained - or FullLanguage mode.' }
         }
     }
 
     process {
         $Node = [PSNode]::ParseInput($InputObject, $MaxDepth)
-        ConvertToExpression -Node $Node
 
+        [PSExpression]::new(
+            $Node,
+            $LanguageMode,
+            $ExpandDepth,
+            $Explicit,
+            $FullTypeName,
+            $HighFidelity,
+            $ExpandSingleton,
+            $Indent
+        )
     }
 }
