@@ -82,10 +82,11 @@ See the [PSNode Object Parser][1] for a detailed definition on node types.
 Defines up till what level the collections will be expanded in the output.
 
 * A `-ExpandDepth 0` will create a single line expression.
-* A `-ExpandDepth -1` will compress the single line by remove unnecessarily spaces.
+* A `-ExpandDepth -1` will compress the single line by removing command spaces.
 
 > [!Note]
-> White spaces (as newline characters and spaces) will not be removed from a (here) string.
+> White spaces (as newline characters and spaces) will not be removed from the content
+> of (here) string.
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
