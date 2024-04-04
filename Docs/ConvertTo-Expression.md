@@ -8,54 +8,41 @@ Serializes an object to a PowerShell expression.
 ```PowerShell
 ConvertTo-Expression
     -InputObject <Object>
-    [-Expand <Int32> = [Int]::MaxValue]
-    [-IndentSize <Int32> = 4]
-    [-IndentChar <String> = ' ']
+    [-LanguageMode <PSLanguageMode> = 'Restricted']
+    [-ExpandDepth <Int32> = [Int]::MaxValue]
+    [-Explicit]
+    [-FullTypeName]
+    [-HighFidelity]
+    [-ExpandSingleton]
+    [-Indent <String> = '    ']
     [-MaxDepth <Int32> = [PSNode]::DefaultMaxDepth]
     [<CommonParameters>]
 ```
 
 ## Description
 
-The ConvertTo-Expression cmdlet converts (serializes) an object to a
-PowerShell expression. The object can be stored in a variable,  file or
-any other common storage for later use or to be ported to another
-system.
+The ConvertTo-Expression cmdlet converts (serializes) an object to a PowerShell expression.
+The object can be stored in a variable, (.psd1) file or any other common storage for later use or to be ported
+to another system.
 
-An expression can be restored to an object using the native
-Invoke-Expression cmdlet:
+expressions might be restored to an object using the native Invoke-Expression cmdlet:
 
 ```PowerShell
 $Object = Invoke-Expression ($Object | ConvertTo-Expression)
 ```
 
-Or Converting it to a [ScriptBlock](#scriptblock) and invoking it with cmdlets
-along with Invoke-Command or using the call operator (&):
+Or using the [PSNode Object Parser][1] (*under construction*).
 
-```PowerShell
-$Object = &([ScriptBlock]::Create($Object | ConvertTo-Expression))
-```
-
-An expression that is stored in a PowerShell (.ps1) file might also
-be directly invoked by the PowerShell dot-sourcing technique,  e.g.:
-
-```PowerShell
-$Object | ConvertTo-Expression | Out-File .\Expression.ps1
-$Object = . .\Expression.ps1
-```
-
-Warning: Invoking partly trusted input with Invoke-Expression or
-[ScriptBlock](#scriptblock)::Create() methods could be abused by malicious code
-injections.
+> [!Note]
+> Some object types can not be constructed from a a simple serialized expression
 
 ## Parameter
 
 ### <a id="-inputobject">**`-InputObject <Object>`**</a>
 
-Specifies the objects to convert to a PowerShell expression. Enter a
-variable that contains the objects,  or type a command or expression
-that gets the objects. You can also pipe one or more objects to
-ConvertTo-Expression.
+Specifies the objects to convert to a PowerShell expression. Enter a variable that contains the objects,
+or type a command or expression that gets the objects. You can also pipe one or more objects to
+`ConvertTo-Expression.`
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
@@ -66,7 +53,33 @@ ConvertTo-Expression.
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
-### <a id="-expand">**`-Expand <Int32>`**</a>
+### <a id="-languagemode">**`-LanguageMode <PSLanguageMode>`**</a>
+
+Defines which types are allowed for the serialization, see: [About language modes][2]
+If a specific type isn't allowed in the given language mode, it will be substituted by:
+
+* **`$Null`** in case of a null value
+* **`$False`** in case of a boolean false
+* **`$True`** in case of a boolean true
+* **A number** in case of a primitive value
+* **A string** in case of a string or any other **leaf** node
+* `@(...)` for an array (**list** node)
+* `@{...}` for any dictionary, PSCustomObject or Component (aka **map** node)
+
+See the [PSNode Object Parser][1] for a detailed definition on node types.
+
+<table>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.PSLanguageMode">PSLanguageMode</a></td></tr>
+<tr><td>Mandatory:</td><td>False</td></tr>
+<tr><td>Position:</td><td>Named</td></tr>
+<tr><td>Default value:</td><td><code>'Restricted'</code></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
+<tr><td>Accept wildcard characters:</td><td>False</td></tr>
+</table>
+
+### <a id="-expanddepth">**`-ExpandDepth <Int32>`**</a>
+
+Defines up till what level the collections will be expanded in the output.
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
@@ -77,36 +90,89 @@ ConvertTo-Expression.
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
-### <a id="-indentsize">**`-IndentSize <Int32>`**</a>
+### <a id="-explicit">**`-Explicit`**</a>
 
-Specifies how many IndentChars to write for each level in the hierarchy.
+By default, restricted language types initializers are suppressed.
+When the `Explicit` switch is set, *all* values will be prefixed with an initializer
+(as e.g. `[Long]` and `[Array]`)
+
+> [!Note]
+> The `-Explicit` switch can not be used in **restricted** language mode
 
 <table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td><code>4</code></td></tr>
+<tr><td>Default value:</td><td></td></tr>
 <tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
-### <a id="-indentchar">**`-IndentChar <String>`**</a>
+### <a id="-fulltypename">**`-FullTypeName`**</a>
 
-Specifies which character to use for indenting.
+In case a value is prefixed with an initializer, the full type name of the initializer is used.
+
+> [!Note]
+> The `-FullTypename` switch can not be used in **restricted** language mode and will only be
+> meaningful if the initializer is used (see also the [-Explicit](#-explicit) switch).
+
+<table>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
+<tr><td>Mandatory:</td><td>False</td></tr>
+<tr><td>Position:</td><td>Named</td></tr>
+<tr><td>Default value:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
+<tr><td>Accept wildcard characters:</td><td>False</td></tr>
+</table>
+
+### <a id="-highfidelity">**`-HighFidelity`**</a>
+
+By default the fidelity of an object expression will end when:
+
+1) the concerned object property is a leaf node (see: [PSNode Object Parser][1])
+2) the concerned object property contains a constructor that accepts a single `string` parameter
+
+If the `-HighFidelity` switch is supplied, the second condition is omitted, meaning that the
+all nested properties a collection node will be recursively serialized.
+
+<table>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
+<tr><td>Mandatory:</td><td>False</td></tr>
+<tr><td>Position:</td><td>Named</td></tr>
+<tr><td>Default value:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
+<tr><td>Accept wildcard characters:</td><td>False</td></tr>
+</table>
+
+### <a id="-expandsingleton">**`-ExpandSingleton`**</a>
+
+(List or map) collections nodes that contain a single item will not be expanded unless this
+`-ExpandSingleton` is supplied.
+
+<table>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
+<tr><td>Mandatory:</td><td>False</td></tr>
+<tr><td>Position:</td><td>Named</td></tr>
+<tr><td>Default value:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
+<tr><td>Accept wildcard characters:</td><td>False</td></tr>
+</table>
+
+### <a id="-indent">**`-Indent <String>`**</a>
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.String">String</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td><code>' '</code></td></tr>
+<tr><td>Default value:</td><td><code>'    '</code></td></tr>
 <tr><td>Accept pipeline input:</td><td>False</td></tr>
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
 ### <a id="-maxdepth">**`-MaxDepth <Int32>`**</a>
 
-Specifies how many levels of contained objects are included in the
-PowerShell representation. The default value is 9.
+Specifies how many levels of contained objects are included in the PowerShell representation.
+The default value is define by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`).
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
@@ -119,17 +185,19 @@ PowerShell representation. The default value is 9.
 
 ## Inputs
 
-Any. Each objects provided through the pipeline will converted to an
-expression. To concatenate all piped objects in a single expression,
-use the unary comma operator,  e.g.: ,$Object | ConvertTo-Expression
+Any. Each objects provided through the pipeline will converted to an expression. To concatenate all piped
+objects in a single expression, use the unary comma operator,  e.g.: `,$Object | ConvertTo-Expression`
 
 ## Outputs
 
-String[]. ConvertTo-Expression returns a PowerShell [String](#string) expression
-for each input object.
+String[]. `ConvertTo-Expression` returns a PowerShell [String](#string) expression for each input object.
 
 ## Related Links
 
-* https://www.powershellgallery.com/packages/ConvertFrom-Expression
+* 1: [PowerShell Object Parser][1]
+* 2: [About language modes][2]
+
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
 
 [comment]: <> (Created with Get-MarkdownHelp: Install-Script -Name Get-MarkdownHelp)
