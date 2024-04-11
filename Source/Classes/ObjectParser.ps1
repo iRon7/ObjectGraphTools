@@ -20,16 +20,33 @@ using namespace System.Collections.Generic
 using namespace System.Management.Automation
 using namespace System.Management.Automation.Language
 
+Class LanguageType {
+    hidden static $_TypeCache = [Dictionary[String,Bool]]::new()
+    hidden Static LanguageType() {
+        [LanguageType]::_TypeCache['System.Management.Automation.PSCustomObject'] = $True # https://github.com/PowerShell/PowerShell/issues/20767
+    }
+    static [Bool]IsConstrained([Type]$Type) { # https://stackoverflow.com/a/64806919/1701026
+        if ($Null -eq $Type) { Throw 'The type can not be $Null' }
+        $FullName = $Type.FullName
+        if (-not [LanguageType]::_TypeCache.ContainsKey($FullName)) {
+            [LanguageType]::_TypeCache[$FullName] = try {
+                $ConstrainedSession = [PowerShell]::Create()
+                $ConstrainedSession.RunSpace.SessionStateProxy.LanguageMode = 'Constrained'
+                $ConstrainedSession.AddScript("[$FullName]0").Invoke().Count -ne 0 -or
+                $ConstrainedSession.Streams.Error[0].FullyQualifiedErrorId -ne 'ConversionSupportedOnlyToCoreTypes'
+            } catch { $False }
+        }
+        return [LanguageType]::_TypeCache[$FullName]
+    }
+}
 
- #    _____                              _             ____        _ _     _
- #   | ____|_  ___ __  _ __ ___  ___ ___(_) ___  _ __ | __ ) _   _(_) | __| | ___ _ __
- #   |  _| \ \/ / '_ \| '__/ _ \/ __/ __| |/ _ \| '_ \|  _ \| | | | | |/ _` |/ _ \ '__|
- #   | |___ >  <| |_) | | |  __/\__ \__ \ | (_) | | | | |_) | |_| | | | (_| |  __/ |
- #   |_____/_/\_\ .__/|_|  \___||___/___/_|\___/|_| |_|____/ \__,_|_|_|\__,_|\___|_|
- #              |_|
+# ____  ____ ____            _       _ _
+# |  _ \/ ___/ ___|  ___ _ __(_) __ _| (_)_______
+# | |_) \___ \___ \ / _ \ '__| |/ _` | | |_  / _ \
+# |  __/ ___) |__) |  __/ |  | | (_| | | |/ /  __/
+# |_|   |____/____/ \___|_|  |_|\__,_|_|_/___\___|
 
-
-Class PSExpression {
+Class PSSerialize {
     hidden static [String[]]$Parameters = 'LanguageMode', 'Explicit', 'FullTypeName', 'HighFidelity', 'Indent', 'ExpandSingleton'
     hidden [PSLanguageMode]$LanguageMode = 'Restricted'
     hidden [Int]$ExpandDepth = [Int]::MaxValue
@@ -41,74 +58,68 @@ Class PSExpression {
 
     hidden static [Dictionary[String,Bool]]$IsConstrainedType = [Dictionary[String,Bool]]::new()
     hidden static [Dictionary[String,Bool]]$HasStringConstructor = [Dictionary[String,Bool]]::new()
+
+    # The dictionary below defines the round trip property. Unless the `-HighFidelity` switch is set,
+    # the serialization will stop (even it concerns a `PSCollectionNode`) when the specific property
+    # type is reached.
+    # * An empty string will return the string representation of the object: `"<Object>"`
+    # * Any other string will return the string representation of the object property: `"$(<Object>.<Property>)"`
+    # * A ScriptBlock will be invoked and the result will be used for the object value
+
     hidden static $RoundTripProperty = @{
         'Microsoft.Management.Infrastructure.CimInstance'                     = ''
         'Microsoft.Management.Infrastructure.CimSession'                      = 'ComputerName'
         'Microsoft.PowerShell.Commands.ModuleSpecification'                   = 'Name'
+        'System.DateTime'                                                     = { $($Input).ToString('o') }
         'System.DirectoryServices.DirectoryEntry'                             = 'Path'
         'System.DirectoryServices.DirectorySearcher'                          = 'Filter'
         'System.Globalization.CultureInfo'                                    = 'Name'
+        'Microsoft.PowerShell.VistaCultureInfo'                               = 'Name'
         'System.Management.Automation.AliasAttribute'                         = 'AliasNames'
-        'System.Management.Automation.ArgumentCompleterAttribute'             = 'ScriptBlock.Ast'
-        'System.Management.Automation.CmdletBindingAttribute'                 = @{}
-        'System.Management.Automation.DscPropertyAttribute'                   = @{}
-        'System.Management.Automation.DscResourceAttribute'                   = @{}
+        'System.Management.Automation.ArgumentCompleterAttribute'             = 'ScriptBlock'
+        'System.Management.Automation.ConfirmImpact'                          = ''
+        'System.Management.Automation.DSCResourceRunAsCredential'             = ''
+        'System.Management.Automation.ExperimentAction'                       = ''
         'System.Management.Automation.OutputTypeAttribute'                    = 'Type'
-        'System.Management.Automation.ParameterAttribute'                     = @{}
-        'System.Management.Automation.PSDefaultValueAttribute'                = @{}
+        'System.Management.Automation.PSCredential'                           = { ,@($($Input).UserName, @("(""$($($Input).Password | ConvertFrom-SecureString)""", '|', 'ConvertTo-SecureString)')) }
         'System.Management.Automation.PSListModifier'                         = 'Replace'
         'System.Management.Automation.PSReference'                            = 'Value'
         'System.Management.Automation.PSTypeNameAttribute'                    = 'PSTypeName'
+        'System.Management.Automation.RemotingCapability'                     = ''
         'System.Management.Automation.ScriptBlock'                            = 'Ast'
         'System.Management.Automation.SemanticVersion'                        = ''
-        'System.Management.Automation.ValidateDriveAttribute'                 = @{}
-        'System.Management.Automation.ValidateUserDriveAttribute'             = @{}
         'System.Management.Automation.ValidatePatternAttribute'               = 'RegexPattern'
-        'System.Management.Automation.ValidateScriptAttribute'                = 'ScriptBlock.Ast'
+        'System.Management.Automation.ValidateScriptAttribute'                = 'ScriptBlock'
         'System.Management.Automation.ValidateSetAttribute'                   = 'ValidValues'
+        'System.Management.Automation.WildcardPattern'                        = { $($Input).ToWql().Replace('%', '*').Replace('_', '?').Replace('[*]', '%').Replace('[?]', '_') }
+        'Microsoft.Management.Infrastructure.CimType'                         = ''
         'System.Management.ManagementClass'                                   = 'Path'
         'System.Management.ManagementObject'                                  = 'Path'
-        'System.Management.ManagementObjectSearcher'                          = 'Query.QueryString'
+        'System.Management.ManagementObjectSearcher'                          = { $($Input).Query.QueryString }
         'System.Net.IPAddress'                                                = 'IPAddressToString'
-        'System.Net.IPEndPoint'                                               = 'IPAddressToString', 'Port'
+        'System.Net.IPEndPoint'                                               = { $($Input).Address.Address; $($Input).Port }
         'System.Net.Mail.MailAddress'                                         = 'Address'
+        'System.Net.NetworkInformation.PhysicalAddress'                       = ''
         'System.Security.Cryptography.X509Certificates.X500DistinguishedName' = 'Name'
-        'System.Security.Cryptography.X509Certificates.X509Certificate'       = @{}
+        'System.Security.SecureString'                                        = { ,[string[]]("(""$($Input | ConvertFrom-SecureString)""", '|', 'ConvertTo-SecureString)') }
         'System.Text.RegularExpressions.Regex'                                = ''
         'System.Uri'                                                          = 'OriginalString'
         'System.Version'                                                      = ''
+        'System.Void'                                                         = $Null
     }
     hidden [System.Text.StringBuilder]$StringBuilder = [System.Text.StringBuilder]::new()
     hidden [Int]$Offset = 0
     hidden [Int]$LineNumber = 1
 
-    hidden static [Bool]IsConstrained([Type]$Type) { # https://stackoverflow.com/a/64806919/1701026
-        if ($Null -eq $Type) { Throw 'Constrained type can not be $Null' }
-        $FullName = $Type.FullName
-        if (-not [PSExpression]::IsConstrainedType.ContainsKey($FullName)) {
-            [PSExpression]::IsConstrainedType[$FullName] = try {
-                $ConstrainedSession = [PowerShell]::Create()
-                $ConstrainedSession.RunSpace.SessionStateProxy.LanguageMode = 'Constrained'
-                $ConstrainedSession.AddScript("[$FullName]0").Invoke().Count -ne 0 -or
-                $ConstrainedSession.Streams.Error[0].FullyQualifiedErrorId -ne 'ConversionSupportedOnlyToCoreTypes'
-            } catch { $False }
-        }
-        return [PSExpression]::IsConstrainedType[$FullName]
-    }
-
-    Static PSExpression () {
-        [PSExpression]::IsConstrainedType['System.Management.Automation.PSCustomObject'] = $True # https://github.com/PowerShell/PowerShell/issues/20767
-    }
-    # PSExpression () { }
-    PSExpression($Object) { $this.Serialize($Object) }
-    PSExpression($Object, [HashTable]$Parameters) {
+    PSSerialize($Object) { $this.Serialize($Object) }
+    PSSerialize($Object, [HashTable]$Parameters) {
         foreach ($Name in $Parameters.get_Keys()) { # https://github.com/PowerShell/PowerShell/issues/13307
-            if ($Name -notin [PSExpression]::Parameters) { Throw "Unknown parameter: $Name." }
+            if ($Name -notin [PSSerialize]::Parameters) { Throw "Unknown parameter: $Name." }
             $this.GetType().GetProperty($Name).SetValue($this, $Parameters[$Name])
         }
         $this.Serialize($Object)
     }
-    PSExpression(
+    PSSerialize(
         $Object,
         $LanguageMode    = 'Restricted',
         $ExpandDepth     = [Int]::MaxValue,
@@ -152,7 +163,7 @@ Class PSExpression {
             if ($Null -ne $Type -and (
                 $this.LanguageMode -eq 'Full' -or (
                         $this.LanguageMode -eq 'Constrained' -and
-                        [PSExpression]::IsConstrained($Type) -and (
+                        [LanguageType]::IsConstrained($Type) -and (
                             $this.Explicit -or -not (
                                 $Type.IsPrimitive      -or
                                 $Value -is [String]    -or
@@ -173,81 +184,40 @@ Class PSExpression {
                 }
         if ($TypeInitializer) { $this.StringBuilder.Append($TypeInitializer) }
 
-        if ($Node -is [PSLeafNode] -or (-not $this.HighFidelity -and [PSExpression]::RoundTripProperty.Contains($Node.ValueType.FullName))) {
-            $Convert = $Null
-            $Expression = Switch ($TypeName) {
-                adsi                   { $Value.Path }
-                adsisearcher           { $Value.Filter }
-                Alias                  { $Value.AliasNames; $Convert = '[String[]]'}
-                ArgumentCompleter      { $Value.ScriptBlock }
-                ArgumentCompletions    { $Value; $Convert = '[String[]]' }
-                char                   { "'$Value'" }
-                CimSession             { $Value.ComputerName }
-                cimtype                { "$Value" }
-                CmdletBinding          { @{} }
-                DateTime               { $Value.ToString('o') }
-                ExperimentAction       { "$Value" }
-                IPEndpoint             { ,@($Value.Address.Address, $Value.Port); $Convert = '::new' }
-                System.Object          { ,@(); $Convert = '::new' }
-                OutputType             { $Value.Type; $Convert = '[String[]]'}
-                pscredential           { ,@($Value.UserName, @("(""$($Value.Password | ConvertFrom-SecureString)""", '|', 'ConvertTo-SecureString)')); $Convert = '::new' }
-                pslistmodifier         { @{} }
-                PSTypeNameAttribute    { $Value.PSTypeName }
-                ref                    { $Value.Value } # [ref] is not recognized
-                securestring           { ,[string[]]("(""$($Value | ConvertFrom-SecureString)""", '|', 'ConvertTo-SecureString)') } ####
-                switch                 { $Value.IsPresent }
-                ValidateDrive          { ,@(); $Convert = '::new' }
-                ValidateNotNull        { ,@(); $Convert = '::new' }
-                ValidateNotNullOrEmpty { ,@(); $Convert = '::new' }
-                ValidatePattern        { $Value.RegexPattern }
-                ValidateScript         { $Value.ScriptBlock }
-                ValidateSet            { $Value.ValidValues; $Convert = '[String[]]' }
-                Void                   { $Null }
-                WildcardPattern        { $Value.ToWql().Replace('%', '*').Replace('_', '?').Replace('[*]', '%').Replace('[?]', '_') }
-                wmiclass               { $Value }
-                wmisearcher            { $Value.Query.QueryString }
-                X500DistinguishedName  { $Value.Name }
-                X509Certificate        { @{} }
-                # xml                    { [System.Xml.Linq.XDocument]::Parse($Value.OuterXml).ToString() }
-                default {
-                    if ($Null -eq $Value) { '$Null' }
-                    elseif ($Type.IsPrimitive) { $Value }
-                    elseif (-not $Type.GetConstructors()) { "$TypeName"; $Convert = '[Void]' }
-                    elseif ($Value -is [Attribute]) { $Null }
-                    elseif ($Type.GetMethod('ToString', [Type[]]@())) { $Value.ToString() }
-                    elseif ($Value -is [ComponentModel.Component]) { @{} }
-                    elseif ($Value -is [Collections.ICollection])  { ,$Value }
-                    else { $Value } # Handle compression
-
+        if ($Node -is [PSLeafNode] -or (-not $this.HighFidelity -and [PSSerialize]::RoundTripProperty.Contains($Node.ValueType.FullName))) {
+            $Expression =
+                if ([PSSerialize]::RoundTripProperty.Contains($Node.ValueType.FullName)) {
+                    $Property = [PSSerialize]::RoundTripProperty[$Node.ValueType.FullName]
+                        if ($Null -eq $Property)                      { $Null }
+                    elseif ($Property -is [String])                   { if ($Property) { ,$Value.$Property } else { "$Value" } }
+                    elseif ($Property -is [ScriptBlock] )             { Invoke-Command $Property -InputObject $Value }
+                    elseif ($Property -is [HashTable])                { if ($this.LanguageMode -eq 'Restricted') { $Null } else { @{} } }
+                    elseif ($Property -is [Array])                    { @($Property.foreach{ $Value.$_ }) }
+                    else { Throw "Unknown round trip property type: $($Property.GetType())."}
                 }
-            }
+                elseif ($Type.IsPrimitive)                        { $Value }
+                elseif (-not $Type.GetConstructors())             { "$TypeName" }
+                elseif ($Type.GetMethod('ToString', [Type[]]@())) { $Value.ToString() }
+                elseif ($Value -is [Collections.ICollection])     { ,$Value }
+                else                                              { $Value } # Handle compression
 
-            if ($Null -eq $Expression) {
-                if ($this.LanguageMode -eq 'Restricted') { $Expression = '$Null' } else { $Expression = '@{}' }
-            }
-            elseif ($Expression -is [bool]) {
-                $Expression = "`$$Value"
-            }
-            elseif ($Expression -is [ScriptBlock]) {
-                $Expression = "{$Expression}"
-            }
-            elseif ($Expression -is [HashTable]) {
-                $Expression = '@{}' ##### Consider ConvertTo-Expression
-            }
-            elseif ($Expression -is [String[]]) {
-                $Space = if ($this.ExpandDepth -ge 0) { ' ' }
-                $_ -Join $Space
-            }
+            if     ($Null -eq $Expression)         { $Expression = '$Null' }
+            elseif ($Expression -is [Bool])        { $Expression = "`$$Value" }
+            elseif ($Expression -is [Char])        { $Expression = "'$Value'" }
+            elseif ($Expression -is [ScriptBlock]) { $Expression = $Expression.Ast.Extent.Text }
+            elseif ($Expression -is [HashTable])   { $Expression = '@{}' }
             elseif ($Expression -is [array]) {
                 $Space = if ($this.ExpandDepth -ge 0) { ' ' }
-                $Expression = '(' + ($Expression.foreach{
+                $New = if ($TypeInitializer) { '::new(' } else { '@(' }
+                $Expression = $New + ($Expression.foreach{
                     if ($Null -eq $_)  { '$Null' }
                     elseif ($_.GetType().IsPrimitive) { "$_" }
                     elseif ($_ -is [Array]) { $_ -Join $Space }
                     else { "'$_'" }
                 } -Join ",$Space") + ')'
             }
-            elseif ($Type -and -not $Type.IsPrimitive) {
+            elseif ($Type -and $Type.IsPrimitive) { }
+            else {
                 if ($Expression -isnot [String]) { $Expression = "$Expression" }
                 $Expression = if ($Expression.Contains("`n")) {
                     "@'" + [Environment]::NewLine + "$Expression".Replace("'", "''") + [Environment]::NewLine + "'@"
@@ -257,8 +227,6 @@ Class PSExpression {
                 }
             }
 
-            if ($TypeInitializer) { $this.StringBuilder.Append($Convert) }
-
             $this.StringBuilder.Append($Expression)
         }
         elseif ($Node -is [PSListNode]) {
@@ -267,7 +235,6 @@ Class PSExpression {
             $StartLine = $this.LineNumber
             $Index = 0
             $ChildNodes = $Node.get_ChildNodes()
-            # $ExpandSingle = $this.ExpandSingleton -and -not ($ChildNodes.Count -eq 1 -and $ChildNodes[0] -is [PSLeafNode])
             $ExpandSingle = $this.ExpandSingleton -or $ChildNodes.Count -gt 1 -or ($ChildNodes.Count -eq 1 -and $ChildNodes[0] -isnot [PSLeafNode])
             $ChildNodes.foreach{
                 if ($Index++) {
@@ -282,26 +249,30 @@ Class PSExpression {
             $this.StringBuilder.Append(')')
         }
         else { # if ($Node -is [PSMapNode]) {
-            $this.StringBuilder.Append('@{')
-            $this.Offset++
-            $StartLine = $this.LineNumber
-            $Index = 0
             $ChildNodes = $Node.get_ChildNodes()
-            $ExpandSingle = $this.ExpandSingleton -or $ChildNodes.Count -gt 1 -or $ChildNodes[0] -isnot [PSLeafNode]
-            $ChildNodes.foreach{
-                if ($Index++) {
-                    $Separator = if ($this.ExpandDepth -ge 0) { '; ' } else { ';' }
-                    $this.NewWord($Separator)
+            if ($ChildNodes) {
+                $this.StringBuilder.Append('@{')
+                $this.Offset++
+                $StartLine = $this.LineNumber
+                $Index = 0
+                $ExpandSingle = $this.ExpandSingleton -or $ChildNodes.Count -gt 1 -or $ChildNodes[0] -isnot [PSLeafNode]
+                $ChildNodes.foreach{
+                    if ($Index++) {
+                        $Separator = if ($this.ExpandDepth -ge 0) { '; ' } else { ';' }
+                        $this.NewWord($Separator)
+                    }
+                    elseif ($ExpandSingle) { $this.NewWord() }
+                    elseif ($this.ExpandDepth -ge 0) { $this.StringBuilder.Append(' ') }
+                    $this.StringBuilder.Append($_.Name)
+                    if ($this.ExpandDepth -ge 0) { $this.StringBuilder.Append(' = ') } else { $this.StringBuilder.Append('=') }
+                    $this.Iterate($_)
                 }
-                elseif ($ExpandSingle) { $this.NewWord() }
-                elseif ($this.ExpandDepth -ge 0) { $this.StringBuilder.Append(' ') }
-                $this.StringBuilder.Append($_.Name)
-                if ($this.ExpandDepth -ge 0) { $this.StringBuilder.Append(' = ') } else { $this.StringBuilder.Append('=') }
-                $this.Iterate($_)
+                $this.Offset--
+                if ($this.LineNumber -gt $StartLine) { $this.NewWord() } else { $this.StringBuilder.Append(' ') }
+                $this.StringBuilder.Append('}')
             }
-            $this.Offset--
-            if ($this.LineNumber -gt $StartLine) { $this.NewWord() } else { $this.StringBuilder.Append(' ') }
-            $this.StringBuilder.Append('}')
+            elseif ($Node -is [PSObjectNode] -and $TypeInitializer) { $this.StringBuilder.Append('::new()') }
+            else { $this.StringBuilder.Append('@{}') }
         }
     }
 
@@ -325,6 +296,98 @@ Class PSExpression {
         return $this.StringBuilder.ToString()
     }
  }
+
+#  ____  ____  ____                      _       _ _
+# |  _ \/ ___||  _ \  ___  ___  ___ _ __(_) __ _| (_)_______
+# | |_) \___ \| | | |/ _ \/ __|/ _ \ '__| |/ _` | | |_  / _ \
+# |  __/ ___) | |_| |  __/\__ \  __/ |  | | (_| | | |/ /  __/
+# |_|   |____/|____/ \___||___/\___|_|  |_|\__,_|_|_/___\___|
+
+ Class PSDeserialize {
+    hidden static PSDeserialize() { Use-ClassAccessors }
+
+    hidden $_Object
+    [PSLanguageMode]$LanguageMode = 'Restricted'
+    [String] $Expression
+
+    PSDeserialize([String]$Expression) {
+        $this.Expression = $Expression
+    }
+
+    PSDeserialize([String]$Expression, [PSLanguageMode]$LanguageMode) {
+        $this.Expression = $Expression
+        if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
+        $this.LanguageMode = $LanguageMode
+    }
+
+    hidden [Object] get_Object() {
+        if ($Null -eq $this._Object) {
+            if ($this.LanguageMode -eq 'Full') { $this._Object = Invoke-Expression $this.Expression }
+            else {
+                $Ast = [System.Management.Automation.Language.Parser]::ParseInput($this.Expression, [ref]$null, [ref]$Null)
+                $this._Object = $this.ParseAst([Ast]$Ast)
+            }
+        }
+        return $this._Object
+    }
+
+    hidden [Object] ParseAst([Ast]$Ast) {
+        # Write-Host 'Ast type:' "$($Ast.getType())"
+        $Convert = $Null
+        if ($Ast -is [ConvertExpressionAst]) {
+            if ($this.LanguageMode -eq 'Constrained') {
+                try { $Convert = $Ast.Type.TypeName.FullName -as [Type] } catch { write-error $_ }
+            }
+            $Ast = $Ast.Child
+        }
+        if ($Ast -is [ScriptBlockAst]) {
+            $List = [List[Object]]::new()
+            if ($Null -ne $Ast.BeginBlock)   { $Ast.BeginBlock.Statements.ForEach{ $List.Add($this.ParseAst($_)) } }
+            if ($Null -ne $Ast.ProcessBlock) { $Ast.ProcessBlock.Statements.ForEach{ $List.Add($this.ParseAst($_)) } }
+            if ($Null -ne $Ast.EndBlock)     { $Ast.EndBlock.Statements.ForEach{ $List.Add($this.ParseAst($_)) } }
+            if ($List.Count -eq 1) { return $List[0] } else { return @($List) }
+        }
+        elseif ($Ast -is [PipelineAst]) {
+            $Element = $Ast.PipelineElements.Expression
+                if ($Element.Count -eq 0) { return @() }
+            elseif ($Element.Count -eq 1) { return $this.ParseAst($Element[0]) }
+            else                          { return $Element.Foreach{ $this.ParseAst($_) } }
+        }
+        elseif ($Ast -is [ArrayExpressionAst]) {
+            $Value = $Ast.SubExpression.Statements.foreach{ $this.ParseAst($_) }
+            if ($Convert) { $Value = $Value -as $Convert } else { $Value = @($Value) }
+            return $Value
+        }
+        elseif ($Ast -is [ArrayLiteralAst]) {
+            $Value = $Ast.Elements.foreach{ $this.ParseAst($_) }
+            if ($Convert) { $Value = $Value -as $Convert } else { $Value = @($Value) }
+            return $Value
+        }
+        elseif ($Ast -is [HashtableAst]) {
+            $IsDirectory = $Convert -and $Null -ne $Convert.GetInterface('IDictionary')
+            if ($IsDirectory) { $Dictionary = New-Object -Type $Convert }
+            elseif ($Convert) { $Dictionary = [Ordered]@{} }
+            else              { $Dictionary = @{} }
+            $Ast.KeyValuePairs.foreach{ $Dictionary[$_.Item1.Value] = $this.ParseAst($_.Item2) }
+            if (-not $Convert -or $IsDirectory) { return $Dictionary }
+            else { return [PSCustomObject]$Dictionary }
+        }
+        elseif ($Ast -is [ConstantExpressionAst]) {
+            if ($Convert) { $Value = $Ast.Value -as $Convert } else { $Value = $Ast.Value }
+            return $Value
+        }
+        elseif ($Ast -is [VariableExpressionAst]) {
+            $Value = switch ($Ast.VariablePath.UserPath) {
+                Null    { $Null }
+                True    { $True }
+                False   { $False }
+                Default { $Ast.Extent.Text }
+            }
+            return $Value
+        }
+        else { return $Null }
+    }
+}
 
  #   __  __   _
  #   \ \/ /__| |_ __
@@ -656,7 +719,7 @@ Class PSNode {
         elseif ($Object -is [ValueType])                                                      { return 'PSLeafNode' }
         elseif ($Object -is [String])                                                         { return 'PSLeafNode' }
         elseif ($Object -is [ScriptBlock])                                                    { return 'PSLeafNode' }
-        elseif ($Object.PSObject.Properties.where{ $_.Value -isnot [Reflection.MemberInfo] }) { return 'PSObjectNode' }
+        elseif ($Object.PSObject.Properties) { return 'PSObjectNode' }
         else                                                                                  { return 'PSLeafNode' }
     }
 
@@ -677,6 +740,17 @@ Class PSNode {
     }
 
     static [PSNode] ParseInput($Object) { return [PSNode]::parseInput($Object, 0) }
+
+    static [PSNode] FromExpression([Ast]$Ast) {
+
+
+        return $Null
+    }
+
+    static [PSNode] FromExpression([String]$Expression) {
+        $Ast = [System.Management.Automation.Language.Parser]::ParseInput($Expression, [ref]$null, [ref]$Null)
+        Return FromExpression $Ast
+    }
 
     hidden [PSNode] Append($Object) {
         $Node = [PSNode]::ParseInput($Object)
@@ -779,7 +853,7 @@ Class PSNode {
         else                        { return [PSNode[]]$NodeTable.Values }
     }
 
-    [String] ToExpression() { return [PSExpression]$this }
+    [String] ToExpression() { return [PSSerialize]$this }
 }
 
 Class PSLeafNode : PSNode {

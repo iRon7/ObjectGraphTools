@@ -29,7 +29,7 @@
     `ConvertTo-Expression.`
 
 .PARAMETER LanguageMode
-    Defines which types are allowed for the serialization, see: [About language modes][2]
+    Defines which object types are allowed for the serialization, see: [About language modes][2]
     If a specific type isn't allowed in the given language mode, it will be substituted by:
 
     * **`$Null`** in case of a null value
@@ -44,6 +44,13 @@
 
 .PARAMETER ExpandDepth
     Defines up till what level the collections will be expanded in the output.
+
+    * A `-ExpandDepth 0` will create a single line expression.
+    * A `-ExpandDepth -1` will compress the single line by removing command spaces.
+
+    > [!Note]
+    > White spaces (as newline characters and spaces) will not be removed from the content
+    > of a (here) string.
 
 .PARAMETER Explicit
     By default, restricted language types initializers are suppressed.
@@ -61,13 +68,26 @@
     > meaningful if the initializer is used (see also the [-Explicit] switch).
 
 .PARAMETER HighFidelity
-    By default the fidelity of an object expression will end when:
+    If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
 
-    1) the concerned object property is a leaf node (see: [PSNode Object Parser][1])
-    2) the concerned object property contains a constructor that accepts a single `string` parameter
+    By default the fidelity of an object expression will end if:
 
-    If the `-HighFidelity` switch is supplied, the second condition is omitted, meaning that the
-    all nested properties a collection node will be recursively serialized.
+    1) the (embedded) object is a leaf node (see: [PSNode Object Parser][1])
+    2) the (embedded) object expression is able to round trip.
+
+    An object is able to roundtrip if the resulted expression of the object itself or one of
+    its properties (prefixed with the type initializer) can be used to rebuild the object.
+
+    The advantage of the default fidelity is that the resulted expression round trips (aka the
+    object might be rebuild from the expression), the disadvantage is that information hold by
+    less significant properties is lost (as e.g. timezone information in a `DateTime]` object).
+
+    The advantage of the high fidelity switch is that all the information of the underlying
+    properties is shown, yet any constrained or full object type will likely fail to rebuild
+    due to constructor limitations such as readonly property.
+
+    > [!Note]
+    > Objects properties of type `[Reflection.MemberInfo]` are always excluded.
 
 .PARAMETER ExpandSingleton
     (List or map) collections nodes that contain a single item will not be expanded unless this
@@ -86,8 +106,7 @@
 #>
 
 function ConvertTo-Expression {
-    [Diagnostics.CodeAnalysis.SuppressMessage('PSUseApprovedVerbs', '')]
-    [CmdletBinding()][OutputType([Object[]])] param(
+    [CmdletBinding()][OutputType([String])] param(
 
         [Parameter(Mandatory = $true, ValueFromPipeLine = $True)]
         $InputObject,
@@ -127,7 +146,7 @@ function ConvertTo-Expression {
     process {
         $Node = [PSNode]::ParseInput($InputObject, $MaxDepth)
 
-        [PSExpression]::new(
+        [PSSerialize]::new(
             $Node,
             $LanguageMode,
             $ExpandDepth,
