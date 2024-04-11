@@ -231,7 +231,7 @@ To validate an Xdn Path, you might simply view the path using the `[XdnPath]` cl
  [XdnPath]'"Book Store"~Title=*PowerShell*/*Python*..Price'
  ```
 
-!["Book Store"~Title=*PowerShell*/*Python*..Price](.\Xdn.png)
+!["Book Store"~Title=*PowerShell*/*Python*..Price](./Xdn.png)
 
 **Explanation:**
 
