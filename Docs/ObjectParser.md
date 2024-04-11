@@ -46,33 +46,34 @@ listed below.
 ### `[PSLeafNode]`
 
 A PSLeafNode terminates a PSNode branch and doesn't have any child nodes attached.
-A value embedded by a PSLeafNode is not enumerable and doesn't contain any object properties.
+A value contained by a PSLeafNode is `[Value]`, `[String]` or a [`ScriptBlock]` and is not
+enumerable and doesn't contain any object properties (except for the three mentioned types).
 
 ### `[PSCollectionNode]`
 
 A PSCollectionNode represents a PSNode containing a collection child nodes.
-A value embedded by a PSCollectionNode is enumerable or contains object properties.
+A value contained by a PSCollectionNode is enumerable or contains object properties.
 
 ### `[PSListNode]`
 
 A PSListNode represents a  PSNode listing any number (or none) child nodes.
-A value embedded by a PSListNode supports the `IList` interface but excludes any value that.
+A value contained by a PSListNode supports the `IList` interface but excludes any value that.
 support the IDictionary interface.
 
 ### `[PSMapNode]`
 
 A PSMapNode represents a PSNode containing any number (or none) child nodes.
-A value embedded by a PSMapNode supports the IDictionary interface or contains object properties.
+A value contained by a PSMapNode supports the IDictionary interface or contains object properties.
 
 ### `[PSDictionaryNode]`
 
 A PSDictionaryNode represents a PSNode containing any number (or none) child nodes.
-A value embedded by a PSDictionaryNode supports the IDictionary interface.
+A value contained by a PSDictionaryNode supports the IDictionary interface.
 
 ### `[PSObjectNode]`
 
 A PSObjectNode represents a PSNode containing any number (or none) child nodes.
-A value embedded by a PSObjectNode contains object properties meaning that it is either of type
+A value contained by a PSObjectNode contains object properties meaning that it is either of type
 `[PSCustomObject]` or `[ComponentModel.Component]`.
 
 ## Constructors

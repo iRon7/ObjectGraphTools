@@ -55,7 +55,7 @@ or type a command or expression that gets the objects. You can also pipe one or 
 
 ### <a id="-languagemode">**`-LanguageMode <PSLanguageMode>`**</a>
 
-Defines which types are allowed for the serialization, see: [About language modes][2]
+Defines which object types are allowed for the serialization, see: [About language modes][2]
 If a specific type isn't allowed in the given language mode, it will be substituted by:
 
 * **`$Null`** in case of a null value
@@ -86,7 +86,7 @@ Defines up till what level the collections will be expanded in the output.
 
 > [!Note]
 > White spaces (as newline characters and spaces) will not be removed from the content
-> of (here) string.
+> of a (here) string.
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
@@ -134,13 +134,26 @@ In case a value is prefixed with an initializer, the full type name of the initi
 
 ### <a id="-highfidelity">**`-HighFidelity`**</a>
 
-By default the fidelity of an object expression will end when:
+If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
 
-1) the concerned object property is a leaf node (see: [PSNode Object Parser][1])
-2) the concerned object property contains a constructor that accepts a single `string` parameter
+By default the fidelity of an object expression will end if:
 
-If the `-HighFidelity` switch is supplied, the second condition is omitted, meaning that the
-all nested properties a collection node will be recursively serialized.
+1) the (embedded) object is a leaf node (see: [PSNode Object Parser][1])
+2) the (embedded) object expression is able to round trip.
+
+An object is able to roundtrip if the resulted expression of the object itself or one of
+its properties (prefixed with the type initializer) can be used to rebuild the object.
+
+The advantage of the default fidelity is that the resulted expression round trips (aka the
+object might be rebuild from the expression), the disadvantage is that information hold by
+less significant properties is lost (as e.g. timezone information in a `DateTime]` object).
+
+The advantage of the high fidelity switch is that all the information of the underlying
+properties is shown, yet any constrained or full object type will likely fail to rebuild
+due to constructor limitations such as readonly property.
+
+> [!Note]
+> Objects properties of type `[Reflection.MemberInfo]` are always excluded.
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
