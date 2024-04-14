@@ -711,16 +711,16 @@ Class PSNode {
     }
 
     hidden static [String]GetPSNodeType($Object) {
-        if ($Null -eq $Object)                                                                { return 'PSLeafNode' }
-        elseif ($Object -is [Management.Automation.PSCustomObject])                           { return 'PSObjectNode' }
-        elseif ($Object -is [Collections.IDictionary])                                        { return 'PSDictionaryNode' }
-        elseif ($Object -is [Specialized.StringDictionary])                                   { return 'PSDictionaryNode' }
-        elseif ($Object -is [Collections.ICollection])                                        { return 'PSListNode' }
-        elseif ($Object -is [ValueType])                                                      { return 'PSLeafNode' }
-        elseif ($Object -is [String])                                                         { return 'PSLeafNode' }
-        elseif ($Object -is [ScriptBlock])                                                    { return 'PSLeafNode' }
-        elseif ($Object.PSObject.Properties) { return 'PSObjectNode' }
-        else                                                                                  { return 'PSLeafNode' }
+        if ($Null -eq $Object)                                      { return 'PSLeafNode' }
+        elseif ($Object -is [Management.Automation.PSCustomObject]) { return 'PSObjectNode' }
+        elseif ($Object -is [Collections.IDictionary])              { return 'PSDictionaryNode' }
+        elseif ($Object -is [Specialized.StringDictionary])         { return 'PSDictionaryNode' }
+        elseif ($Object -is [Collections.ICollection])              { return 'PSListNode' }
+        elseif ($Object -is [ValueType])                            { return 'PSLeafNode' }
+        elseif ($Object -is [String])                               { return 'PSLeafNode' }
+        elseif ($Object -is [ScriptBlock])                          { return 'PSLeafNode' }
+        elseif ($Object.PSObject.Properties)                        { return 'PSObjectNode' }
+        else                                                        { return 'PSLeafNode' }
     }
 
     static [PSNode] ParseInput($Object, $MaxDepth) {

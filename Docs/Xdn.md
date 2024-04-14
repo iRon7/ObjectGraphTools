@@ -28,7 +28,7 @@ $ObjectGraph =
 
 ## Native Dot Notation
 
-Xdn is compatible with the native PowerShell dot notation.
+Xdn might be used for the `path` parameter on the `Get-Node` cmdlet and is compatible with the native PowerShell dot notation.
 This includes:
 
 * Index selection by using an index number surrounded by square brackets as e.g.: `[3]` which selects the fourth item in a (zero based) array or list.
@@ -45,9 +45,9 @@ Learning PowerShell
 
 ## Extended Dot Notation
 
-Xdn supplies some extra features on top of the native PowerShell dot notation by add ing support for:
+Xdn supplies some extra features on top of the native PowerShell dot notation by adding support for:
 
-* **Absolute** vs **relative** paths selection
+* **Absolute** vs **relative** paths selections
 * **Wildcards**, limited to question marks (`?`) and asterisks (`*`)
 * A set of additional operators:
     - A **ancestor (`..`) selector** to select the parent node or an ancestor
@@ -231,7 +231,7 @@ To validate an Xdn Path, you might simply view the path using the `[XdnPath]` cl
  [XdnPath]'"Book Store"~Title=*PowerShell*/*Python*..Price'
  ```
 
-!["Book Store"~Title=*PowerShell*/*Python*..Price](.\Xdn.png)
+!["Book Store"~Title=*PowerShell*/*Python*..Price](./Xdn.png)
 
 **Explanation:**
 
