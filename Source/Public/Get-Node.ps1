@@ -79,8 +79,8 @@ Using NameSpace System.Management.Automation.Language
     Specifies the path to a specific node in the object graph.
     The path might be either:
 
-    * As [String] a "dot-property" selection as defined by the `PathName` property a specific node.
-    * A array of strings (dictionary keys or Property names) and/or Integers (list indices).
+    * As [String] a "dot-property" selection as defined by the `Path` property a specific node.
+    * A array of strings (dictionary keys or Property names) and/or integers (list indices).
     * A object (`PSNode[]`) list where each `Name` property defines the path
 
 .PARAMETER Literal

@@ -28,7 +28,7 @@ $ObjectGraph =
 
 ## Native Dot Notation
 
-Xdn might be used for the path parameter on the `Get-Node` cmdlet is compatible with the native PowerShell dot notation.
+Xdn might be used for the `path` parameter on the `Get-Node` cmdlet and is compatible with the native PowerShell dot notation.
 This includes:
 
 * Index selection by using an index number surrounded by square brackets as e.g.: `[3]` which selects the fourth item in a (zero based) array or list.
