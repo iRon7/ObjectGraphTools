@@ -1,3 +1,17 @@
+## 2024-04-11 0.1.3 (iRon)
+  - Fixes
+    - Copy-ObjectGraph `-ListAs`/`-MapAs` parameter bug
+    - #78 Copy-Object -MapAs @{} should not me case sensitive
+  - Enhancements
+    - Added `ConvertFrom-Expression` `-ArrayAs`/`-HashTableAs` parameters
+    - Added `Import-ObjectGraph`
+    - Added `Export-ObjectGraph`
+
+## 2024-04-11 0.1.3 (iRon)
+  - Enhancements
+    - Added `ConvertFrom-Expression`
+      - Also supporting a `-LanguageMode` parameter
+
 ## 2024-04-04 0.1.2 (iRon)
   - Enhancements
     - Full implementation of `ConvertTo-Expression`

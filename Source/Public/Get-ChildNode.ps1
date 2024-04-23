@@ -145,7 +145,7 @@ Using NameSpace System.Management.Automation.Language
 
 function Get-ChildNode {
     [OutputType([PSNode[]])]
-    [CmdletBinding(DefaultParameterSetName='ListChild')] param(
+    [CmdletBinding(DefaultParameterSetName='ListChild', HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-ChildNode.md')] param(
         [Parameter(Mandatory = $true, ValueFromPipeLine = $true)]
         $InputObject,
 

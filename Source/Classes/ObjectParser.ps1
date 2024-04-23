@@ -112,13 +112,6 @@ Class PSSerialize {
     hidden [Int]$LineNumber = 1
 
     PSSerialize($Object) { $this.Serialize($Object) }
-    PSSerialize($Object, [HashTable]$Parameters) {
-        foreach ($Name in $Parameters.get_Keys()) { # https://github.com/PowerShell/PowerShell/issues/13307
-            if ($Name -notin [PSSerialize]::Parameters) { Throw "Unknown parameter: $Name." }
-            $this.GetType().GetProperty($Name).SetValue($this, $Parameters[$Name])
-        }
-        $this.Serialize($Object)
-    }
     PSSerialize(
         $Object,
         $LanguageMode    = 'Restricted',
@@ -136,6 +129,13 @@ Class PSSerialize {
         $this.HighFidelity    = $HighFidelity
         $this.ExpandSingleton = $ExpandSingleton
         $this.Indent          = $Indent
+        $this.Serialize($Object)
+    }
+    PSSerialize($Object, [HashTable]$Parameters) {
+        foreach ($Name in $Parameters.get_Keys()) { # https://github.com/PowerShell/PowerShell/issues/13307
+            if ($Name -notin [PSSerialize]::Parameters) { Throw "Unknown parameter: $Name." }
+            $this.GetType().GetProperty($Name).SetValue($this, $Parameters[$Name])
+        }
         $this.Serialize($Object)
     }
 
@@ -304,39 +304,61 @@ Class PSSerialize {
 # |_|   |____/|____/ \___||___/\___|_|  |_|\__,_|_|_/___\___|
 
  Class PSDeserialize {
+    hidden static [String[]]$Parameters = 'LanguageMode', 'ArrayType', 'HashTableType'
     hidden static PSDeserialize() { Use-ClassAccessors }
 
     hidden $_Object
     [PSLanguageMode]$LanguageMode = 'Restricted'
+    [Type]$ArrayType     = 'Array'     -as [Type]
+    [Type]$HashTableType = 'HashTable' -as [Type]
     [String] $Expression
 
-    PSDeserialize([String]$Expression) {
-        $this.Expression = $Expression
-    }
-
+    PSDeserialize([String]$Expression) { $this.Expression = $Expression }
     PSDeserialize([String]$Expression, [PSLanguageMode]$LanguageMode) {
         $this.Expression = $Expression
         if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
         $this.LanguageMode = $LanguageMode
     }
+    PSDeserialize(
+        $Expression,
+        $LanguageMode  = 'Restricted',
+        $ArrayType,
+        $HashTableType
+    ) {
+        $this.Expression    = $Expression
+        $this.LanguageMode  = $LanguageMode
+        if ($Null -ne $ArrayType)     { $this.ArrayType     = $ArrayType }
+        if ($Null -ne $HashTableType) { $this.HashTableType = $HashTableType }
+    }
+
+    PSDeserialize($Expression, [HashTable]$Parameters) {
+        $this.Expression = $Expression
+        foreach ($Name in $Parameters.get_Keys()) { # https://github.com/PowerShell/PowerShell/issues/13307
+            if ($Name -notin [PSSerialize]::Parameters) { Throw "Unknown parameter: $Name." }
+            $this.GetType().GetProperty($Name).SetValue($this, $Parameters[$Name])
+        }
+    }
 
     hidden [Object] get_Object() {
         if ($Null -eq $this._Object) {
-            if ($this.LanguageMode -eq 'Full') { $this._Object = Invoke-Expression $this.Expression }
-            else {
-                $Ast = [System.Management.Automation.Language.Parser]::ParseInput($this.Expression, [ref]$null, [ref]$Null)
-                $this._Object = $this.ParseAst([Ast]$Ast)
-            }
+            $Ast = [System.Management.Automation.Language.Parser]::ParseInput($this.Expression, [ref]$null, [ref]$Null)
+            $this._Object = $this.ParseAst([Ast]$Ast)
         }
         return $this._Object
     }
 
     hidden [Object] ParseAst([Ast]$Ast) {
         # Write-Host 'Ast type:' "$($Ast.getType())"
-        $Convert = $Null
+        $Type = $Null
         if ($Ast -is [ConvertExpressionAst]) {
-            if ($this.LanguageMode -eq 'Constrained') {
-                try { $Convert = $Ast.Type.TypeName.FullName -as [Type] } catch { write-error $_ }
+            $FullTypeName = $Ast.Type.TypeName.FullName
+            if (
+                $this.LanguageMode -eq 'Full' -or (
+                    $this.LanguageMode -eq 'Constrained' -and
+                    [LanguageType]::IsConstrained($FullTypeName)
+                )
+            ) {
+                try { $Type = $FullTypeName -as [Type] } catch { write-error $_ }
             }
             $Ast = $Ast.Child
         }
@@ -353,27 +375,34 @@ Class PSSerialize {
             elseif ($Element.Count -eq 1) { return $this.ParseAst($Element[0]) }
             else                          { return $Element.Foreach{ $this.ParseAst($_) } }
         }
-        elseif ($Ast -is [ArrayExpressionAst]) {
-            $Value = $Ast.SubExpression.Statements.foreach{ $this.ParseAst($_) }
-            if ($Convert) { $Value = $Value -as $Convert } else { $Value = @($Value) }
-            return $Value
-        }
-        elseif ($Ast -is [ArrayLiteralAst]) {
-            $Value = $Ast.Elements.foreach{ $this.ParseAst($_) }
-            if ($Convert) { $Value = $Value -as $Convert } else { $Value = @($Value) }
+        elseif ($Ast -is [ArrayLiteralAst] -or $Ast -is [ArrayExpressionAst]) {
+            if (-not $Type -or 'System.Object[]', 'System.Array' -eq $Type.FullName) { $Type = $this.ArrayType }
+            if ($Ast -is [ArrayLiteralAst]) { $Value = $Ast.Elements.foreach{ $this.ParseAst($_) } }
+            else { $Value = $Ast.SubExpression.Statements.foreach{ $this.ParseAst($_) } }
+            if ('System.Object[]', 'System.Array' -eq $Type.FullName) {
+                if ($Value -isnot [Array]) { $Value = @($Value) } # Prevent single item array unrolls
+            }
+            else { $Value = $Value -as $Type }
             return $Value
         }
         elseif ($Ast -is [HashtableAst]) {
-            $IsDirectory = $Convert -and $Null -ne $Convert.GetInterface('IDictionary')
-            if ($IsDirectory) { $Dictionary = New-Object -Type $Convert }
-            elseif ($Convert) { $Dictionary = [Ordered]@{} }
-            else              { $Dictionary = @{} }
-            $Ast.KeyValuePairs.foreach{ $Dictionary[$_.Item1.Value] = $this.ParseAst($_.Item2) }
-            if (-not $Convert -or $IsDirectory) { return $Dictionary }
-            else { return [PSCustomObject]$Dictionary }
+            if (-not $Type -or $Type.FullName -eq 'System.Collections.Hashtable') { $Type = $this.HashTableType }
+            $IsPSCustomObject = "$Type" -in
+                'PSCustomObject',
+                'System.Management.Automation.PSCustomObject',
+                'psobject',
+                'System.Management.Automation.PSObject'
+            if ($Type.FullName -eq 'System.Collections.Hashtable') { $Map = @{} } # Case insensitive
+            elseif ($IsPSCustomObject) { $Map = [Ordered]@{} }
+            else { $Map = New-Object -Type $Type }
+            $Ast.KeyValuePairs.foreach{
+                if ( $Map -is [Collections.IDictionary]) { $Map.Add($_.Item1.Value, $this.ParseAst($_.Item2)) }
+                else { $Map."$($_.Item1.Value)" = $this.ParseAst($_.Item2) }
+            }
+            if ($IsPSCustomObject) { return [PSCustomObject]$Map } else { return $Map }
         }
         elseif ($Ast -is [ConstantExpressionAst]) {
-            if ($Convert) { $Value = $Ast.Value -as $Convert } else { $Value = $Ast.Value }
+            if ($Type) { $Value = $Ast.Value -as $Type } else { $Value = $Ast.Value }
             return $Value
         }
         elseif ($Ast -is [VariableExpressionAst]) {
@@ -741,16 +770,6 @@ Class PSNode {
 
     static [PSNode] ParseInput($Object) { return [PSNode]::parseInput($Object, 0) }
 
-    static [PSNode] FromExpression([Ast]$Ast) {
-
-
-        return $Null
-    }
-
-    static [PSNode] FromExpression([String]$Expression) {
-        $Ast = [System.Management.Automation.Language.Parser]::ParseInput($Expression, [ref]$null, [ref]$Null)
-        Return FromExpression $Ast
-    }
 
     hidden [PSNode] Append($Object) {
         $Node = [PSNode]::ParseInput($Object)

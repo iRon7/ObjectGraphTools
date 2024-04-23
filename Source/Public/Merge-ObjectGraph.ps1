@@ -34,7 +34,7 @@
 
 function Merge-ObjectGraph {
     [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Scope = "Function", Justification = 'False positive')]
-    [CmdletBinding()][OutputType([Object[]])] param(
+    [CmdletBinding(HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Merge-ObjectGraph.md')][OutputType([Object[]])] param(
 
         [Parameter(Mandatory = $true, ValueFromPipeLine = $True)]
         $InputObject,

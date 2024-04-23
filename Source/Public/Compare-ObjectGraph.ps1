@@ -58,7 +58,7 @@
     The maximal depth to recursively compare each embedded property (default: 10).
 #>
 function Compare-ObjectGraph {
-    [CmdletBinding()] param(
+    [CmdletBinding(HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Compare-ObjectGraph.md')] param(
 
         [Parameter(Mandatory = $true, ValueFromPipeLine = $true)]
         $InputObject,

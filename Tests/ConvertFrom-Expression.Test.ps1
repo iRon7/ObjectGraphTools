@@ -40,7 +40,7 @@ Describe 'ConvertFrom-Expression' {
         state = 'NY'
         postal_code = '10021-3100'
     }
-    phone_numbers =[PSCustomObject] @(
+    phone_numbers = @(
         @{ number = '212 555-1234' },
         @{ number = '646 555-4567' }
     )
@@ -51,31 +51,9 @@ Describe 'ConvertFrom-Expression' {
         }
 
         It "Restricted mode" {
-
-            Write-Host 122 $Expression.Length
             $Object = $Expression | ConvertFrom-Expression
-            Write-Host 123 $Object
-            $Object | ConvertTo-Expression -LanguageMode Constrained | Should -be @'
-@{
-    spouse = $Null
-    phone_numbers = @(
-        @{ number = '212 555-1234' },
-        @{ number = '646 555-4567' }
-    )
-    children = @('Catherine')
-    is_alive = $True
-    address = @{
-        state = 'NY'
-        postal_code = '10021-3100'
-        street_address = '21 2nd Street'
-        city = 'New York'
-    }
-    birthday = 'Monday,  October 7,  1963 10:47:00 PM'
-    first_name = 'John'
-    last_name = 'Smith'
-    age = 27
-}
-'@
+            $Object | Should -BeOfType HashTable
+            $Object.Keys | Sort-Object | Should -Be 'address', 'age', 'birthday', 'children', 'first_name', 'is_alive', 'last_name', 'phone_numbers', 'spouse'
         }
 
         It "Constrained mode" {

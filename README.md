@@ -1,8 +1,6 @@
-# ObjectGraphTools
+# Object Graph Tools
 
-Object Graph Tools
-
-In PowerShell, Object Graphs are often used for applications along with modifying configurations resulted from e.g. [`Json`](https://www.json.org/json-en.html) or [DSC (Desired State Configuration)](https://learn.microsoft.com/en-us/powershell/dsc/overview?view=dsc-2.0). Yet, most existing object manipulation cmdlets (as [Sort-Object](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/sort-object) and [Compare-Object](https://learn.microsoft.com/nl-nl/powershell/module/microsoft.powershell.utility/sort-object)) are rather flat.\
+In PowerShell, object-graphs are often used for applications along with modifying configurations resulted from e.g. [`Json`](https://www.json.org/json-en.html) or [DSC (Desired State Configuration)](https://learn.microsoft.com/en-us/powershell/dsc/overview?view=dsc-2.0). Yet, most existing PowerShell cmdlets (as [Sort-Object](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/sort-object) and [Compare-Object](https://learn.microsoft.com/nl-nl/powershell/module/microsoft.powershell.utility/sort-object)) that manipulate objects treat object-graphs as flat object lists.\
 This toolkit contains an [PowerShell object parser](./Docs/ObjectParser.md), an [extended dot notation (Xdn)](./Docs/Xdn.md) query selector and a set of Object Graph Cmdlets to deal with these complex recursive PowerShell objects.
 
 **Quote [Wikipedia](https://en.wikipedia.org/)**
@@ -20,7 +18,10 @@ Currently the tool set includes:
 * [`Merge-ObjectGraph`](./Docs/Merge-ObjectGraph.md)
 * [`Sort-ObjectGraph`](./Docs/Sort-ObjectGraph.md)
 * [`Copy-ObjectGraph`](./Docs/Copy-ObjectGraph.md)
+* [`ConvertFrom-Expression`](./Docs/ConvertFrom-Expression.md)
 * [`ConvertTo-Expression`](./Docs/ConvertTo-Expression.md)
+* [`Import-ObjectGraph`](./Docs/Import-ObjectGraph.md)
+* [`Export-ObjectGraph`](./Docs/Export-ObjectGraph.md)
 
 ## Installation
 
