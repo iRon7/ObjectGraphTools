@@ -106,7 +106,7 @@ Using NameSpace System.Management.Automation.Language
 
 function Get-Node {
     [OutputType([PSNode])]
-    [CmdletBinding()] param(
+    [CmdletBinding(HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md')] param(
         [Parameter(Mandatory = $true, ValueFromPipeLine = $true)]
         $InputObject,
 

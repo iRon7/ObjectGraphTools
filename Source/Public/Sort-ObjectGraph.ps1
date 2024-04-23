@@ -36,7 +36,7 @@
 
 function ConvertTo-SortedObjectGraph {
     [Diagnostics.CodeAnalysis.SuppressMessage('PSUseApprovedVerbs', '')]
-    [CmdletBinding()][OutputType([Object[]])] param(
+    [CmdletBinding(HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Sort-ObjectGraph.md')][OutputType([Object[]])] param(
 
         [Parameter(Mandatory = $true, ValueFromPipeLine = $True)]
         $InputObject,

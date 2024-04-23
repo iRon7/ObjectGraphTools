@@ -125,7 +125,7 @@ BookStore[0].Book Book     3 {Price, Title}
 
 ### Descendant (`~`) selector
 
-A tilde character (`~`) mind be used to select a (deep) descendant of the current node.
+A tilde character (`~`) might be used to select a (deep) descendant of the current node.
 
 #### Example
 
@@ -142,10 +142,8 @@ BookStore[1].Book.Title Title     4 Learning PowerShell
 
 > [!NOTE]
 > The iteration will stop when the concerned descendant node is found.
-> Meaning that it will return and deeper descendant nodes with the same name
+> Meaning that it will not return any deeper descendant nodes with the same name.
 > To retrieve *all* nodes with a specific name, use the `Get-ChildNode` cmdlet.
-
-limited to question marks (`?`) and asterisks (`*`)
 
 ### Equals (`=`) filter
 
@@ -161,12 +159,12 @@ Select the price of the `PowerShell` book:
 ```
 
 **Explanation:**
-* From the `BookStore` node
-* select any descendant node named `Title`
-* Filter the `Title` nodes by values that contain `*PowerShell*`
-* Select the parent of the `Title` node (the first `book` node`)
-* Get the `Price` node of the current `book` node
-* Select the `Value` property of the found node
+* `BookStore` starting from the *BookStore* node
+* `~Title` selects any descendant node named "*Title*"
+* `*PowerShell*` filters all the nodes by values that contain s the word "*PowerShell*"
+* `..` selects the parent of the resulted node (the first "*book*" node`)
+* `Price` selects the "*Price*" node of the current "*book*" node
+* `().Value` retrieves the actual **Value** property of the found node
 
 Note that the `Value` property is a reference to the actual `Price` property in the Object-Graph,
 which means you might simply change the price of the that book by assigning a new value:
@@ -198,7 +196,7 @@ $ObjectGraph | ConvertTo-Expression
 
 ### Or (`/`) selection list
 
-A selection list, separated by a slash (`/`), might a used to filter a specific name or value:
+A selection list, separated by a slash (`/`), might a used to filter a specific name or value based on a validation list:
 
 #### Example
 
@@ -214,14 +212,14 @@ BookStore[1].Book.Title Title     4 Learning PowerShell
 
 > [!NOTE]
 > The `or` operator for a selection list might only be used for **member names** and **member values**.
-> Meaning; it can't be used between expressions as: <strike>`BookStore~Title=*PowerShell*/Comment=*Program*`</strike>
+> It can't be used between expressions as: <strike>`BookStore~Title=*PowerShell*/Comment=*Program*`</strike>
 
 #### Literal
 
 In general the Xdn operators or wildcard characters in quote-less parameters strings but in case any of these characters (or and any other PowerShell special characters as simple space character) is part of a literal name or value, you might either:
 
 * Surround the name or value by (single or double) quotes, e.g.: `$ObjectGraph | Get-Node ~Title='Learning PowerShell'`
-* Prefix the operator or wildcard with an PowerShell escape (backtick: `` ` ``), e.g. ``$ObjectGraph | Get-Node ~Title=Doe`,John``
+* Prefix the operator or wildcard with an PowerShell escape (backtick: `` ` ``), e.g. ``$ObjectGraph | Get-Node ~Values=3`~5``
 
 ## Debugging
 
@@ -237,9 +235,10 @@ To validate an Xdn Path, you might simply view the path using the `[XdnPath]` cl
 
 * A (fully) green path might be used for native dot notation.
   e.g.: `BookStore[0].Book.Title`: might be used directly on a PowerShell object: `$MyObject.BookStore[0].Book.Title`
-* The yellow parts are extended (**Xdn**) operators
-* The blue parts mark any names or values with wildcards
-* Any red part marks an error in the `XdnPath` expression meaning that the Xdn Path will likely fail on a `PSNode` instance
+* Parts with a different color than green can only be used on a object node (`PSNode` type):
+  * The yellow parts are extended (**Xdn**) operators
+  * The blue parts mark any names or values with wildcards
+  * Any red part marks an error in the `XdnPath` expression meaning that the Xdn Path will likely fail on a `PSNode` instance
 
 To Show the specific entries of the path, you might also use the `Entries` property:
 

@@ -3,7 +3,7 @@
     RootModule = 'ObjectGraphTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.1.3'
+    ModuleVersion = '0.1.4'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -64,6 +64,8 @@
         'ConvertFrom-Expression',
         'ConvertTo-Expression',
         'Compare-ObjectGraph',
+        'Import-ObjectGraph',
+        'Export-ObjectGraph',
         'Copy-ObjectGraph',
         'Get-ChildNode',
         'Get-Node',

@@ -1,32 +1,20 @@
 <#
 .SYNOPSIS
-    Serializes an object to a PowerShell expression.
+    Serializes a PowerShell File or object-graph and exports it to a PowerShell (data) file.
 
 .DESCRIPTION
-    The ConvertTo-Expression cmdlet converts (serializes) an object to a PowerShell expression.
-    The object can be stored in a variable, (.psd1) file or any other common storage for later use or to be ported
-    to another system.
+    The `Export-ObjectGraph` cmdlet converts a PowerShell (complex) object to an PowerShell expression
+    and exports it to a PowerShell (`.ps1`) file or a PowerShell data (`.psd1`) file.
 
-    expressions might be restored to an object using the native Invoke-Expression cmdlet:
+.PARAMETER Path
+    Specifies the path to a file where `Export-ObjectGraph` exports the ObjectGraph.
+    Wildcard characters are permitted.
 
-        $Object = Invoke-Expression ($Object | ConvertTo-Expression)
-
-    Or using the [PSNode Object Parser][1] (*under construction*).
-
-    > [!Note]
-    > Some object types can not be constructed from a a simple serialized expression
-
-.INPUTS
-    Any. Each objects provided through the pipeline will converted to an expression. To concatenate all piped
-    objects in a single expression, use the unary comma operator,  e.g.: `,$Object | ConvertTo-Expression`
-
-.OUTPUTS
-    String[]. `ConvertTo-Expression` returns a PowerShell [String] expression for each input object.
-
-.PARAMETER InputObject
-    Specifies the objects to convert to a PowerShell expression. Enter a variable that contains the objects,
-    or type a command or expression that gets the objects. You can also pipe one or more objects to
-    `ConvertTo-Expression.`
+.PARAMETER LiteralPath
+    Specifies a path to one or more locations where PowerShell should export the object-graph.
+    The value of LiteralPath is used exactly as it's typed. No characters are interpreted as wildcards.
+    If the path includes escape characters, enclose it in single quotation marks. Single quotation marks tell
+    PowerShell not to interpret any characters as escape sequences.
 
 .PARAMETER LanguageMode
     Defines which object types are allowed for the serialization, see: [About language modes][2]
@@ -100,19 +88,31 @@
     Specifies how many levels of contained objects are included in the PowerShell representation.
     The default value is define by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`).
 
+.PARAMETER Encoding
+    Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
+
 .LINK
     [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
     [2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
 #>
 
-function ConvertTo-Expression {
-    [CmdletBinding(HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ConvertTo-Expression.md')][OutputType([String])] param(
-
+function Export-ObjectGraph {
+    [CmdletBinding(DefaultParameterSetName='Path', HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Export-ObjectGraph.md')]
+    param(
         [Parameter(Mandatory = $true, ValueFromPipeLine = $True)]
         $InputObject,
 
+        [Parameter(ParameterSetName='Path', Mandatory=$true, Position=0, ValueFromPipelineByPropertyName=$true)]
+        [string[]]
+        $Path,
+
+        [Parameter(ParameterSetName='LiteralPath', Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
+        [Alias('PSPath','LP')]
+        [string[]]
+        $LiteralPath,
+
         [ValidateScript({ $_ -ne 'NoLanguage' })]
-        [System.Management.Automation.PSLanguageMode]$LanguageMode = 'Restricted',
+        [System.Management.Automation.PSLanguageMode]$LanguageMode,
 
         [Alias('Expand')][Int]$ExpandDepth = [Int]::MaxValue,
 
@@ -126,35 +126,35 @@ function ConvertTo-Expression {
 
         [String]$Indent = '    ',
 
-        [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
+        [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth,
+
+        [ValidateNotNullOrEmpty()]$Encoding
     )
 
     begin {
-        function StopError($Exception, $Id = 'IncorrectArgument', $Group = [Management.Automation.ErrorCategory]::SyntaxError, $Object){
-            if ($Exception -is [System.Management.Automation.ErrorRecord]) { $Exception = $Exception.Exception }
-            elseif ($Exception -isnot [Exception]) { $Exception = [ArgumentException]$Exception }
-            $PSCmdlet.ThrowTerminatingError([System.Management.Automation.ErrorRecord]::new($Exception, $Id, $Group, $Object))
+        $Extension = if ($Path) { [System.IO.Path]::GetExtension($Path) } else { [System.IO.Path]::GetExtension($LiteralPath) }
+        if (-not $PSBoundParameters.ContainsKey('LanguageMode')) {
+            $PSBoundParameters['LanguageMode'] = if ($Extension -eq '.psd1') { 'Restricted' } else { 'Constrained' }
         }
 
-        if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
-        if (-not ('ConstrainedLanguage', 'FullLanguage' -eq $LanguageMode)) {
-            if ($Explicit)     { StopError 'The Explicit switch requires Constrained - or FullLanguage mode.' }
-            if ($FullTypeName) { StopError 'The FullTypeName switch requires Constrained - or FullLanguage mode.' }
-        }
+        $ToExpressionParameters = 'LanguageMode', 'ExpandDepth', 'Explicit', 'FullTypeName', '$HighFidelity', 'ExpandSingleton', 'Indent', 'MaxDepth'
+        $ToExpressionArguments = @{}
+        $ToExpressionParameters.where{ $PSBoundParameters.ContainsKey($_) }.foreach{ $ToExpressionArguments[$_] = $PSBoundParameters[$_] }
+        $ToExpressionContext = $ExecutionContext.InvokeCommand.GetCommand('ObjectGraphTools\ConvertTo-Expression', [System.Management.Automation.CommandTypes]::Cmdlet)
+        $ToExpressionPipeline = { & $ToExpressionContext @ToExpressionArguments }.GetSteppablePipeline()
+        $ToExpressionPipeline.Begin($True)
+
+        $SetContentArguments = @{}
+        @('Path', 'LiteralPath', 'Encoding').where{ $PSBoundParameters.ContainsKey($_) }.foreach{ $SetContentArguments[$_] = $PSBoundParameters[$_] }
     }
 
     process {
-        $Node = [PSNode]::ParseInput($InputObject, $MaxDepth)
+        $Expression = $ToExpressionPipeline.Process($InputObject)
+        Set-Content @SetContentArguments -Value $Expression
+    }
 
-        [PSSerialize]::new(
-            $Node,
-            $LanguageMode,
-            $ExpandDepth,
-            $Explicit,
-            $FullTypeName,
-            $HighFidelity,
-            $ExpandSingleton,
-            $Indent
-        )
+    end {
+        $ToExpressionPipeline.End()
     }
 }
+

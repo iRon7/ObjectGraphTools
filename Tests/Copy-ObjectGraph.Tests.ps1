@@ -74,5 +74,11 @@ Describe 'Copy-ObjectGraph' {
             ,$Copy.Array | Should -BeOfType Array
             $Copy | Compare-ObjectGraph $Object -IsEqual | Should -BeTrue
         }
+
+        It '#78 Copy-Object -MapAs @{} should not me case sensitive' {
+            $Copy = Copy-ObjectGraph @{ a = 1 } -MapAs @{}
+            $Copy.a | Should -Be 1
+            $Copy.A | Should -Be 1
+        }
     }
 }

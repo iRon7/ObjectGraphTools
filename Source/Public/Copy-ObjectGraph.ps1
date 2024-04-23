@@ -42,7 +42,7 @@
 #>
 function Copy-ObjectGraph {
     [OutputType([Object[]])]
-    [CmdletBinding(DefaultParameterSetName = 'ListAs')] param(
+    [CmdletBinding(DefaultParameterSetName = 'ListAs', HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Copy-ObjectGraph.md')] param(
 
         [Parameter(Mandatory = $true, ValueFromPipeLine = $true)]
         $InputObject,
@@ -62,20 +62,48 @@ function Copy-ObjectGraph {
             $PSCmdlet.ThrowTerminatingError([System.Management.Automation.ErrorRecord]::new($Exception, $Id, $Group, $Object))
         }
 
-        $ListType = if ($ListAs -is [String] -or $ListAs -is [Type]) { $ListAs -as [Type] } elseif ($Null -ne $ListAs) { $ListAs.GetType() }
-        $MapType  = if ($MapAs  -is [String] -or $MapAs  -is [Type]) { $MapAs  -as [Type] } elseif ($Null -ne $MapAs)  { $MapAs.GetType() }
-
-
-        if (($ListNode -is [PSMapNode] -and $MapNode -isnot [PSMapNode]) -or ($MapNode -is [PSListNode] -and $ListNode -isnot [PSListNode])) {
-            $ListNode, $DictionaryNode = $DictionaryNode, $ListNode
+        function NewNode($Object) {
+            if ($Null -eq $Object) { return }
+            elseif ($Object -is [String]) {
+                $TypeName = Switch ($Object) {
+                    'ordered'                                     { 'System.Collections.Specialized.OrderedDictionary' }
+                    'System.Management.Automation.PSCustomObject' { 'PSCustomObject' }
+                    Default                                       { $Object }
+                }
+                $Type = $TypeName -as [Type]
+                if (-not $Type) { StopError "Unknown type: [$Object]" }
+                if ('System.Object[]', 'System.Array' -eq $Type.FullName) { $Object = @() }
+                else { $Object = New-Object -Type $TypeName }
+            }
+            elseif ($Type -is [Type]) {
+                if ('System.Object[]', 'System.Array' -eq $Type) { $Object = @() }
+                elseif ('System.Management.Automation.PSCustomObject' -eq $Type) { $Object = [PSCustomObject]@{} }
+                else { $Object = New-Object -Type $Type.FullName }
+            }
+            [PSNode]::ParseInput($Object)
         }
 
-        if ($Null -ne $ListNode -and $ListNode -isnot [PSListNode]) {
-            StopError 'The -ListAs parameter requires a string, type or an object example that supports a list structure'
+        $ListNode = NewNode $ListAs
+        $MapNode  = NewNode $MapAs
+
+        if (
+            $ListNode -is [PSMapNode] -and $MapNode -is [PSListNode] -or
+            -not $ListNode -and $MapNode -is [PSListNode] -or
+            $ListNode -is [PSMapNode] -and -not $MapNode
+        ) {
+            $ListNode, $MapNode = $MapNode, $ListNode # In case the parameter positions are swapped
         }
-        if ($Null -ne $MapNode -and $MapNode -isnot [PSMapNode]) {
-            StopError 'The -MapAs parameter requires a string, type or an object example that supports a map structure'
+
+        $ListType = if ($ListNode) {
+            if ($ListNode -is [PSListNode]) { $ListNode.ValueType }
+            else { StopError 'The -ListAs parameter requires a string, type or an object example that supports a list structure' }
         }
+
+        $MapType = if ($MapNode) {
+            if ($MapNode -is [PSMapNode]) { $MapNode.ValueType }
+            else { StopError 'The -MapAs parameter requires a string, type or an object example that supports a map structure' }
+        }
+        if ('System.Management.Automation.PSCustomObject' -eq $MapNode.ValueType) { $MapType = 'PSCustomObject' -as [type] } # https://github.com/PowerShell/PowerShell/issues/2295
 
         function CopyObject(
             [PSNode]$Node,
@@ -96,7 +124,9 @@ function Copy-ObjectGraph {
             elseif ($Node -is [PSMapNode]) {
                 $Type = if ($Null -ne $MapType) { $MapType } else { $Node.ValueType }
                 $IsDirectory = $Null -ne $Type.GetInterface('IDictionary')
-                if ($IsDirectory) { $Dictionary = New-Object -Type $Type } else { $Dictionary = [Ordered]@{} }
+                if ($Type.FullName -eq 'System.Collections.Hashtable') { $Dictionary = @{} } # Case insensitive
+                elseif ($IsDirectory) { $Dictionary = New-Object -Type $Type }
+                else { $Dictionary = [Ordered]@{} }
                 $Node.ChildNodes.foreach{ $Dictionary[[Object]$_.Name] = CopyObject $_ -ListType $ListType -MapType $MapType }
                 if ($IsDirectory) { $Dictionary } else { [PSCustomObject]$Dictionary }
             }
