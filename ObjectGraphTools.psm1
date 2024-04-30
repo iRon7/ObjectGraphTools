@@ -1,5 +1,4 @@
-. $PSScriptRoot\Source\Private\ClassTools.ps1
-. $PSScriptRoot\Source\Classes\ObjectParser.ps1
+if (-Not ('PSNode' -as [Type])) { . $PSScriptRoot\Source\Classes\ObjectParser.ps1 }
 . $PSScriptRoot\Source\Public\ConvertFrom-Expression.ps1
 . $PSScriptRoot\Source\Public\ConvertTo-Expression.ps1
 . $PSScriptRoot\Source\Public\Import-ObjectGraph.ps1
