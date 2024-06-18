@@ -1,7 +1,32 @@
-## 2024-04-11 0.1.3 (iRon)
+## 2024-05-04 0.1.6 (iRon)
+  - Break changes
+    - ConvertFrom-Expression parameters: `-ArrayAs` --> `-ListAs`, `-HashTableAs` --> `-MapAs`
+    - Compare-ObjectGraph:
+      - split `-MatchOrder` switch in `-IgnoreListOrder` and `-MatchMapOrder`
+
+  - Enhancements
+    - Created PSListNodeComparer and PSMapNodeComparer
+    - Sorting and added <PSNode>.Sort() method
+    - Improved GetHashCode() method
+
+  - Implemented
+    - #82 Phase out static GetPSNodeType method
+    - #83 $ObjectGraph | Get-Node $PSNodePath should work
+    - #84 PSNodePath should implement Equals (PSNodePath or String)
+
+  - Documentation
+    - Updated commented help of several cmdlets
+    - #65 Update ObjectParser.md with respect to PathName deprecation documentation
+
+## 2024-04-27 0.1.5 (iRon)
+  - Fixes
+    - #80 Unknown PSNode type (Import-Module issues)
+
+## 2024-04-20 0.1.4 (iRon)
   - Fixes
     - Copy-ObjectGraph `-ListAs`/`-MapAs` parameter bug
     - #78 Copy-Object -MapAs @{} should not me case sensitive
+
   - Enhancements
     - Added `ConvertFrom-Expression` `-ArrayAs`/`-HashTableAs` parameters
     - Added `Import-ObjectGraph`

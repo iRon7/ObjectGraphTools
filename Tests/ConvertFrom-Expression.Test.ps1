@@ -6,9 +6,6 @@ using module ..\..\ObjectGraphTools
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Expression', Justification = 'False positive')]
 param()
 
-# $PesterPreference = [PesterConfiguration]::Default
-# $PesterPreference.Should.ErrorAction = 'Stop'
-
 Describe 'ConvertFrom-Expression' {
 
     BeforeAll {

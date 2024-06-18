@@ -7,14 +7,17 @@
     The object can be stored in a variable, (.psd1) file or any other common storage for later use or to be ported
     to another system.
 
-    expressions might be restored to an object using the native Invoke-Expression cmdlet:
+    expressions might be restored to an object using the native [Invoke-Expression] cmdlet:
 
         $Object = Invoke-Expression ($Object | ConvertTo-Expression)
 
-    Or using the [PSNode Object Parser][1] (*under construction*).
+    > [!Warning]
+    > Take reasonable precautions when using the Invoke-Expression cmdlet in scripts. When using `Invoke-Expression`
+    > to run a command that the user enters, verify that the command is safe to run before running it.
+    > In general, it is best to restore your objects using [ConvertFrom-Expression].
 
     > [!Note]
-    > Some object types can not be constructed from a a simple serialized expression
+    > Some object types can not be reconstructed from a simple serialized expression.
 
 .INPUTS
     Any. Each objects provided through the pipeline will converted to an expression. To concatenate all piped
@@ -141,6 +144,7 @@ function ConvertTo-Expression {
             if ($Explicit)     { StopError 'The Explicit switch requires Constrained - or FullLanguage mode.' }
             if ($FullTypeName) { StopError 'The FullTypeName switch requires Constrained - or FullLanguage mode.' }
         }
+
     }
 
     process {

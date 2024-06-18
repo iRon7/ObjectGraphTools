@@ -193,7 +193,7 @@ if (@(`$Invoke).Count -gt 1) { `$Output } else { ,`$Output }
                     $TypeData.Force      = $Force
                     Update-TypeData @TypeData
                 }
-                else { Write-Warning "A 'set_$MemberName()' accessor requires a 'get_$MemberName()' accessor." }
+                else { Write-Warning "'[$ClassName].set_$MemberName()' accessor requires a '[$ClassName].get_$MemberName()' accessor." }
             }
         }
     }
@@ -266,24 +266,69 @@ function Set-View {
     }
 }
 
-Class LanguageType {
+Class PSLanguageType {
     hidden static $_TypeCache = [Dictionary[String,Bool]]::new()
-    hidden Static LanguageType() {
-        [LanguageType]::_TypeCache['System.Management.Automation.PSCustomObject'] = $True # https://github.com/PowerShell/PowerShell/issues/20767
+    hidden Static PSLanguageType() {
+        [PSLanguageType]::_TypeCache['System.Management.Automation.PSCustomObject'] = $True # https://github.com/PowerShell/PowerShell/issues/20767
     }
-    static [Bool]IsConstrained([Type]$Type) { # https://stackoverflow.com/a/64806919/1701026
-        if ($Null -eq $Type) { Throw 'The type can not be $Null' }
-        $FullName = $Type.FullName
-        if (-not [LanguageType]::_TypeCache.ContainsKey($FullName)) {
-            [LanguageType]::_TypeCache[$FullName] = try {
+    [Bool]IsRestricted($TypeName) {
+        if ($Null -eq $TypeName) { return $True } # Warning: a $Null is considered a restricted "type"!
+        $Type = $TypeName -as [Type]
+        if ($Null -eq $Type) { Throw 'Unknown type name: $TypeName' }
+        $TypeName = $Type.FullName
+        return $TypeName -in 'bool', 'array', 'hashtable'
+    }
+    [Bool]IsConstrained($TypeName) { # https://stackoverflow.com/a/64806919/1701026
+        if ($Null -eq $TypeName) { return $True } # Warning: a $Null is considered a constrained "type"!
+        $Type = $TypeName -as [Type]
+        if ($Null -eq $Type) { Throw 'Unknown type name: $TypeName' }
+        $TypeName = $Type.FullName
+        if (-not [PSLanguageType]::_TypeCache.ContainsKey($TypeName)) {
+            [PSLanguageType]::_TypeCache[$TypeName] = try {
                 $ConstrainedSession = [PowerShell]::Create()
                 $ConstrainedSession.RunSpace.SessionStateProxy.LanguageMode = 'Constrained'
-                $ConstrainedSession.AddScript("[$FullName]0").Invoke().Count -ne 0 -or
+                $ConstrainedSession.AddScript("[$TypeName]0").Invoke().Count -ne 0 -or
                 $ConstrainedSession.Streams.Error[0].FullyQualifiedErrorId -ne 'ConversionSupportedOnlyToCoreTypes'
             } catch { $False }
         }
-        return [LanguageType]::_TypeCache[$FullName]
+        return [PSLanguageType]::_TypeCache[$TypeName]
     }
+}
+
+New-Variable -Scope Global -Name PSLanguageType -Value ([PSLanguageType]::new()) -Force
+
+Class PSInstance {
+    static [Object]Create($Object) {
+        if ($Null -eq $Object) { return $Null }
+        elseif ($Object -is [String]) {
+            $String = if ($Object.StartsWith('[') -and $Object.EndsWith(']')) { $Object.SubString(1, ($Object.Length - 2)) } else { $Object }
+            Switch -Regex ($String) {
+                '^((System\.)?String)?$'                                         { return '' }
+                '^(System\.)?Array$'                                             { return ,@() }
+                '^(System\.)?Object\[\]$'                                        { return ,@() }
+                '^((System\.)?Collections\.Hashtable\.)?hashtable$'              { return @{} }
+                '^((System\.)?Management\.Automation\.)?ScriptBlock$'            { return {} }
+                '^((System\.)?Collections\.Specialized\.)?Ordered(Dictionary)?$' { return [Ordered]@{} }
+                '^((System\.)?Management\.Automation\.)?PS(Custom)?Object$'      { return [PSCustomObject]@{} }
+            }
+            $Type = $String -as [Type]
+            if (-not $Type) { Throw "Unknown type: [$Object]" }
+        }
+        elseif ($Object -is [Type]) {
+            $Type = $Object.UnderlyingSystemType
+            if     ("$Type" -eq 'string')      { Return '' }
+            elseif ("$Type" -eq 'array')       { Return ,@() }
+            elseif ("$Type" -eq 'scriptblock') { Return {} }
+        }
+        else {
+            if     ($Object -is [Object[]])       { Return ,@() }
+            elseif ($Object -is [ScriptBlock])    { Return {} }
+            elseif ($Object -is [PSCustomObject]) { Return [PSCustomObject]::new() }
+            $Type = $Object.GetType()
+        }
+        try { return [Activator]::CreateInstance($Type) } catch { throw $_ }
+    }
+
 }
 
 # ____  ____ ____            _       _ _
@@ -391,8 +436,7 @@ Class PSSerialize {
             if ($this.FullTypeName) { Write-Warning 'The FullTypeName switch requires Constrained - or FullLanguage mode.' }
             if ($this.Explicit)     { Write-Warning 'The Explicit switch requires Constrained - or FullLanguage mode.' }
         }
-        if ($Object -is [PSNode]) { $Node = $Object }
-        else { $Node = [PSNode]::ParseInput($Object) }
+        if ($Object -is [PSNode]) { $Node = $Object } else { $Node = [PSNode]::ParseInput($Object) }
         $this.Iterate($Node)
         return $this.StringBuilder.ToString()
     }
@@ -409,7 +453,7 @@ Class PSSerialize {
             if ($Null -ne $Type -and (
                 $this.LanguageMode -eq 'Full' -or (
                         $this.LanguageMode -eq 'Constrained' -and
-                        [LanguageType]::IsConstrained($Type) -and (
+                        $Global:PSLanguageType.IsConstrained($Type) -and (
                             $this.Explicit -or -not (
                                 $Type.IsPrimitive      -or
                                 $Value -is [String]    -or
@@ -543,13 +587,14 @@ Class PSSerialize {
     }
  }
 
+
 #  ____  ____  ____                      _       _ _
 # |  _ \/ ___||  _ \  ___  ___  ___ _ __(_) __ _| (_)_______
 # | |_) \___ \| | | |/ _ \/ __|/ _ \ '__| |/ _` | | |_  / _ \
 # |  __/ ___) | |_| |  __/\__ \  __/ |  | | (_| | | |/ /  __/
 # |_|   |____/|____/ \___||___/\___|_|  |_|\__,_|_|_/___\___|
 
- Class PSDeserialize {
+Class PSDeserialize {
     hidden static [String[]]$Parameters = 'LanguageMode', 'ArrayType', 'HashTableType'
     hidden static PSDeserialize() { Use-ClassAccessors }
 
@@ -560,29 +605,22 @@ Class PSSerialize {
     [String] $Expression
 
     PSDeserialize([String]$Expression) { $this.Expression = $Expression }
-    PSDeserialize([String]$Expression, [PSLanguageMode]$LanguageMode) {
-        $this.Expression = $Expression
-        if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
-        $this.LanguageMode = $LanguageMode
-    }
+    # PSDeserialize([String]$Expression, [PSLanguageMode]$LanguageMode) {
+    #     if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
+    #     $this.Expression = $Expression
+    #     $this.LanguageMode = $LanguageMode
+    # }
     PSDeserialize(
         $Expression,
         $LanguageMode  = 'Restricted',
-        $ArrayType,
-        $HashTableType
+        $ArrayType     = $Null,
+        $HashTableType = $Null
     ) {
+        if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
         $this.Expression    = $Expression
         $this.LanguageMode  = $LanguageMode
         if ($Null -ne $ArrayType)     { $this.ArrayType     = $ArrayType }
         if ($Null -ne $HashTableType) { $this.HashTableType = $HashTableType }
-    }
-
-    PSDeserialize($Expression, [HashTable]$Parameters) {
-        $this.Expression = $Expression
-        foreach ($Name in $Parameters.get_Keys()) { # https://github.com/PowerShell/PowerShell/issues/13307
-            if ($Name -notin [PSSerialize]::Parameters) { Throw "Unknown parameter: $Name." }
-            $this.GetType().GetProperty($Name).SetValue($this, $Parameters[$Name])
-        }
     }
 
     hidden [Object] get_Object() {
@@ -601,7 +639,7 @@ Class PSSerialize {
             if (
                 $this.LanguageMode -eq 'Full' -or (
                     $this.LanguageMode -eq 'Constrained' -and
-                    [LanguageType]::IsConstrained($FullTypeName)
+                    $Global:PSLanguageType.IsConstrained($FullTypeName)
                 )
             ) {
                 try { $Type = $FullTypeName -as [Type] } catch { write-error $_ }
@@ -616,10 +654,13 @@ Class PSSerialize {
             if ($List.Count -eq 1) { return $List[0] } else { return @($List) }
         }
         elseif ($Ast -is [PipelineAst]) {
-            $Element = $Ast.PipelineElements.Expression
-                if ($Element.Count -eq 0) { return @() }
-            elseif ($Element.Count -eq 1) { return $this.ParseAst($Element[0]) }
-            else                          { return $Element.Foreach{ $this.ParseAst($_) } }
+            $Elements = $Ast.PipelineElements
+            if (-not $Elements.Count)  { return @() }
+            elseif ($Elements -is [CommandAst]) {
+                return $Null #85 ConvertFrom-Expression: convert function/cmdlet calls to Objects
+            }
+            elseif ($Elements.Expression.Count -eq 1) { return $this.ParseAst($Elements.Expression[0]) }
+            else { return $Elements.Expression.Foreach{ $this.ParseAst($_) } }
         }
         elseif ($Ast -is [ArrayLiteralAst] -or $Ast -is [ArrayExpressionAst]) {
             if (-not $Type -or 'System.Object[]', 'System.Array' -eq $Type.FullName) { $Type = $this.ArrayType }
@@ -664,11 +705,11 @@ Class PSSerialize {
     }
 }
 
- #   __  __   _
- #   \ \/ /__| |_ __
- #    \  // _` | '_ \
- #    /  \ (_| | | | |
- #   /_/\_\__,_|_| |_|
+#   __  __   _
+#   \ \/ /__| |_ __
+#    \  // _` | '_ \
+#    /  \ (_| | | | |
+#   /_/\_\__,_|_| |_|
 
 enum XdnType { Root; Ancestor; Index; Child; Descendant; Equals; Error = 99 }
 
@@ -694,47 +735,60 @@ class XdnColor {
     }
 }
 
-class XdnValue {
-    hidden static $Verbatim = '^[\?\*\p{L}\p{Lt}\p{Lm}\p{Lo}_][\?\*\p{L}\p{Lt}\p{Lm}\p{Lo}\p{Nd}_]*$' # https://stackoverflow.com/questions/62754771/unquoted-key-rules-and-best-practices
-    hidden [Bool]$_IsLiteral
-    hidden $_IsWildcard
+class XdnName {
+    hidden [Bool]$_Literal
+    hidden $_IsVerbatim
+    hidden $_ContainsWildcard
     hidden $_Value
 
-    XdnValue($Value) {
-        $this._IsLiteral = $False
-        $this._IsWildcard = $Null
-        $this._Value = $Value -replace '(?<=[^`](``)*)`(?=[\.\[\~\=\/])' # Remove any (odd number of) escapes from Xdn operators
-    }
-
-    XdnValue($Value, [Bool]$Literal) {
-        $this._IsLiteral = $Literal
-        $this._IsWildcard = $False
+    hidden Initialize($Value, $Literal) {
         $this._Value = $Value
+        if ($Null -ne $Literal) { $this._Literal = $Literal } else { $this._Literal = $this.IsVerbatim() }
+        if ($this._Literal) {
+            $XdnName = [XdnName]::new()
+            $XdnName._ContainsWildcard = $False
+         }
+        else {
+            $XdnName = [XdnName]::new()
+            $XdnName._ContainsWildcard = $null
+        }
+
+    }
+    XdnName() {}
+    XdnName($Value)                    { $this.Initialize($Value, $null) }
+    XdnName($Value, [Bool]$Literal)    { $this.Initialize($Value, $Literal) }
+    static [XdnName]Literal($Value)    { return [XdnName]::new($Value, $true) }
+    static [XdnName]Expression($Value) { return [XdnName]::new($Value, $false) }
+
+    [Bool] IsVerbatim() {
+        if ($Null -eq $this._IsVerbatim) {
+            $this._IsVerbatim = $this._Value -is [String] -and $this._Value -Match '^[\?\*\p{L}\p{Lt}\p{Lm}\p{Lo}_][\?\*\p{L}\p{Lt}\p{Lm}\p{Lo}\p{Nd}_]*$' # https://stackoverflow.com/questions/62754771/unquoted-key-rules-and-best-practices
+        }
+        return $this._IsVerbatim
     }
 
-    [Bool] IsWildcard() {
-        if ($this._IsLiteral) { $this._IsWildcard = $False }
-        elseif ($Null -eq $this._IsWildcard) {
-            $this._IsWildcard = $this._Value -is [String] -and $this._Value -Match '(?<=([^`]|^)(``)*)[\?\*]'
+    [Bool] ContainsWildcard() {
+        if ($Null -eq $this._ContainsWildcard) {
+            $this._ContainsWildcard = $this._Value -is [String] -and $this._Value -Match '(?<=([^`]|^)(``)*)[\?\*]'
         }
-        return $this._IsWildcard
+        return $this._ContainsWildcard
     }
 
     [Bool] Equals($Object) {
-        if ($this._IsLiteral)       { return $this._Value -eq $Object }
-        elseif ($this.IsWildcard()) { return $Object -Like $this._Value }
-        else                        { return $this._Value -eq $Object }
+        if ($this._Literal)               { return $this._Value -eq $Object }
+        elseif ($this.ContainsWildcard()) { return $Object -Like $this._Value }
+        else                              { return $this._Value -eq $Object }
     }
 
     [String] ToString($Colored) {
         $Color = if ($Colored) {
-            if ($this._IsLiteral)                                { [XdnColor]::Regular }
-            elseif ($this._Value -NotMatch [XdnValue]::Verbatim) { [XdnColor]::Extended }
-            elseif ($this.IsWildcard())                          { [XdnColor]::Wildcard }
-            else                                                 { [XdnColor]::Regular }
+            if ($this._Literal)               { [XdnColor]::Regular }
+            elseif (-not $this.IsVerbatim())  { [XdnColor]::Extended }
+            elseif ($this.ContainsWildcard()) { [XdnColor]::Wildcard }
+            else                              { [XdnColor]::Regular }
         }
         $String =
-            if ($this._IsLiteral) { "'" + "$($this._Value)".Replace("'", "''") + "'" }
+            if ($this._Literal) { "'" + "$($this._Value)".Replace("'", "''") + "'" }
             else { "$($this._Value)" -replace '(?<!([^`]|^)(``)*)[\.\[\~\=\/]', '`${0}' } # Escape any Xdn operator (that isn't yet escaped)
         $Reset = if ($Colored) { [XdnColor]::Reset }
         return $Color + $String + $Reset
@@ -742,18 +796,28 @@ class XdnValue {
     [String] ToString()        { return $this.ToString($False) }
     [String] ToColoredString() { return $this.ToString($True) }
 
-    static XdnValue() {
+    static XdnName() {
         Set-View { $_.ToString($True) }
     }
 }
-
 class XdnPath {
     hidden static $_PSReadLineOption
-    hidden static $Verbatim = '^[\?\*\p{L}\p{Lt}\p{Lm}\p{Lo}_][\?\*\p{L}\p{Lt}\p{Lm}\p{Lo}\p{Nd}_]*$' # https://stackoverflow.com/questions/62754771/unquoted-key-rules-and-best-practices
 
     hidden $_Entries = [List[KeyValuePair[XdnType, Object]]]::new()
 
     hidden [Object]get_Entries() { return ,$this._Entries }
+
+    XdnPath ([String]$Path)                 { $this.FromString($Path, $False) }
+    XdnPath ([String]$Path, [Bool]$Literal) { $this.FromString($Path, $Literal) }
+    XdnPath ([PSNodePath]$Path) {
+        foreach ($Node in $Path.Nodes) {
+            Switch ($Node._NodeOrigin) {
+                Root { $this.Add('Root',  $Null) }
+                List { $this.Add('Index', $Node.Name) }
+                Map  { $this.Add('Child', [XdnName]$Node.Name) }
+            }
+        }
+    }
 
     hidden AddError($Value) {
         $this._Entries.Add([KeyValuePair[XdnType, Object]]::new('Error', $Value))
@@ -797,11 +861,11 @@ class XdnPath {
                 $Ast = [Parser]::ParseInput($Path, [ref]$Null, [ref]$Null)
                 $StringAst = $Ast.EndBlock.Statements.Find({ $args[0] -is [StringConstantExpressionAst] }, $False)
                 if ($Null -ne $StringAst) {
-                    $this.Add($XdnOperator, [XdnValue]::new($StringAst[0].Value, $True))
+                    $this.Add($XdnOperator, [XdnName]::Literal($StringAst[0].Value))
                     $Path = $Path.SubString($StringAst[0].Extent.EndOffset)
                 }
                 else { # Probably a quoting error
-                    $this.Add($XdnOperator, [XdnValue]::new($Path, $True))
+                    $this.Add($XdnOperator, [XdnName]::Literal($Path, $True))
                     $Path = $Null
                 }
             }
@@ -837,21 +901,19 @@ class XdnPath {
                 elseif ($Match.Success) {
                     if (-not $XdnOperator) { $XdnOperator = 'Child' }
                     $Name = $Path.SubString(0, $Match.Index)
-                    $Value = if ($Literal) { [XdnValue]::new($Name, $True) } else { [XdnValue]$Name }
+                    $Value = if ($Literal) { [XdnName]::Literal($Name) } else { [XdnName]::Expression($Name) }
                     $this.Add($XdnOperator, $Value)
                     $Path = $Path.SubString($Match.Index)
                     $XdnOperator = $Null
                 }
                 else {
-                    $Value = if ($Literal) { [XdnValue]::new($Path, $True) } else { [XdnValue]$Path }
+                    $Value = if ($Literal) { [XdnName]::Literal($Path) } else { [XdnName]::Expression($Path)}
                     $this.Add($XdnOperator, $Value)
                     $Path = $Null
                 }
             }
         }
     }
-    XdnPath ([String]$Path)                 { $this.FromString($Path, $False) }
-    XdnPath ([String]$Path, [Bool]$Literal) { $this.FromString($Path, $Literal) }
 
     [String] ToString([String]$VariableName, [Bool]$Colored) {
         $RegularColor  = if ($Colored) { [XdnColor]::Regular }
@@ -904,6 +966,22 @@ Class PSNodePath {
         return "$Path" + $String
     }
 
+    [Bool] Equals([Object]$Path) {
+        if ($Path -is [PSNodePath]) {
+            if ($this.Nodes.Count -ne $Path.Nodes.Count) { return $false }
+            for ($i = $this.Nodes.Count - 1; $i -ge 0; $i--) {
+                if ($this.Nodes[$i]._NodeOrigin -ne $Path.Nodes[$i]._NodeOrigin -or
+                    $this.Nodes[$i]._Name       -ne $Path.Nodes[$i]._Name
+                ) { return $false}
+            }
+            return $true
+        }
+        elseif ($Path -is [String]) {
+            return $this.ToString() -eq $Path
+        }
+        return $false
+    }
+
     [String] ToString() {
         if ($Null -eq $this._String) {
             $Count = $this.Nodes.Count
@@ -932,7 +1010,7 @@ Class PSNodePath {
 #    |  __/ ___) | |\  | (_) | (_| |  __/
 #    |_|   |____/|_| \_|\___/ \__,_|\___|
 
-Class PSNode {
+Class PSNode : IComparable {
     hidden static PSNode() { Use-ClassAccessors }
 
     static [int]$DefaultMaxDepth = 20
@@ -947,17 +1025,50 @@ Class PSNode {
     hidden [String]$_PathName
     hidden [DateTime]$MaxDepthWarningTime            # Warn ones per item branch
 
+    static [PSNode] ParseInput($Object, $MaxDepth) {
+        $Node =
+            if ($Object -is [PSNode]) { $Object }
+            else {
+                if     ($Null -eq $Object)                                  { [PSLeafNode]::new($Object) }
+                elseif ($Object -is [Management.Automation.PSCustomObject]) { [PSObjectNode]::new($Object) }
+                elseif ($Object -is [Collections.IDictionary])              { [PSDictionaryNode]::new($Object) }
+                elseif ($Object -is [Specialized.StringDictionary])         { [PSDictionaryNode]::new($Object) }
+                elseif ($Object -is [Collections.ICollection])              { [PSListNode]::new($Object) }
+                elseif ($Object -is [ValueType])                            { [PSLeafNode]::new($Object) }
+                elseif ($Object -is [String])                               { [PSLeafNode]::new($Object) }
+                elseif ($Object -is [ScriptBlock])                          { [PSLeafNode]::new($Object) }
+                elseif ($Object.PSObject.Properties)                        { [PSObjectNode]::new($Object) }
+                else                                                        { [PSLeafNode]::new($Object) }
+            }
+        $Node.RootNode = $Node
+        if ($MaxDepth -gt 0) { $Node._MaxDepth = $MaxDepth }
+        return $Node
+    }
+
+    static [PSNode] ParseInput($Object) { return [PSNode]::parseInput($Object, 0) }
+
+    static [int] Compare($Left, $Right) {
+        return [ObjectComparer]::new().Compare($Left, $Right)
+    }
+    static [int] Compare($Left, $Right, [String[]]$PrimaryKey) {
+        return [ObjectComparer]::new($PrimaryKey, 0, [CultureInfo]::CurrentCulture).Compare($Left, $Right)
+    }
+    static [int] Compare($Left, $Right, [String[]]$PrimaryKey, [ObjectComparison]$ObjectComparison) {
+        return [ObjectComparer]::new($PrimaryKey, $ObjectComparison, [CultureInfo]::CurrentCulture).Compare($Left, $Right)
+    }
+    static [int] Compare($Left, $Right, [String[]]$PrimaryKey, [ObjectComparison]$ObjectComparison, [CultureInfo]$CultureInfo) {
+       return [ObjectComparer]::new($PrimaryKey, $ObjectComparison, $CultureInfo).Compare($Left, $Right)
+    }
+
     hidden [object] get_Value() {
         return ,$this._Value
     }
 
     hidden set_Value($Value) {
-        if ($this.GetType().Name -eq [PSNode]::getPSNodeType($Value)) { # The root node is of type PSNode (always false)
-            $this._Value = $Value
-            $this.ParentNode.SetItem($this._Name,  $Value)
-        }
-        else {
-            Throw "The supplied value has a different PSNode type than the existing $($this.Path). Use .ParentNode.SetItem() method and reload its child item(s)."
+        $this._Value = $Value
+        if ($Null -ne $this.ParentNode) { $this.ParentNode.SetItem($this._Name,  $Value) }
+        if ($this.GetType() -ne [PSNode]::ParseInput($Value).GetType()) { # The root node is of type PSNode (always false)
+            Write-Warning "The supplied value has a different PSNode type than the existing $($this.Path). Use .ParentNode.SetItem() method and reload its child item(s)."
         }
     }
 
@@ -985,37 +1096,7 @@ Class PSNode {
         else { return $this._Value.getType() }
     }
 
-    hidden static [String]GetPSNodeType($Object) {
-        if ($Null -eq $Object)                                      { return 'PSLeafNode' }
-        elseif ($Object -is [Management.Automation.PSCustomObject]) { return 'PSObjectNode' }
-        elseif ($Object -is [Collections.IDictionary])              { return 'PSDictionaryNode' }
-        elseif ($Object -is [Specialized.StringDictionary])         { return 'PSDictionaryNode' }
-        elseif ($Object -is [Collections.ICollection])              { return 'PSListNode' }
-        elseif ($Object -is [ValueType])                            { return 'PSLeafNode' }
-        elseif ($Object -is [String])                               { return 'PSLeafNode' }
-        elseif ($Object -is [ScriptBlock])                          { return 'PSLeafNode' }
-        elseif ($Object.PSObject.Properties)                        { return 'PSObjectNode' }
-        else                                                        { return 'PSLeafNode' }
-    }
-
-    static [PSNode] ParseInput($Object, $MaxDepth) {
-        $Node =
-            if ($Object -is [PSNode]) { $Object }
-            else {
-                switch ([PSNode]::getPSNodeType($object)) {
-                    'PSObjectNode'     { [PSObjectNode]::new($Object) }
-                    'PSDictionaryNode' { [PSDictionaryNode]::new($Object) }
-                    'PSListNode'       { [PSListNode]::new($Object) }
-                    Default            { [PSLeafNode]::new($Object) }
-                }
-            }
-        $Node.RootNode  = $Node
-        if ($MaxDepth -gt 0) { $Node._MaxDepth = $MaxDepth }
-        return $Node
-    }
-
-    static [PSNode] ParseInput($Object) { return [PSNode]::parseInput($Object, 0) }
-
+    [Int]GetHashCode() { return $this.GetHashCode($false) } # Ignore the case of a string value
 
     hidden [PSNode] Append($Object) {
         $Node = [PSNode]::ParseInput($Object)
@@ -1054,6 +1135,20 @@ Class PSNode {
     }
 
     [String] GetPathName() { return $this.get_Path().ToString() }
+
+    [Bool] Equals($Object)  {  # https://learn.microsoft.com/dotnet/api/system.globalization.compareoptions
+        if ($Object -is [PSNode]) { $Node = $Object }
+        else { $Node = [PSNode]::ParseInput($Object) }
+        $ObjectComparer = [ObjectComparer]::new()
+        return $ObjectComparer.IsEqual($this, $Node)
+    }
+
+    [int] CompareTo($Object)  {
+        if ($Object -is [PSNode]) { $Node = $Object }
+        else { $Node = [PSNode]::ParseInput($Object) }
+        $ObjectComparer = [ObjectComparer]::new()
+        return $ObjectComparer.Compare($this, $Node)
+    }
 
     hidden CollectNodes($NodeTable, [XdnPath]$Path, [Int]$PathIndex) {
         $Entry = $Path._Entries[$PathIndex]
@@ -1127,13 +1222,20 @@ Class PSLeafNode : PSNode {
         if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
     }
 
-    [Int]GetHashCode() {
-        if ($Null -ne $this._Value) { return $this._Value.GetHashCode() } else { return '$Null'.GetHashCode() }
+    [Int]GetHashCode($CaseSensitive) {
+        if ($Null -eq $this._Value) { return '$Null'.GetHashCode() }
+        if ($CaseSensitive) { return $this._Value.GetHashCode() }
+        else {
+            if ($this._Value -is [String]) { return $this._Value.ToUpper().GetHashCode() } # Windows PowerShell doesn't have a System.HashCode struct
+            else { return $this._Value.GetHashCode() }
+        }
     }
 }
 
 Class PSCollectionNode : PSNode {
     hidden static PSCollectionNode() { Use-ClassAccessors }
+    hidden [Dictionary[bool,int]]$_HashCode # Unlike the value HashCode, the default (bool = $false) node HashCode is case insensitive
+    hidden [Dictionary[bool,int]]$_ReferenceHashCode # if changed, recalculate the (bool = case sensitive) node's HashCode
 
     hidden [bool]MaxDepthReached() {
         # Check whether the max depth has been reached.
@@ -1182,22 +1284,54 @@ Class PSCollectionNode : PSNode {
         return $List
     }
 
-    [List[PSNode]]GetChildNodes($Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
+    [List[PSNode]]GetNodeList($Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
         $NodeList = [List[PSNode]]::new()
         $this.CollectChildNodes($NodeList, $Levels, $NodeOrigin, $Leaf)
         return $NodeList
     }
-    [List[PSNode]]GetChildNodes()                                       { return $this.GetChildNodes(0, 0, $False) }
-    [List[PSNode]]GetChildNodes([Int]$Levels)                           { return $this.GetChildNodes($Levels, 0, $False) }
-    [List[PSNode]]GetChildNodes([PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) { return $this.GetChildNodes(0, $NodeOrigin, $Leaf) }
+    [List[PSNode]]GetNodeList()                                       { return $this.GetNodeList(0, 0, $False) }
+    [List[PSNode]]GetNodeList([Int]$Levels)                           { return $this.GetNodeList($Levels, 0, $False) }
+    [List[PSNode]]GetNodeList([PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) { return $this.GetNodeList(0, $NodeOrigin, $Leaf) }
 
-    hidden [PSNode[]]get_ChildNodes()      { return $this.GetChildNodes(0,  0,      $False) }
-    hidden [PSNode[]]get_ListChildNodes()  { return [PSNode[]]$this.GetChildNodes(0,  'List', $False) }
-    hidden [PSNode[]]get_MapChildNodes()   { return [PSNode[]]$this.GetChildNodes(0,  'Map',  $False) }
-    hidden [PSNode[]]get_DescendantNodes() { return $this.GetChildNodes(-1, 0,      $False) }
-    hidden [PSNode[]]get_LeafNodes()       { return $this.GetChildNodes(-1, 0,      $True) }
+    hidden [PSNode[]]get_ChildNodes()      { return $this.GetNodeList(0, 0, $False) }
+    hidden [PSNode[]]get_ListChildNodes()  { return $this.GetNodeList(0, 'List', $False) }
+    hidden [PSNode[]]get_MapChildNodes()   { return $this.GetNodeList(0, 'Map',  $False) }
+    hidden [PSNode[]]get_DescendantNodes() { return $this.GetNodeList(-1, 0, $False) }
+    hidden [PSNode[]]get_LeafNodes()       { return $this.GetNodeList(-1, 0, $True) }
     hidden [PSNode]_($Name)                { return $this.GetChildNode($Name) }       # CLI Shorthand ("alias") for GetChildNode (don't use in scripts)
     # hidden [Object]Get($Path)                { return $this.GetDescendantNode($Path) }  # CLI Shorthand ("alias") for GetDescendantNode (don't use in scripts)
+
+    Sort() { $this.Sort($Null, 0) }
+    Sort([ObjectComparison]$ObjectComparison) { $this.Sort($Null, $ObjectComparison) }
+    Sort([String[]]$PrimaryKey) { $this.Sort($PrimaryKey, 0) }
+    Sort([ObjectComparison]$ObjectComparison, [String[]]$PrimaryKey) { $this.Sort($PrimaryKey, $ObjectComparison) }
+    Sort([String[]]$PrimaryKey, [ObjectComparison]$ObjectComparison) {
+        # As the child nodes are sorted first, we just do a side-by-side node compare:
+        $ObjectComparison = $ObjectComparison -bor [ObjectComparison]'MatchMapOrder'
+        $ObjectComparison = $ObjectComparison -band (-1 - [ObjectComparison]'IgnoreListOrder')
+        $PSListNodeComparer = [PSListNodeComparer]@{ PrimaryKey = $PrimaryKey; ObjectComparison = $ObjectComparison }
+        $PSMapNodeComparer = [PSMapNodeComparer]@{ PrimaryKey = $PrimaryKey; ObjectComparison = $ObjectComparison }
+        $this.SortRecurse($PSListNodeComparer, $PSMapNodeComparer)
+    }
+
+    hidden SortRecurse([PSListNodeComparer]$PSListNodeComparer, [PSMapNodeComparer]$PSMapNodeComparer) {
+        $NodeList = $this.GetNodeList()
+        for ($i = 0; $i -lt $NodeList.Count; $i++) {
+            if ($NodeList[$i] -is [PSCollectionNode]) {
+                $NodeList[$i].SortRecurse($PSListNodeComparer, $PSMapNodeComparer)
+            }
+        }
+        if ($this -is [PSListNode]) {
+            $NodeList.Sort($PSListNodeComparer)
+            $this._Value = @($NodeList.Value)
+        }
+        else { # if ($Node -is [PSMapNode])
+            $NodeList.Sort($PSMapNodeComparer)
+            $Properties = [System.Collections.Specialized.OrderedDictionary]::new([StringComparer]::Ordinal)
+            foreach($ChildNode in $NodeList) { $Properties[[Object]$ChildNode.Name] = $ChildNode.Value } # [Object] forces a key rather than an index (ArgumentOutOfRangeException)
+            if ($this -is [PSObjectNode]) { $this._Value = [PSCustomObject]$Properties } else { $this._Value = $Properties }
+        }
+    }
 }
 
 Class PSListNode : PSCollectionNode {
@@ -1206,6 +1340,7 @@ Class PSListNode : PSCollectionNode {
     hidden PSListNode($Object) {
         if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
     }
+
     hidden [Object]get_Count() {
         return $this._Value.get_Count()
     }
@@ -1256,26 +1391,51 @@ Class PSListNode : PSCollectionNode {
         return $Node
     }
 
-    [Int]GetHashCode() {
-        $HashCode = '@()'.GetHashCode()
-        foreach ($Node in $this.GetChildNodes(-1)) {
-            $HashCode = $HashCode -bxor $Node.GetHashCode()
+    [Int]GetHashCode($CaseSensitive) {
+        # The hash of a list node is equal if all items match the order and the case.
+        # The primary keys and the list type are not relevant
+        if ($null -eq $this._HashCode) {
+            $this._HashCode = [Dictionary[bool,int]]::new()
+            $this._ReferenceHashCode = [Dictionary[bool,int]]::new()
         }
-        # Shift the bits to make the level unique
-        $HashCode = if ($HashCode -band 1) { $HashCode -shr 1 } else { $HashCode -shr 1 -bor 1073741824 }
-        return $HashCode -bxor 0xa5a5a5a5
+        $ReferenceHashCode = $This._value.GetHashCode()
+        if (-not $this._ReferenceHashCode.ContainsKey($CaseSensitive) -or $this._ReferenceHashCode[$CaseSensitive] -ne $ReferenceHashCode) {
+            $this._ReferenceHashCode[$CaseSensitive] = $ReferenceHashCode
+            $HashCode = '@()'.GetHashCode() # Empty lists have a common hash that is not 0
+            $Index = 0
+            foreach ($Node in $this.GetNodeList()) {
+                $HashCode = $HashCode -bxor "$Index.$($Node.GetHashCode($CaseSensitive))".GetHashCode()
+                $index++
+            }
+            $this._HashCode[$CaseSensitive] = $HashCode
+        }
+        return $this._HashCode[$CaseSensitive]
     }
 }
 
 Class PSMapNode : PSCollectionNode {
     hidden static PSMapNode() { Use-ClassAccessors }
 
-    [Int]GetHashCode() {
-        $HashCode = '@{}'.GetHashCode()
-        foreach ($Node in $this.GetChildNodes(-1)) {
-            $HashCode = $HashCode -bxor "$($Node._Name)=$($Node.GetHashCode())".GetHashCode()
+    [Int]GetHashCode($CaseSensitive) {
+        # The hash of a map node is equal if all names and items match the order and the case.
+        # The map type is not relevant
+        if ($null -eq $this._HashCode) {
+            $this._HashCode = [Dictionary[bool,int]]::new()
+            $this._ReferenceHashCode = [Dictionary[bool,int]]::new()
         }
-        return $HashCode
+        $ReferenceHashCode = $This._value.GetHashCode()
+        if (-not $this._ReferenceHashCode.ContainsKey($CaseSensitive) -or $this._ReferenceHashCode[$CaseSensitive] -ne $ReferenceHashCode) {
+            $this._ReferenceHashCode[$CaseSensitive] = $ReferenceHashCode
+            $HashCode = '@{}'.GetHashCode() # Empty maps have a common hash that is not 0
+            $Index = 0
+            foreach ($Node in $this.GetNodeList()) {
+                $Name = if ($CaseSensitive) { $Node._Name } else { $Node._Name.ToUpper() }
+                $HashCode = $HashCode -bxor "$Index.$Name=$($Node.GetHashCode())".GetHashCode()
+                $Index++
+            }
+            $this._HashCode[$CaseSensitive] = $HashCode
+        }
+        return $this._HashCode[$CaseSensitive]
     }
 }
 
@@ -1392,6 +1552,337 @@ Class PSObjectNode : PSMapNode {
     }
 }
 
+
 Update-TypeData -TypeName PSNode -DefaultDisplayPropertySet Path, Name, Depth, Value -Force
 
 
+#      ___  _     _           _    ____
+#     / _ \| |__ (_) ___  ___| |_ / ___|___  _ __ ___  _ __   __ _ _ __ ___ _ __
+#    | | | | '_ \| |/ _ \/ __| __| |   / _ \| '_ ` _ \| '_ \ / _` | '__/ _ \ '__|
+#    | |_| | |_) | |  __/ (__| |_| |__| (_) | | | | | | |_) | (_| | | |  __/ |
+#     \___/|_.__// |\___|\___|\__|\____\___/|_| |_| |_| .__/ \__,_|_|  \___|_|
+#              |__/                                   |_|
+
+enum ObjectCompareMode {
+    Equals  # https://learn.microsoft.com/dotnet/api/system.object.equals
+    Compare # https://learn.microsoft.com/dotnet/api/system.string.compareto
+    Report  # Returns a report with discrepancies
+}
+
+[Flags()] enum ObjectComparison { MatchCase = 1; MatchType = 2; IgnoreListOrder = 4; MatchMapOrder = 8; Descending = 128 }
+
+class ObjectComparer {
+
+    # Report properties (column names)
+    [String]$Name1 = 'Reference'
+    [String]$Name2 = 'InputObject'
+    [String]$Issue = 'Discrepancy'
+
+    [String[]]$PrimaryKey
+    [ObjectComparison]$ObjectComparison
+
+    [Collections.Generic.List[Object]]$Differences
+
+    ObjectComparer () {}
+    ObjectComparer ([String[]]$PrimaryKey) { $this.PrimaryKey = $PrimaryKey }
+    ObjectComparer ([ObjectComparison]$ObjectComparison) { $this.ObjectComparison = $ObjectComparison }
+    ObjectComparer ([String[]]$PrimaryKey, [ObjectComparison]$ObjectComparison) { $this.PrimaryKey = $PrimaryKey; $this.ObjectComparison = $ObjectComparison }
+    ObjectComparer ([ObjectComparison]$ObjectComparison, [String[]]$PrimaryKey) { $this.PrimaryKey = $PrimaryKey; $this.ObjectComparison = $ObjectComparison }
+
+    [bool] IsEqual ($Object1, $Object2) { return $this.Compare($Object1, $Object2, 'Equals') }
+    [int] Compare  ($Object1, $Object2) { return $this.Compare($Object1, $Object2, 'Compare') }
+    [Object] Report ($Object1, $Object2) {
+        $this.Differences = [Collections.Generic.List[Object]]::new()
+        $null = $this.Compare($Object1, $Object2, 'Report')
+        return $this.Differences
+    }
+
+    [Object] Compare($Object1, $Object2, [ObjectCompareMode]$Mode) {
+        if ($Object1 -is [PSNode]) { $Node1 = $Object1 } else { $Node1 = [PSNode]::ParseInput($Object1) }
+        if ($Object2 -is [PSNode]) { $Node2 = $Object2 } else { $Node2 = [PSNode]::ParseInput($Object2) }
+        return $this.CompareRecurse($Node1, $Node2, $Mode)
+    }
+
+    hidden [Object] CompareRecurse([PSNode]$Node1, [PSNode]$Node2, [ObjectCompareMode]$Mode) {
+        $Comparison = $this.ObjectComparison
+        $MatchCase = $Comparison -band 'MatchCase'
+        $EqualType = $true
+
+        if ($Mode -ne 'Compare') { # $Mode -ne 'Compare'
+            if ($MatchCase -and $Node1.ValueType -ne $Node2.ValueType) {
+                if ($Mode -eq 'Equals') { return $false } else { # if ($Mode -eq 'Report')
+                    $this.Differences.Add([PSCustomObject]@{
+                        Path        = $Node2.PathName
+                        $this.Issue = 'Type'
+                        $this.Name1 = $Node1.ValueType
+                        $this.Name2 = $Node2.ValueType
+                    })
+                }
+            }
+            if ($Node1 -is [PSCollectionNode] -and $Node2 -is [PSCollectionNode] -and $Node1.Count -ne $Node2.Count) {
+                if ($Mode -eq 'Equals') { return $false } else { # if ($Mode -eq 'Report')
+                    $this.Differences.Add([PSCustomObject]@{
+                        Path        = $Node2.PathName
+                        $this.Issue = 'Size'
+                        $this.Name1 = $Node1.Count
+                        $this.Name2 = $Node2.Count
+                    })
+                }
+            }
+        }
+
+        if ($Node1 -is [PSLeafNode] -and $Node2 -is [PSLeafNode]) {
+            $Eq = if ($MatchCase) { $Node1.Value -ceq $Node2.Value } else { $Node1.Value -eq $Node2.Value }
+            Switch ($Mode) {
+                Equals    { return $Eq }
+                Compare {
+                    if ($Eq) { return 1 - $EqualType } # different types results in 1 (-gt)
+                    else {
+                        $Greater = if ($MatchCase) { $Node1.Value -cgt $Node2.Value } else { $Node1.Value -gt $Node2.Value }
+                        if ($Greater -xor $Comparison -band 'Descending') { return 1 } else { return -1 }
+                    }
+                }
+                default {
+                    if (-not $Eq) {
+                        $this.Differences.Add([PSCustomObject]@{
+                            Path        = $Node2.PathName
+                            $this.Issue = 'Value'
+                            $this.Name1 = $Node1.Value
+                            $this.Name2 = $Node2.Value
+                        })
+                    }
+                }
+            }
+        }
+        elseif ($Node1 -is [PSListNode] -and $Node2 -is [PSListNode]) {
+            $MatchOrder = -not ($Comparison -band 'IgnoreListOrder')
+            # if ($Node1.GetHashCode($MatchCase) -eq $Node2.GetHashCode($MatchCase)) {
+            #     if ($Mode -eq 'Equals') { return $true } else { return 0 } # Report mode doesn't care about the output
+            # }
+            $Items1 = $Node1.ChildNodes
+            $Items2 = $Node2.ChildNodes
+            if ($Items1.Count) { $Indices1 = [Collections.Generic.List[Int]]$Items1.Name } else { $Indices1 = @() }
+            if ($Items2.Count) { $Indices2 = [Collections.Generic.List[Int]]$Items2.Name } else { $Indices2 = @() }
+            if ($this.PrimaryKey) {
+                $Maps2 = [Collections.Generic.List[Int]]$Items2.where{ $_ -is [PSMapNode] }.Name
+                if ($Maps2.Count) {
+                    $Maps1 = [Collections.Generic.List[Int]]$Items1.where{ $_ -is [PSMapNode] }.Name
+                    if ($Maps1.Count) {
+                        foreach ($Key in $this.PrimaryKey) {
+                            foreach($Index2 in @($Maps2)) {
+                                $Item2 = $Items2[$Index2]
+                                foreach ($Index1 in $Maps1) {
+                                    $Item1 = $Items1[$Index1]
+                                    if ($Item1.GetItem($Key) -eq $Item2.GetItem($Key)) {
+                                        if ($this.CompareRecurse($Item1, $Item2, 'Equals')) {
+                                            $null = $Maps2.Remove($Index2)
+                                            $Null = $Maps1.Remove($Index1)
+                                            $null = $Indices2.Remove($Index2)
+                                            $Null = $Indices1.Remove($Index1)
+                                            break # Only match the first primary key
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        # in case of any single maps leftover without primary keys
+                        if($Maps2.Count -eq 1 -and $Maps1.Count -eq 1) {
+                            $Item2 = $Items2[$Maps2[0]]
+                            $Item1  = $Items1[$Maps1[0]]
+                            $Compare = $this.CompareRecurse($Item1, $Item2, $Mode)
+                            Switch ($Mode) {
+                                Equals  { if (-not $Compare) { return $Compare } }
+                                Compare { if ($Compare)      { return $Compare } }
+                                Default {
+                                    $Maps2.Clear()
+                                    $Maps1.Clear()
+                                    $null = $Indices2.Remove($Maps2[0])
+                                    $Null = $Indices1.Remove($Maps1[0])
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (-not $MatchOrder) { # remove the equal nodes from the lists
+                foreach($Index2 in @($Indices2)) {
+                    $Item2 = $Items2[$Index2]
+                    foreach ($Index1 in $Indices1) {
+                        $Item1 = $Items1[$Index1]
+                        if ($this.CompareRecurse($Item1, $Item2, 'Equals')) {
+                            $null = $Indices2.Remove($Index2)
+                            $Null = $Indices1.Remove($Index1)
+                            break # Only match a single node
+                        }
+                    }
+                }
+            }
+            for ($i = 0; $i -lt [math]::max($Indices2.Count, $Indices1.Count); $i++) {
+                $Index1 = if ($i -lt $Indices1.Count) { $Indices1[$i] }
+                $Index2 = if ($i -lt $Indices2.Count) { $Indices2[$i] }
+                $Item1  = if ($Null -ne $Index1) { $Items1[$Index1] }
+                $Item2  = if ($Null -ne $Index2) { $Items2[$Index2] }
+                if ($Null -eq $Item1) {
+                    Switch ($Mode) {
+                        Equals  { return $false }
+                        Compare { return -1 } # None existing items can't be ordered
+                        default {
+                            $this.Differences.Add([PSCustomObject]@{
+                                Path        = $Node2.PathName + "[$Index2]"
+                                $this.Issue = 'Exists'
+                                $this.Name1 = $Null
+                                $this.Name2 = if ($Item2 -is [PSLeafNode]) { "$($Item2.Value)" } else { "[$($Item2.ValueType)]" }
+                            })
+                        }
+                    }
+                }
+                elseif ($Null -eq $Item2) {
+                    Switch ($Mode) {
+                        Equals  { return $false }
+                        Compare { return 1 } # None existing items can't be ordered
+                        default {
+                            $this.Differences.Add([PSCustomObject]@{
+                                Path        = $Node1.PathName + "[$Index1]"
+                                $this.Issue = 'Exists'
+                                $this.Name1 = if ($Item1 -is [PSLeafNode]) { "$($Item1.Value)" } else { "[$($Item1.ValueType)]" }
+                                $this.Name2 = $Null
+                            })
+                        }
+                    }
+                }
+                else {
+                    $Compare = $this.CompareRecurse($Item1, $Item2, $Mode)
+                    if (($Mode -eq 'Equals' -and -not $Compare) -or ($Mode -eq 'Compare' -and $Compare)) { return $Compare }
+                }
+            }
+            if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return $null }
+        }
+        elseif ($Node1 -is [PSMapNode] -and $Node2 -is [PSMapNode]) {
+            $MatchOrder = [Bool]($Comparison -band 'MatchMapOrder')
+            # if ($Node1.GetHashCode($MatchCase) -eq $Node2.GetHashCode($MatchCase)) {
+            #     if ($Mode -eq 'Equals') { return $true } else { return 0 } # Report mode doesn't care about the output
+            # }
+            if ($MatchOrder -and $Node1._Value -isnot [HashTable] -and $Node2._Value -isnot [HashTable]) {
+                $Items2 = $Node2.ChildNodes
+                $Index = 0
+                foreach ($Item1 in $Node1.ChildNodes) {
+                    if ($Index -lt $Items2.Count) { $Item2 = $Items2[$Index++] } else { break }
+                    $EqualName = if ($MatchCase) { $Item1.Name -ceq $Item2.Name } else { $Item1.Name -eq $Item2.Name }
+                    if ($EqualName) {
+                        $Compare = $this.CompareRecurse($Item1, $Item2, $Mode)
+                        if (($Mode -eq 'Equals' -and -not $Compare) -or ($Mode -eq 'Compare' -and $Compare)) { return $Compare }
+                    }
+                    else {
+                        Switch ($Mode) {
+                            Equals  { return $false }
+                            Compare {} # The order depends on the child name and value
+                            default {
+                                $this.Differences.Add([PSCustomObject]@{
+                                    Path        = $Item1.PathName
+                                    $this.Issue = 'Name'
+                                    $this.Name1 = $Item1.Name
+                                    $this.Name2 = $Item2.Name
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+            else {
+                $Found = [HashTable]::new() # (Case sensitive)
+                foreach ($Item2 in $Node2.ChildNodes) {
+                    if ($Node1.Contains($Item2.Name)) {
+                        $Item1 = $Node1.GetChildNode($Item2.Name) # Left defines the comparer
+                        $Found[$Item1.Name] = $true
+                        $Compare = $this.CompareRecurse($Item1, $Item2, $Mode)
+                        if (($Mode -eq 'Equals' -and -not $Compare) -or ($Mode -eq 'Compare' -and $Compare)) { return $Compare }
+                    }
+                    else {
+                        Switch ($Mode) {
+                            Equals  { return $false }
+                            Compare { return -1 }
+                            default {
+                                $this.Differences.Add([PSCustomObject]@{
+                                    Path        = $Item2.PathName
+                                    $this.Issue = 'Exists'
+                                    $this.Name1 = $false
+                                    $this.Name2 = $true
+                                })
+                            }
+                        }
+                    }
+                }
+                $Node1.Names.foreach{
+                    if (-not $Found.Contains($_)) {
+                        Switch ($Mode) {
+                            Equals  { return $false }
+                            Compare { return 1 }
+                            default {
+                                $this.Differences.Add([PSCustomObject]@{
+                                    Path        = $Node1.GetChildNode($_).PathName
+                                    $this.Issue = 'Exists'
+                                    $this.Name1 = $true
+                                    $this.Name2 = $false
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+            if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return $null }
+        }
+        else { # Different structure
+            Switch ($Mode) {
+                Equals  { return $false }
+                Compare { # Structure order: PSLeafNode - PSListNode - PSMapNode (can't be reversed)
+                    if ($Node1 -is [PSLeafNode] -or $Node2 -isnot [PSMapNode] ) { return -1 } else { return 1 }
+                }
+                default {
+                    $this.Differences.Add([PSCustomObject]@{
+                        Path        = $Node1.PathName
+                        $this.Issue = 'Structure'
+                        $this.Name1 = $Node1.ValueType.Name
+                        $this.Name2 = $Node2.ValueType.Name
+                    })
+                }
+            }
+        }
+        if ($Mode -eq 'Equals')  { throw 'Equals comparison should have returned boolean.' }
+        if ($Mode -eq 'Compare') { throw 'Compare comparison should have returned integer.' }
+        return $null
+    }
+}
+
+class PSListNodeComparer : ObjectComparer, IComparer[Object] { # https://github.com/PowerShell/PowerShell/issues/23959
+    PSListNodeComparer () {}
+    PSListNodeComparer ([String[]]$PrimaryKey) { $this.PrimaryKey = $PrimaryKey }
+    PSListNodeComparer ([ObjectComparison]$ObjectComparison) { $this.ObjectComparison = $ObjectComparison }
+    PSListNodeComparer ([String[]]$PrimaryKey, [ObjectComparison]$ObjectComparison) { $this.PrimaryKey = $PrimaryKey; $this.ObjectComparison = $ObjectComparison }
+    PSListNodeComparer ([ObjectComparison]$ObjectComparison, [String[]]$PrimaryKey) { $this.PrimaryKey = $PrimaryKey; $this.ObjectComparison = $ObjectComparison }
+    [int] Compare ([Object]$Node1, [Object]$Node2) { return $this.CompareRecurse($Node1, $Node2, 'Compare') }
+}
+
+class PSMapNodeComparer : IComparer[Object] {
+    [String[]]$PrimaryKey
+    [ObjectComparison]$ObjectComparison
+
+    PSMapNodeComparer () {}
+    PSMapNodeComparer ([String[]]$PrimaryKey) { $this.PrimaryKey = $PrimaryKey }
+    PSMapNodeComparer ([ObjectComparison]$ObjectComparison) { $this.ObjectComparison = $ObjectComparison }
+    PSMapNodeComparer ([String[]]$PrimaryKey, [ObjectComparison]$ObjectComparison) { $this.PrimaryKey = $PrimaryKey; $this.ObjectComparison = $ObjectComparison }
+    PSMapNodeComparer ([ObjectComparison]$ObjectComparison, [String[]]$PrimaryKey) { $this.PrimaryKey = $PrimaryKey; $this.ObjectComparison = $ObjectComparison }
+    [int] Compare ([Object]$Node1, [Object]$Node2) {
+        $Comparison = $this.ObjectComparison
+        $MatchCase = $Comparison -band 'MatchCase'
+        $Equal = if ($MatchCase) { $Node1.Name -ceq $Node2.Name } else { $Node1.Name -eq $Node2.Name }
+        if ($Equal) { return 0 }
+        else {
+            if ($this.PrimaryKey) {                                           # Primary keys take always priority
+                if ($this.PrimaryKey -eq $Node1.Name) { return -1 }
+                if ($this.PrimaryKey -eq $Node2.Name) { return 1 }
+            }
+            $Greater = if ($MatchCase) { $Node1.Name -cgt $Node2.Name } else { $Node1.Name -gt $Node2.Name }
+            if ($Greater -xor $Comparison -band 'Descending') { return 1 } else { return -1 }
+        }
+    }
+}

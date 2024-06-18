@@ -64,7 +64,7 @@ Describe 'Import-ObjectGraph' {
         }
 
         It "AsHashTable" {
-            $Object = Import-ObjectGraph $PSD1File -HashTableAs @{}
+            $Object = Import-ObjectGraph $PSD1File -MapAs @{}
             $Object            | Should -BeOfType HashTable
             $Object.Keys       | Sort-Object | Should -Be 'address', 'age', 'birthday', 'children', 'first_name', 'is_alive', 'last_name', 'phone_numbers', 'spouse'
             $Object.Address    | Should -not -BeNullOrEmpty  # Cash insensitive

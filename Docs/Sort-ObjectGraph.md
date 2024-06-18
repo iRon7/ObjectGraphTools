@@ -19,7 +19,7 @@ ConvertTo-SortedObjectGraph
 
 Recursively sorts a object graph.
 
-## Parameter
+## Parameters
 
 ### <a id="-inputobject">**`-InputObject <Object>`**</a>
 
@@ -61,7 +61,7 @@ It is allowed to supply multiple primary keys.
 
 ### <a id="-matchcase">**`-MatchCase`**</a>
 
-Indicates that the sort is case-sensitive. By default, sorts aren't case-sensitive.
+(Alias `-CaseSensitive`) Indicates that the sort is case-sensitive. By default, sorts aren't case-sensitive.
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>

@@ -62,29 +62,8 @@ function Copy-ObjectGraph {
             $PSCmdlet.ThrowTerminatingError([System.Management.Automation.ErrorRecord]::new($Exception, $Id, $Group, $Object))
         }
 
-        function NewNode($Object) {
-            if ($Null -eq $Object) { return }
-            elseif ($Object -is [String]) {
-                $TypeName = Switch ($Object) {
-                    'ordered'                                     { 'System.Collections.Specialized.OrderedDictionary' }
-                    'System.Management.Automation.PSCustomObject' { 'PSCustomObject' }
-                    Default                                       { $Object }
-                }
-                $Type = $TypeName -as [Type]
-                if (-not $Type) { StopError "Unknown type: [$Object]" }
-                if ('System.Object[]', 'System.Array' -eq $Type.FullName) { $Object = @() }
-                else { $Object = New-Object -Type $TypeName }
-            }
-            elseif ($Type -is [Type]) {
-                if ('System.Object[]', 'System.Array' -eq $Type) { $Object = @() }
-                elseif ('System.Management.Automation.PSCustomObject' -eq $Type) { $Object = [PSCustomObject]@{} }
-                else { $Object = New-Object -Type $Type.FullName }
-            }
-            [PSNode]::ParseInput($Object)
-        }
-
-        $ListNode = NewNode $ListAs
-        $MapNode  = NewNode $MapAs
+        $ListNode = if ($PSBoundParameters.ContainsKey('ListAs')) { [PSNode]::ParseInput([PSInstance]::Create($ListAs)) }
+        $MapNode  = if ($PSBoundParameters.ContainsKey('MapAs'))  { [PSNode]::ParseInput([PSInstance]::Create($MapAs)) }
 
         if (
             $ListNode -is [PSMapNode] -and $MapNode -is [PSListNode] -or

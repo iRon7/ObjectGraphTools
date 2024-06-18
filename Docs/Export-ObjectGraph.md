@@ -37,7 +37,7 @@ Export-ObjectGraph
 The `Export-ObjectGraph` cmdlet converts a PowerShell (complex) object to an PowerShell expression
 and exports it to a PowerShell (`.ps1`) file or a PowerShell data (`.psd1`) file.
 
-## Parameter
+## Parameters
 
 ### <a id="-inputobject">**`-InputObject <Object>`**</a>
 

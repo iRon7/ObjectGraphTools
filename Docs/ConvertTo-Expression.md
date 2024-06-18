@@ -25,18 +25,21 @@ The ConvertTo-Expression cmdlet converts (serializes) an object to a PowerShell 
 The object can be stored in a variable, (.psd1) file or any other common storage for later use or to be ported
 to another system.
 
-expressions might be restored to an object using the native Invoke-Expression cmdlet:
+expressions might be restored to an object using the native [`Invoke-Expression`](https://go.microsoft.com/fwlink/?LinkID=2097030) cmdlet:
 
 ```PowerShell
 $Object = Invoke-Expression ($Object | ConvertTo-Expression)
 ```
 
-Or using the [PSNode Object Parser][1] (*under construction*).
+> [!Warning]
+> Take reasonable precautions when using the Invoke-Expression cmdlet in scripts. When using `Invoke-Expression`
+> to run a command that the user enters, verify that the command is safe to run before running it.
+> In general, it is best to restore your objects using [`ConvertFrom-Expression`](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ConvertFrom-Expression.md).
 
 > [!Note]
-> Some object types can not be constructed from a a simple serialized expression
+> Some object types can not be reconstructed from a simple serialized expression.
 
-## Parameter
+## Parameters
 
 ### <a id="-inputobject">**`-InputObject <Object>`**</a>
 

@@ -79,9 +79,9 @@ Using NameSpace System.Management.Automation.Language
     Specifies the path to a specific node in the object graph.
     The path might be either:
 
-    * As [String] a "dot-property" selection as defined by the `Path` property a specific node.
-    * A array of strings (dictionary keys or Property names) and/or integers (list indices).
-    * A object (`PSNode[]`) list where each `Name` property defines the path
+    * A dot-notation (`[String]`) literal or expression (as natively used with PowerShell)
+    * A array of strings (dictionary keys or Property names) and/or integers (list indices)
+    * A `[PSNodePath]` (such as `$Node.Path`) or a `[XdnPath]` (Extended Dot-Notation) object
 
 .PARAMETER Literal
     If Literal switch is set, all (map) nodes in the given path are considered literal.
@@ -113,6 +113,7 @@ function Get-Node {
         [Parameter(ParameterSetName='Path', Position=0, ValueFromPipelineByPropertyName = $true)]
         $Path,
 
+        [Parameter(ParameterSetName='Path')]
         [Switch]
         $Literal,
 

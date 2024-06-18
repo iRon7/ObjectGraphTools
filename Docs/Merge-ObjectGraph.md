@@ -19,7 +19,7 @@ Merge-ObjectGraph
 
 Recursively merges two object graphs into a new object graph.
 
-## Parameter
+## Parameters
 
 ### <a id="-inputobject">**`-InputObject <Object>`**</a>
 
