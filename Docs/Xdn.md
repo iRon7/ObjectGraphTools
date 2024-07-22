@@ -85,8 +85,8 @@ Select all the node from the `Book` nodes:
 ```
 $ObjectGraph | Get-Node BookStore.Book.*
 
-PathName                Name  Depth               Value
---------                ----  -----               -----
+Path                    Name  Depth               Value
+----                    ----  -----               -----
 BookStore[0].Book.Price Price     4               29.99
 BookStore[0].Book.Title Title     4        Harry Potter
 BookStore[1].Book.Price Price     4               39.95
@@ -105,8 +105,8 @@ Select the title from the first book:
 $1stTitle  = $ObjectGraph | Get-Node BookStore[0].Book.Title
 $1StTitle
 
-PathName                Name  Depth Value
---------                ----  ----- -----
+Path                    Name  Depth Value
+----                    ----  ----- -----
 BookStore[0].Book.Title Title     4 Harry Potter
 ```
 
@@ -115,8 +115,8 @@ Select the parent node of the `$1StTitle` node:
 ```PowerShell
 $1stTitle | Get-Node ..
 
-PathName          Name Depth Value
---------          ---- ----- -----
+Path              Name Depth Value
+----              ---- ----- -----
 BookStore[0].Book Book     3 {Price, Title}
 ```
 
@@ -134,8 +134,8 @@ Select all the descendant `title` nodes from the `BookStore` node:
 ```PowerShell
 $ObjectGraph | Get-Node BookStore~Title
 
-PathName                Name  Depth Value
---------                ----  ----- -----
+Path                    Name  Depth Value
+----                    ----  ----- -----
 BookStore[0].Book.Title Title     4 Harry Potter
 BookStore[1].Book.Title Title     4 Learning PowerShell
 ```
@@ -205,8 +205,8 @@ Select all the PowerShell and Python books:
 ```PowerShell
 $ObjectGraph | Get-Node BookStore~Title=*PowerShell*/*Python*
 
-PathName                Name  Depth Value
---------                ----  ----- -----
+Path                    Name  Depth Value
+----                    ----  ----- -----
 BookStore[1].Book.Title Title     4 Learning PowerShell
 ```
 

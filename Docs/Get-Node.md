@@ -8,7 +8,7 @@ Get a node
 ```PowerShell
 Get-Node
     -InputObject <Object>
-    [-Literal]
+    [-Unique]
     [-MaxDepth <Int32>]
     [<CommonParameters>]
 ```
@@ -16,6 +16,7 @@ Get-Node
 ```PowerShell
 Get-Node
     [-Path <Object>]
+    [-Literal]
     [<CommonParameters>]
 ```
 
@@ -96,7 +97,7 @@ $ObjectGraph | ConvertTo-Expression
 
 for more details, see: [PowerShell Object Parser][1] and [Extended dot notation][2]
 
-## Parameter
+## Parameters
 
 ### <a id="-inputobject">**`-InputObject <Object>`**</a>
 
@@ -116,9 +117,9 @@ The concerned object graph or node.
 Specifies the path to a specific node in the object graph.
 The path might be either:
 
-* As [String](#string) a "dot-property" selection as defined by the `PathName` property a specific node.
-* A array of strings (dictionary keys or Property names) and/or Integers (list indices).
-* A object (`PSNode[]`) list where each `Name` property defines the path
+* A dot-notation (`[String]`) literal or expression (as natively used with PowerShell)
+* A array of strings (dictionary keys or Property names) and/or integers (list indices)
+* A `[PSNodePath]` (such as `$Node.Path`) or a `[XdnPath]` (Extended Dot-Notation) object
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
@@ -132,6 +133,20 @@ The path might be either:
 ### <a id="-literal">**`-Literal`**</a>
 
 If Literal switch is set, all (map) nodes in the given path are considered literal.
+
+<table>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
+<tr><td>Mandatory:</td><td>False</td></tr>
+<tr><td>Position:</td><td>Named</td></tr>
+<tr><td>Default value:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
+<tr><td>Accept wildcard characters:</td><td>False</td></tr>
+</table>
+
+### <a id="-unique">**`-Unique`**</a>
+
+Specifies that if a subset of the nodes has identical properties and values,
+only a single node of the subset should be selected.
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>

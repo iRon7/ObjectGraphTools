@@ -13,7 +13,8 @@ Compare-ObjectGraph
     [-IsEqual]
     [-MatchCase]
     [-MatchType]
-    [-MatchOrder]
+    [-IgnoreListOrder]
+    [-MatchMapOrder]
     [-MaxDepth <Int32> = [PSNode]::DefaultMaxDepth]
     [<CommonParameters>]
 ```
@@ -22,7 +23,7 @@ Compare-ObjectGraph
 
 Deep compares two Object Graph and lists the differences between them.
 
-## Parameter
+## Parameters
 
 ### <a id="-inputobject">**`-InputObject <Object>`**</a>
 
@@ -124,19 +125,26 @@ Unless the `-MatchType` switch is provided, a loosely (inclusive) comparison is 
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
-### <a id="-matchorder">**`-MatchOrder`**</a>
+### <a id="-ignorelistorder">**`-IgnoreListOrder`**</a>
 
-By default, items in a list and dictionary (including properties of an PSCustomObject or Component Object)
-are matched independent of the order. If the `-MatchOrder` switch is supplied the index of the concerned
-item (or property) is matched.
+<table>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
+<tr><td>Mandatory:</td><td>False</td></tr>
+<tr><td>Position:</td><td>Named</td></tr>
+<tr><td>Default value:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
+<tr><td>Accept wildcard characters:</td><td>False</td></tr>
+</table>
+
+### <a id="-matchmaporder">**`-MatchMapOrder`**</a>
+
+By default, items in dictionary (including properties of an PSCustomObject or Component Object) are
+matched by their key name (independent of the order).
+If the `-MatchMapOrder` switch is supplied, each entry is also validated by the position.
 
 > [!NOTE]
-> A `[HashTable]` type is unordered by design and therefore, regardless the `-MatchOrder` switch, the order
-> of the `[HashTable]` are always ignored.
-
-> [!NOTE]
-> Regardless of the `-MatchOrder` switch, indexed (defined by the [PrimaryKey](#primarykey) parameter) dictionaries
-(including PSCustomObject or Component Objects) in a list are matched independent of the order.
+> A `[HashTable]` type is unordered by design and therefore, regardless the `-MatchMapOrder` switch,
+the order of the `[HashTable]` (defined by the `$Reference`) are always ignored.
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>

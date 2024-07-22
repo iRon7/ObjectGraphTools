@@ -79,12 +79,16 @@ Using NameSpace System.Management.Automation.Language
     Specifies the path to a specific node in the object graph.
     The path might be either:
 
-    * As [String] a "dot-property" selection as defined by the `Path` property a specific node.
-    * A array of strings (dictionary keys or Property names) and/or integers (list indices).
-    * A object (`PSNode[]`) list where each `Name` property defines the path
+    * A dot-notation (`[String]`) literal or expression (as natively used with PowerShell)
+    * A array of strings (dictionary keys or Property names) and/or integers (list indices)
+    * A `[PSNodePath]` (such as `$Node.Path`) or a `[XdnPath]` (Extended Dot-Notation) object
 
 .PARAMETER Literal
     If Literal switch is set, all (map) nodes in the given path are considered literal.
+
+.PARAMETER Unique
+    Specifies that if a subset of the nodes has identical properties and values,
+    only a single node of the subset should be selected.
 
 .PARAMETER MaxDepth
     Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
@@ -113,14 +117,23 @@ function Get-Node {
         [Parameter(ParameterSetName='Path', Position=0, ValueFromPipelineByPropertyName = $true)]
         $Path,
 
+        [Parameter(ParameterSetName='Path')]
         [Switch]
         $Literal,
+
+        [switch]
+        $Unique,
 
         [Int]
         $MaxDepth
     )
 
     begin {
+        if ($Unique) {
+            # As we want to support case sensitive and insensitive nodes the unique nodes are matched by case
+            # also knowing that in most cases nodes are compared with its self.
+            $UniqueNodes = [System.Collections.Generic.Dictionary[String, System.Collections.Generic.HashSet[Object]]]::new()
+        }
         $XdnPaths = @($Path).ForEach{
             if ($_ -is [XdnPath]) { $_ }
             elseif ($literal) { [XdnPath]::new($_, $True) }
@@ -133,7 +146,13 @@ function Get-Node {
         $Node =
             if ($XdnPaths) { $XdnPaths.ForEach{ $Root.GetNode($_) } }
             else { $Root }
-        if ($ValueOnly) { $Node.Value } else { $Node }
+        if (-not $Unique -or $(
+            $PathName = $Node.Path.ToString()
+            if (-not $UniqueNodes.ContainsKey($PathName)) {
+                $UniqueNodes[$PathName] = [System.Collections.Generic.HashSet[Object]]::new()
+            }
+            $UniqueNodes[$PathName].Add($Node.Value)
+        ))  { $Node }
     }
 }
 

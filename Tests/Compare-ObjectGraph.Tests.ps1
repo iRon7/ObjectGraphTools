@@ -122,7 +122,7 @@ Describe 'Compare-ObjectGraph' {
         $Result[0].InputObject | Should -Be 2
         $Result[0].Reference   | Should -Be 3
         $Result[1].Path        | Should -Be 'Data[2]'
-        $Result[1].Discrepancy | Should -Be 'Value'
+        $Result[1].Discrepancy | Should -Be 'Exists'
         $Result[1].InputObject | Should -BeNullOrEmpty
         $Result[1].Reference   | Should -Be '[HashTable]'
     }
@@ -160,7 +160,7 @@ Describe 'Compare-ObjectGraph' {
         $Result[0].InputObject | Should -Be 4
         $Result[0].Reference   | Should -Be 3
         $Result[1].Path        | Should -Be 'Data[3]'
-        $Result[1].Discrepancy | Should -Be 'Value'
+        $Result[1].Discrepancy | Should -Be 'Exists'
         $Result[1].InputObject | Should -Be '[HashTable]'
         $Result[1].Reference   | Should -Be $Null
     }
@@ -214,11 +214,11 @@ Describe 'Compare-ObjectGraph' {
                 }
             )
         }
-        $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $True
-        $Object | Compare-ObjectGraph $Reference -MatchOrder -IsEqual | Should -Be $False
-        $Object | Compare-ObjectGraph $Reference -PrimaryKey Index -MatchOrder -IsEqual | Should -Be $True
-        $Result = $Object | Compare-ObjectGraph $Reference -MatchOrder
-        $Result.Count     | Should -Be 2
+        $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
+        $Object | Compare-ObjectGraph $Reference -IgnoreListOrder -IsEqual | Should -Be $True
+        $Object | Compare-ObjectGraph $Reference -PrimaryKey Index -IsEqual | Should -Be $True
+        $Result = $Object | Compare-ObjectGraph $Reference
+        $Result.Count | Should -Be 6
     }
     It 'Unordered (hashtable) reference' {
         $Object = @{
@@ -329,9 +329,9 @@ Describe 'Compare-ObjectGraph' {
             )
         }
         $Object | Compare-ObjectGraph $Ordered -IsEqual | Should -Be $True
-        $Object | Compare-ObjectGraph $Ordered -MatchOrder -IsEqual | Should -Be $False
-        $Object | Compare-ObjectGraph $Ordered -PrimaryKey Index -MatchOrder -IsEqual | Should -Be $False
-        $Result = $Object | Compare-ObjectGraph $Ordered -MatchOrder
+        $Object | Compare-ObjectGraph $Ordered -MatchMapOrder -IsEqual | Should -Be $False
+        $Object | Compare-ObjectGraph $Ordered -PrimaryKey Index -MatchMapOrder -IsEqual | Should -Be $False
+        $Result = $Object | Compare-ObjectGraph $Ordered -MatchMapOrder
         $Result.Count     | Should -Be 2
     }
 

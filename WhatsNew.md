@@ -1,7 +1,42 @@
-## 2024-04-11 0.1.3 (iRon)
+## 2024-07-22 0.2.1 (iRon)
+  - fixes
+    - #87 ConvertTo-Expression: keys with special characters should be quoted
+    - #89 Sort-ObjectGraph adds $Null to empty lists
+    - #92 ConvertTo-Expression -Expand -1 leaves spaces in map
+
+  - Enhancements
+    - #90 Add $PSCulture and $PSUICulture to the restricted language mode cmdlets and classes
+    - #91 ConvertTo-Expression: better handle special type keys
+
+## 2024-05-04 0.2.0 (iRon)
+  - Break changes
+    - ConvertFrom-Expression parameters: `-ArrayAs` --> `-ListAs`, `-HashTableAs` --> `-MapAs`
+    - Compare-ObjectGraph:
+      - split `-MatchOrder` switch in `-IgnoreListOrder` and `-MatchMapOrder`
+
+  - Enhancements
+    - Created PSListNodeComparer and PSMapNodeComparer
+    - Sorting and added <PSNode>.Sort() method
+    - Improved GetHashCode() method
+
+  - Implemented
+    - #82 Phase out static GetPSNodeType method
+    - #83 $ObjectGraph | Get-Node $PSNodePath should work
+    - #84 PSNodePath should implement Equals (PSNodePath or String)
+
+  - Documentation
+    - Updated commented help of several cmdlets
+    - #65 Update ObjectParser.md with respect to PathName deprecation documentation
+
+## 2024-04-27 0.1.5 (iRon)
+  - Fixes
+    - #80 Unknown PSNode type (Import-Module issues)
+
+## 2024-04-20 0.1.4 (iRon)
   - Fixes
     - Copy-ObjectGraph `-ListAs`/`-MapAs` parameter bug
     - #78 Copy-Object -MapAs @{} should not me case sensitive
+
   - Enhancements
     - Added `ConvertFrom-Expression` `-ArrayAs`/`-HashTableAs` parameters
     - Added `Import-ObjectGraph`

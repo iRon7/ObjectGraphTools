@@ -42,7 +42,7 @@ $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObjec
 $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
 ```
 
-## Parameter
+## Parameters
 
 ### <a id="-inputobject">**`-InputObject <Object>`**</a>
 

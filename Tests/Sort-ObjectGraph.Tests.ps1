@@ -42,9 +42,9 @@ Describe 'Sort-ObjectGraph' {
     Context 'Dictionary' {
         $Dictionary = @{ c = 1; a = 3; b = 2 }
         $Sorted = $Dictionary | Sort-ObjectGraph
-        $Sorted | Should -BeOfType PSCustomObject
-        $Sorted.PSObject.Properties.Name  | Should -be 'a', 'b', 'c'
-        $Sorted.PSObject.Properties.Value | Should -be 3, 2, 1
+        $Sorted | Should -BeOfType 'System.Collections.Specialized.OrderedDictionary'
+        $Sorted.Keys   | Should -be 'a', 'b', 'c'
+        $Sorted.Values | Should -be 3, 2, 1
     }
 
     Context 'PSCustomObject' {
@@ -83,29 +83,29 @@ Describe 'Sort-ObjectGraph' {
         It 'Basic Sort' {
             $Sorted = $Object | Sort-ObjectGraph
             $Sorted.Data.Index | Should -Be 1, 2, 3
-            $Sorted.PSObject.Properties.Name | Should -Be 'Comment', 'Data'
-            $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Comment', 'Index', 'Name'
+            $Sorted.Keys | Should -Be 'Comment', 'Data'
+            $Sorted.Data[0].Keys | Should -Be 'Comment', 'Index', 'Name'
         }
 
         It 'Descending' {
             $Sorted = $Object | Sort-ObjectGraph -Descending
             $Sorted.Data.Index | Should -Be 2, 3, 1
-            $Sorted.PSObject.Properties.Name | Should -Be 'Data', 'Comment'
-            $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Name', 'Index', 'Comment'
+            $Sorted.Keys | Should -Be 'Data', 'Comment'
+            $Sorted.Data[0].Keys | Should -Be 'Name', 'Index', 'Comment'
         }
 
         It 'By Name' {
             $Sorted = $Object | Sort-ObjectGraph -By Name
             $Sorted.Data.Index | Should -Be 1, 3, 2
-            $Sorted.PSObject.Properties.Name | Should -Be 'Comment', 'Data'
-            $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Name', 'Comment', 'Index'
+            $Sorted.Keys | Should -Be 'Comment', 'Data'
+            $Sorted.Data[0].Keys | Should -Be 'Name', 'Comment', 'Index'
         }
 
         It 'By Name Descending' {
             $Sorted = $Object | Sort-ObjectGraph -By Name -Descending
             $Sorted.Data.Index | Should -Be 2, 3, 1
-            $Sorted.PSObject.Properties.Name | Should -Be 'Data', 'Comment'
-            $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Name', 'Index', 'Comment'
+            $Sorted.Keys | Should -Be 'Data', 'Comment'
+            $Sorted.Data[0].Keys | Should -Be 'Name', 'Index', 'Comment'
         }
     }
 
@@ -137,28 +137,28 @@ Describe 'Sort-ObjectGraph' {
         It 'Basic Sort' {
             $Sorted = $Object | Sort-ObjectGraph
             $Sorted.Data.Index | Should -Be 1, 2, 3
-            $Sorted.PSObject.Properties.Name | Should -Be 'Comment', 'Data'
+            $Sorted.Keys | Should -Be 'Comment', 'Data'
             $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Comment', 'Index', 'Name'
         }
 
         It 'Descending' {
             $Sorted = $Object | Sort-ObjectGraph -Descending
             $Sorted.Data.Index | Should -Be 2, 3, 1
-            $Sorted.PSObject.Properties.Name | Should -Be 'Data', 'Comment'
+            $Sorted.Keys | Should -Be 'Data', 'Comment'
             $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Name', 'Index', 'Comment'
         }
 
         It 'By Name' {
             $Sorted = $Object | Sort-ObjectGraph -By Name
             $Sorted.Data.Index | Should -Be 1, 3, 2
-            $Sorted.PSObject.Properties.Name | Should -Be 'Comment', 'Data'
+            $Sorted.Keys | Should -Be 'Comment', 'Data'
             $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Name', 'Comment', 'Index'
         }
 
         It 'By Name Descending' {
             $Sorted = $Object | Sort-ObjectGraph -By Name -Descending
             $Sorted.Data.Index | Should -Be 2, 3, 1
-            $Sorted.PSObject.Properties.Name | Should -Be 'Data', 'Comment'
+            $Sorted.Keys | Should -Be 'Data', 'Comment'
             $Sorted.Data[0].PSObject.Properties.Name | Should -Be 'Name', 'Index', 'Comment'
         }
     }
@@ -277,6 +277,29 @@ World
                         3 = 'Three'
                     } | Sort-ObjectGraph
                 } | Should -Not -Throw
+            }
+
+            It "#88 Sort-Object doesn't sort numbers correctly" {
+                $Sorted = Sort-ObjectGraph 100, 3, 20
+                $Sorted[0] | Should -be 3
+                $Sorted[1] | Should -be 20
+                $Sorted[2] | Should -be 100
+
+                $Sorted = ,(100, 3, 20) | Sort-ObjectGraph
+                $Sorted[0] | Should -be 3
+                $Sorted[1] | Should -be 20
+                $Sorted[2] | Should -be 100
+
+
+                $Sorted = @{ a = 100, 20, 3 } | Sort-ObjectGraph
+                $Sorted.a[0] | Should -be 3
+                $Sorted.a[1] | Should -be 20
+                $Sorted.a[2] | Should -be 100
+            }
+
+            It '#89 Sort-ObjectGraph adds $Null to empty lists' {
+                $Sorted = Sort-ObjectGraph @{ a = @() }
+                $Sorted.a.get_Count() | Should -be 0
             }
         }
     }

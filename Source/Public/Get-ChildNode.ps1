@@ -38,8 +38,8 @@ Using NameSpace System.Management.Automation.Language
 
         $Object | Get-ChildNode -Recurse -Leaf
 
-        PathName         Name    Depth Value
-        --------         ----    ----- -----
+        Path             Name    Depth Value
+        ----             ----    ----- -----
         .Data[0].Comment Comment     3 First item
         .Data[0].Name    Name        3 One
         .Data[0].Index   Index       3 1
@@ -180,7 +180,6 @@ function Get-ChildNode {
     )
 
     begin {
-        $UniqueNodes = [System.Collections.Generic.Dictionary[Int, System.Collections.Generic.HashSet[String]]]::new()
         $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
             [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
         } elseif ($Recurse) { -1 } else { 0 }
@@ -193,14 +192,10 @@ function Get-ChildNode {
     process {
         if ($InputObject -is [PSNode]) { $Self = $InputObject }
         else { $Self = [PSNode]::ParseInput($InputObject, $MaxDepth) }
-        $ValueHash = $Self.RootNode.Value.GetHashCode()
-        if (-Not $UniqueNodes.ContainsKey($ValueHash)) {
-            $UniqueNodes[$ValueHash] = [System.Collections.Generic.HashSet[String]]::new() # Note: this HashSet is case sensitive (as any -nested- dictionary might be)
-        }
 
         $NodeList = [System.Collections.Generic.List[PSNode]]::new()
         if ($IncludeSelf) { $NodeList.Add($Self) }
-        if ($Self -is [PSLeafNode]) { Write-Warning "The node '$($Self.PathName)' is a leaf node which does not contain any child nodes." }
+        if ($Self -is [PSLeafNode]) { Write-Warning "The node '$($Self.Path)' is a leaf node which does not contain any child nodes." }
         else {
             $Self.CollectChildNodes($NodeList, $SearchDepth, $NodeOrigin, $Leaf)
         }
@@ -221,9 +216,7 @@ function Get-ChildNode {
                     )
                 )
             ) {
-                if ($UniqueNodes[$ValueHash].Add($Node.PathName)) {
-                    if ($ValueOnly) { $Node.Value } else { $Node }
-                }
+                if ($ValueOnly) { $Node.Value } else { $Node }
             }
         }
     }

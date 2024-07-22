@@ -6,9 +6,6 @@ using module ..\..\ObjectGraphTools
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Expression', Justification = 'False positive')]
 param()
 
-# $PesterPreference = [PesterConfiguration]::Default
-# $PesterPreference.Should.ErrorAction = 'Stop'
-
 Describe 'ConvertFrom-Expression' {
 
     BeforeAll {
@@ -79,6 +76,14 @@ Describe 'ConvertFrom-Expression' {
     spouse = $Null
 }
 '@
+        }
+    }
+
+    Context 'Issues' {
+
+        It '#90 Add $PSCulture and $PSUICulture to the restricted language mode cmdlets and classes' {
+            '@{ Culture = $PSCulture }'   | ConvertFrom-Expression | ConvertTo-Expression | Should -be "@{ Culture = '$PSCulture' }"
+            '@{ Culture = $PSUICulture }' | ConvertFrom-Expression | ConvertTo-Expression | Should -be "@{ Culture = '$PSUICulture' }"
         }
     }
 }

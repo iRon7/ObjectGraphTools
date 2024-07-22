@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Sort object graph
+    Sort an object graph
 
 .DESCRIPTION
     Recursively sorts a object graph.
@@ -22,7 +22,7 @@
     It is allowed to supply multiple primary keys.
 
 .PARAMETER MatchCase
-    Indicates that the sort is case-sensitive. By default, sorts aren't case-sensitive.
+    (Alias `-CaseSensitive`) Indicates that the sort is case-sensitive. By default, sorts aren't case-sensitive.
 
 .PARAMETER Descending
     Indicates that Sort-Object sorts the objects in descending order. The default is ascending order.
@@ -43,6 +43,7 @@ function ConvertTo-SortedObjectGraph {
 
         [Alias('By')][String[]]$PrimaryKey,
 
+        [Alias('CaseSensitive')]
         [Switch]$MatchCase,
 
         [Switch]$Descending,
@@ -50,62 +51,42 @@ function ConvertTo-SortedObjectGraph {
         [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
     )
     begin {
-        $Primary = @{}
-        if ($PSBoundParameters.ContainsKey('PrimaryKey')) {
-            for($i = 0; $i -lt $PrimaryKey.Count; $i++) {
-                if ($Descending) {
-                    $Primary[$PrimaryKey[$i]] = [Char]254 + '#' * ($PrimaryKey.Count - $i)
-                }
-                else {
-                    $Primary[$PrimaryKey[$i]] = ' ' + '#' * $i
-                }
-            }
-        }
+        $ObjectComparison = [ObjectComparison]0
+        if ($MatchCase)  { $ObjectComparison = $ObjectComparison -bor [ObjectComparison]'MatchCase'}
+        if ($Descending) { $ObjectComparison = $ObjectComparison -bor [ObjectComparison]'Descending'}
+        # As the child nodes are sorted first, we just do a side-by-side node compare:
+        $ObjectComparison = $ObjectComparison -bor [ObjectComparison]'MatchMapOrder'
 
-        function SortObject([PSNode]$Node, [String[]]$PrimaryKey, [Switch]$MatchCase, [Switch]$Descending, [Switch]$SortIndex) {
-            if ($Node -is [PSLeafNode]) {
-                $SortKey = if ($Null -eq $($Node.Value)) { [Char]27 + '$Null' } elseif ($MatchCase) { "$($Node.Value)".ToUpper() } else { "$($Node.Value)" }
-                $Output = @{ $SortKey = $($Node.Value) }
-            }
-            elseif ($Node -is [PSListNode]) {                                   # This will convert the list to an (fixed) array
-                $Items = $Node.ChildNodes.foreach{ SortObject $_ -SortIndex -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending }
-                $Items = $Items | Sort-Object -CaseSensitive:$MatchCase -Descending:$Descending { $_.Keys[0] }
-                $String = [Collections.Generic.List[String]]::new()
-                $List   = [Collections.Generic.List[Object]]::new()
-                foreach ($Item in $Items) {
-                    $SortKey = $Item.GetEnumerator().Name
-                    $String.Add($SortKey)
-                    $List.Add($Item[$SortKey])
+        $PSListNodeComparer = [PSListNodeComparer]@{ PrimaryKey = $PrimaryKey; ObjectComparison = $ObjectComparison }
+        $PSMapNodeComparer = [PSMapNodeComparer]@{ PrimaryKey = $PrimaryKey; ObjectComparison = $ObjectComparison }
+
+        function SortRecurse([PSCollectionNode]$Node, [PSListNodeComparer]$PSListNodeComparer, [PSMapNodeComparer]$PSMapNodeComparer) {
+            $NodeList = $Node.GetNodeList()
+            for ($i = 0; $i -lt $NodeList.Count; $i++) {
+                if ($NodeList[$i] -is [PSCollectionNode]) {
+                    $NodeList[$i] = SortRecurse $NodeList[$i] -PSListNodeComparer $PSListNodeComparer -PSMapNodeComparer $PSMapNodeComparer
                 }
-                $Name = $String -Join [Char]255
-                $Output = @{ $Name = @($List) }
             }
-            elseif ($Node -is [PSMapNode]) {                                    # This will convert a dictionary to a PSCustomObject
-                $HashTable = [HashTable]::New(0, [StringComparer]::Ordinal)
-                $Node.ChildNodes.foreach{
-                    $SortObject = SortObject $_ -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending -SortIndex
-                    $SortKey = $SortObject.GetEnumerator().Name
-                    if ($Primary.Contains($_.Name)) { $Key = $Primary[$_.Name] } else { $Key = $_.Name}
-                    $HashTable["$Key$([Char]255)$SortKey"] = @{ $_.Name = $SortObject[$SortKey] }
-                }
-                $SortedKeys = $HashTable.get_Keys() | Sort-Object -CaseSensitive:$MatchCase -Descending:$Descending
+            if ($Node -is [PSListNode]) {
+                $NodeList.Sort($PSListNodeComparer)
+                if ($NodeList.Count) { $Node.Value = @($NodeList.Value) } else { $Node.Value =  @() }
+            }
+            else { # if ($Node -is [PSMapNode])
+                $NodeList.Sort($PSMapNodeComparer)
                 $Properties = [System.Collections.Specialized.OrderedDictionary]::new([StringComparer]::Ordinal)
-                @($SortedKeys).foreach{
-                    $Item = $HashTable[$_]
-                    $Name = $Item.GetEnumerator().Name
-                    $Properties[[Object]$Name] = $Item[$Name]                   # https://github.com/PowerShell/PowerShell/issues/14791
-                }
-                $Name = $SortedKeys -Join [Char]255
-                $Output = @{ $Name = [PSCustomObject]$Properties }              # https://github.com/PowerShell/PowerShell/issues/20753
+                foreach($ChildNode in $NodeList) { $Properties[[Object]$ChildNode.Name] = $ChildNode.Value } # [Object] forces a key rather than an index (ArgumentOutOfRangeException)
+                if ($Node -is [PSObjectNode]) { $Node.Value = [PSCustomObject]$Properties } else { $Node.Value = $Properties }
             }
-            else { Write-Error 'Should not happen' }
-            if ($SortIndex) { $Output } else { $Output.get_Values() }
+            $Node
         }
     }
 
     process {
         $Node = [PSNode]::ParseInput($InputObject, $MaxDepth)
-        SortObject $Node -PrimaryKey $PrimaryKey -MatchCase:$MatchCase -Descending:$Descending
+        if ($Node -is [PSCollectionNode]) {
+            $Node = SortRecurse $Node -PSListNodeComparer $PSListNodeComparer -PSMapNodeComparer $PSMapNodeComparer
+        }
+        $Node.Value
     }
 }
 

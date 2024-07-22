@@ -37,15 +37,15 @@
     > best to design your configuration expressions with restricted or constrained classes, rather than
     > allowing full freeform expressions.
 
-.PARAMETER ArrayAs
+.PARAMETER ListAs
     If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown or
     denied type initializer will be converted to the given list type.
 
-.PARAMETER HashTableAs
+.PARAMETER MapAs
     If supplied, the array subexpression `@{ }` syntaxes without an type initializer or with an unknown or
     denied type initializer will be converted to the given map (dictionary or object) type.
 
-    The default `HashTableAs` is an (ordered) `PSCustomObject` for PowerShell Data (`psd1`) files and
+    The default `MapAs` is an (ordered) `PSCustomObject` for PowerShell Data (`psd1`) files and
     a (unordered) `HashTable` for any other files, which usually concerns PowerShell (`.ps1`) files that
     support explicit type initiators.
 
@@ -69,9 +69,9 @@ function Import-ObjectGraph {
         [string[]]
         $LiteralPath,
 
-        [ValidateNotNull()]$ArrayAs,
+        [ValidateNotNull()]$ListAs,
 
-        [ValidateNotNull()]$HashTableAs,
+        [ValidateNotNull()]$MapAs,
 
         [ValidateScript({ $_ -ne 'NoLanguage' })]
         [System.Management.Automation.PSLanguageMode]$LanguageMode,
@@ -84,11 +84,11 @@ function Import-ObjectGraph {
         if (-not $PSBoundParameters.ContainsKey('LanguageMode')) {
             $PSBoundParameters['LanguageMode'] = if ($Extension -eq '.psd1') { 'Restricted' } else { 'Constrained' }
         }
-        if (-not $PSBoundParameters.ContainsKey('HashTableAs') -and $Extension -eq '.psd1') {
-            $PSBoundParameters['HashTableAs'] = 'PSCustomObject'
+        if (-not $PSBoundParameters.ContainsKey('MapAs') -and $Extension -eq '.psd1') {
+            $PSBoundParameters['MapAs'] = 'PSCustomObject'
         }
 
-        $FromExpressionParameters = 'ArrayAs', 'HashTableAs', 'LanguageMode'
+        $FromExpressionParameters = 'ListAs', 'MapAs', 'LanguageMode'
         $FromExpressionArguments = @{}
         $FromExpressionParameters.where{ $PSBoundParameters.ContainsKey($_) }.foreach{ $FromExpressionArguments[$_] = $PSBoundParameters[$_] }
         $FromExpressionContext = $ExecutionContext.InvokeCommand.GetCommand('ObjectGraphTools\ConvertFrom-Expression', [System.Management.Automation.CommandTypes]::Cmdlet)

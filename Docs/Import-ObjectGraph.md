@@ -19,8 +19,8 @@ Import-ObjectGraph
 
 ```PowerShell
 Import-ObjectGraph
-    [-ArrayAs <Object>]
-    [-HashTableAs <Object>]
+    [-ListAs <Object>]
+    [-MapAs <Object>]
     [-LanguageMode <PSLanguageMode>]
     [-Encoding <Object>]
     [<CommonParameters>]
@@ -32,7 +32,7 @@ The `Import-ObjectGraph` cmdlet safely converts a PowerShell formatted expressio
 to an object-graph existing of a mixture of nested arrays, hashtables and objects that contain a list
 of strings and values.
 
-## Parameter
+## Parameters
 
 ### <a id="-path">**`-Path <String[]>`**</a>
 
@@ -64,7 +64,7 @@ PowerShell not to interpret any characters as escape sequences.
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
-### <a id="-arrayas">**`-ArrayAs <Object>`**</a>
+### <a id="-listas">**`-ListAs <Object>`**</a>
 
 If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown or
 denied type initializer will be converted to the given list type.
@@ -78,12 +78,12 @@ denied type initializer will be converted to the given list type.
 <tr><td>Accept wildcard characters:</td><td>False</td></tr>
 </table>
 
-### <a id="-hashtableas">**`-HashTableAs <Object>`**</a>
+### <a id="-mapas">**`-MapAs <Object>`**</a>
 
 If supplied, the array subexpression `@{ }` syntaxes without an type initializer or with an unknown or
 denied type initializer will be converted to the given map (dictionary or object) type.
 
-The default `HashTableAs` is an (ordered) `PSCustomObject` for PowerShell Data (`psd1`) files and
+The default `MapAs` is an (ordered) `PSCustomObject` for PowerShell Data (`psd1`) files and
 a (unordered) `HashTable` for any other files, which usually concerns PowerShell (`.ps1`) files that
 support explicit type initiators.
 

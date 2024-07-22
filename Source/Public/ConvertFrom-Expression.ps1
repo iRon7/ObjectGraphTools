@@ -30,15 +30,16 @@
     > best to design your configuration expressions with restricted or constrained classes, rather than
     > allowing full freeform expressions.
 
-.PARAMETER ArrayAs
-    If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown or
-    denied type initializer will be converted to the given list type.
+.PARAMETER ListAs
+    If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown
+    or denied type initializer will be converted to the given list type.
 
-.PARAMETER HashTableAs
-    If supplied, the array subexpression `@{ }` syntaxes without an type initializer or with an unknown or
-    denied type initializer will be converted to the given map (dictionary or object) type.
+.PARAMETER MapAs
+    If supplied, the Hash table literal syntax `@{ }` syntaxes without an type initializer or with an unknown
+    or denied type initializer will be converted to the given map (dictionary or object) type.
 
 #>
+
 function ConvertFrom-Expression {
     [CmdletBinding(HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ConvertFrom-Expression.md')][OutputType([Object])] param(
 
@@ -48,9 +49,9 @@ function ConvertFrom-Expression {
         [ValidateScript({ $_ -ne 'NoLanguage' })]
         [System.Management.Automation.PSLanguageMode]$LanguageMode = 'Restricted',
 
-        [ValidateNotNull()]$ArrayAs,
+        [ValidateNotNull()]$ListAs,
 
-        [ValidateNotNull()]$HashTableAs
+        [ValidateNotNull()]$MapAs
     )
 
     begin {
@@ -62,58 +63,31 @@ function ConvertFrom-Expression {
 
         if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
 
-        function NewNode($Object) { # Should become a New-Node cmdlet
-            if ($Null -eq $Object) { return }
-            elseif ($Object -is [String] -or $Object -is [Type]) {
-                $String = "$Object" # This will use the type accessor for [Type] type.
-                if ('Array', 'Object[]' -eq $String) {
-                    $Object = @()
-                }
-                elseif ('ordered', 'OrderedDictionary' -eq $String) {
-                    $Object = [System.Collections.Specialized.OrderedDictionary]::new([StringComparer]::OrdinalIgnoreCase)
-                }
-                elseif ('hashtable' -eq $String) {
-                    $Object = [HashTable]::new([StringComparer]::OrdinalIgnoreCase)
-                }
-                elseif ('psobject', 'PSCustomObject' -eq $String) {
-                    $Object = [PSCustomObject]@{}
-                }
-                else {
-                    $Type = $TypeName -as [Type]
-                    if (-not $Type) { StopError "Unknown type: [$Object]" }
-                    $Object = New-Object -Type $TypeName
-                }
-            }
-            elseif ($Null -ne $Object.GetType().GetMethod('Clear')) {
-                $Object.Clear()
-            }
-            [PSNode]::ParseInput($Object)
-        }
-
-        $ArrayNode     = NewNode $ArrayAs
-        $HashTableNode = NewNode $HashTableAs
+        $ListNode = if ($ListAs) { [PSNode]::ParseInput([PSInstance]::Create($ListAs)) }
+        $MapNode  = if ($MapAs)  { [PSNode]::ParseInput([PSInstance]::Create($MapAs)) }
 
         if (
-            $ArrayNode -is [PSMapNode] -and $HashTableNode -is [PSListNode] -or
-            -not $ArrayNode -and $HashTableNode -is [PSListNode] -or
-            $ArrayNode -is [PSMapNode] -and -not $HashTableNode
+            $ListNode -is [PSMapNode] -and $MapNode -is [PSListNode] -or
+            -not $ListNode -and $MapNode -is [PSListNode] -or
+            $ListNode -is [PSMapNode] -and -not $MapNode
         ) {
-            $ArrayNode, $HashTableNode = $HashTableNode, $ArrayNode # In case the parameter positions are swapped
+            $ListNode, $MapNode = $MapNode, $ListNode # In case the parameter positions are swapped
         }
 
-        $ArrayType = if ($ArrayNode) {
-            if ($ArrayType -is [PSListNode]) { $ArrayNode.ValueType }
-            else { StopError 'The -ArrayAs parameter requires a string, type or an object example that supports a list structure' }
+        $ListType = if ($ListNode) {
+            if ($ListType -is [PSListNode]) { $ListNode.ValueType }
+            else { StopError 'The -ListAs parameter requires a string, type or an object example that supports a list structure' }
         }
 
-        $HashTableType = if ($HashTableNode) {
-            if ($HashTableNode -is [PSMapNode]) { $HashTableNode.ValueType }
-            else { StopError 'The -HashTableAs parameter requires a string, type or an object example that supports a map structure' }
+        $MapType = if ($MapNode) {
+            if ($MapNode -is [PSMapNode]) { $MapNode.ValueType }
+            else { StopError 'The -MapAs parameter requires a string, type or an object example that supports a map structure' }
         }
-        if ('System.Management.Automation.PSCustomObject' -eq $HashTableNode.ValueType) { $HashTableType = 'PSCustomObject' -as [type] } # https://github.com/PowerShell/PowerShell/issues/2295
+        if ('System.Management.Automation.PSCustomObject' -eq $MapNode.ValueType) { $MapType = 'PSCustomObject' -as [type] } # https://github.com/PowerShell/PowerShell/issues/2295
+
     }
 
     process {
-        [PSDeserialize]::new($InputObject, $LanguageMode, $ArrayType, $HashTableType).Object
+        [PSDeserialize]::new($InputObject, $LanguageMode, $ListType, $MapType).Object
     }
 }

@@ -120,7 +120,7 @@ ConvertTo-Expression $Object
 
 See the [PowerShell Object Parser][1] For details on the `[PSNode]` properties and methods.
 
-## Parameter
+## Parameters
 
 ### <a id="-inputobject">**`-InputObject <Object>`**</a>
 

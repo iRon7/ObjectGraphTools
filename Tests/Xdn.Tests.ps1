@@ -2,6 +2,7 @@
 
 using module ..\..\ObjectGraphTools
 
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'XdnPath', Justification = 'False positive')]
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'ObjectGraph', Justification = 'False positive')]
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'RootNode', Justification = 'False positive')]
 param()
@@ -21,26 +22,42 @@ Describe 'Extended Dot Notation' {
         }
     }
 
+    Context 'XdnPath class' {
+
+        BeforeAll {
+            $XdnPath = [XdnPath]'"Book Store"~Title=*PowerShell*/*Python*..Price'
+        }
+
+        it 'ToString' {
+            $XdnPath.ToString('<Root>') | Should -be "<Root>.'Book Store'~Title=*PowerShell*/*Python*..Price"
+        }
+
+        it 'ToColoredString' {
+            $Esc = [Char]0x1b
+            $AnsiString = "$Esc[93m<Root>$Esc[39m$Esc[92m.$Esc[92m'Book Store'$Esc[39m$Esc[93m~$Esc[92mTitle$Esc[39m$Esc[93m=$Esc[96m*PowerShell*$Esc[39m$Esc[93m/$Esc[96m*Python*$Esc[39m$Esc[93m.$Esc[39m$Esc[92m.$Esc[92mPrice$Esc[39m"
+            $XdnPath.ToColoredString('<Root>') | Should -be $AnsiString
+        }
+    }
+
     Context 'Path' {
 
         BeforeAll {
-            $ObjectGraph =
-                @{
-                    BookStore = @(
-                        @{
-                            Book = @{
-                                Title = 'Harry Potter'
-                                Price = 29.99
-                            }
-                        },
-                        @{
-                            Book = @{
-                                Title = 'Learning PowerShell'
-                                Price = 39.95
-                            }
+            $ObjectGraph = @{
+                BookStore = @(
+                    @{
+                        Book = @{
+                            Title = 'Harry Potter'
+                            Price = 29.99
                         }
-                    )
-                }
+                    },
+                    @{
+                        Book = @{
+                            Title = 'Learning PowerShell'
+                            Price = 39.95
+                        }
+                    }
+                )
+            }
             $RootNode = [PSNode]::ParseInput($ObjectGraph)
         }
 
@@ -83,23 +100,22 @@ Describe 'Extended Dot Notation' {
     Context 'Change value' {
 
         BeforeAll {
-            $ObjectGraph =
-                @{
-                    BookStore = @(
-                        @{
-                            Book = @{
-                                Title = 'Harry Potter'
-                                Price = 29.99
-                            }
-                        },
-                        @{
-                            Book = @{
-                                Title = 'Learning PowerShell'
-                                Price = 39.95
-                            }
+            $ObjectGraph = @{
+                BookStore = @(
+                    @{
+                        Book = @{
+                            Title = 'Harry Potter'
+                            Price = 29.99
                         }
-                    )
-                }
+                    },
+                    @{
+                        Book = @{
+                            Title = 'Learning PowerShell'
+                            Price = 39.95
+                        }
+                    }
+                )
+            }
             $RootNode = [PSNode]::ParseInput($ObjectGraph)
         }
 
@@ -110,6 +126,45 @@ Describe 'Extended Dot Notation' {
 
             $NewPrice = $RootNode.GetNode('BookStore~Title=*PowerShell*..Price')
             $NewPrice.Value | Should -Be 24.95
+        }
+
+    }
+
+    Context 'Issues' {
+
+        BeforeAll {
+            $ObjectGraph = @{
+                BookStore = @(
+                    @{
+                        Book = @{
+                            Title = 'Harry Potter'
+                            Price = 29.99
+                        }
+                    },
+                    @{
+                        Book = @{
+                            Title = 'Learning PowerShell'
+                            Price = 39.95
+                        }
+                    }
+                )
+            }
+        }
+
+        it '#83 $ObjectGraph | Get-Node $PSNodePath should work' {
+            $Template = @{
+                BookStore = @(
+                    @{
+                        Book = @{
+                            Title = 'a title'
+                            Price = 0
+                        }
+                    }
+                )
+            }
+            $TitleNode = $Template | Get-Node ~Title
+            $Title = $ObjectGraph | Get-Node $TitleNode.Path
+            $Title.Value | Should -be 'Harry Potter'
         }
 
     }
