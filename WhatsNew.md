@@ -1,4 +1,14 @@
-## 2024-05-04 0.1.6 (iRon)
+## 2024-07-22 0.2.1 (iRon)
+  - fixes
+    - #87 ConvertTo-Expression: keys with special characters should be quoted
+    - #89 Sort-ObjectGraph adds $Null to empty lists
+    - #92 ConvertTo-Expression -Expand -1 leaves spaces in map
+
+  - Enhancements
+    - #90 Add $PSCulture and $PSUICulture to the restricted language mode cmdlets and classes
+    - #91 ConvertTo-Expression: better handle special type keys
+
+## 2024-05-04 0.2.0 (iRon)
   - Break changes
     - ConvertFrom-Expression parameters: `-ArrayAs` --> `-ListAs`, `-HashTableAs` --> `-MapAs`
     - Compare-ObjectGraph:

@@ -8,6 +8,7 @@ Get a node
 ```PowerShell
 Get-Node
     -InputObject <Object>
+    [-Unique]
     [-MaxDepth <Int32>]
     [<CommonParameters>]
 ```
@@ -132,6 +133,20 @@ The path might be either:
 ### <a id="-literal">**`-Literal`**</a>
 
 If Literal switch is set, all (map) nodes in the given path are considered literal.
+
+<table>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
+<tr><td>Mandatory:</td><td>False</td></tr>
+<tr><td>Position:</td><td>Named</td></tr>
+<tr><td>Default value:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
+<tr><td>Accept wildcard characters:</td><td>False</td></tr>
+</table>
+
+### <a id="-unique">**`-Unique`**</a>
+
+Specifies that if a subset of the nodes has identical properties and values,
+only a single node of the subset should be selected.
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>

@@ -278,6 +278,29 @@ World
                     } | Sort-ObjectGraph
                 } | Should -Not -Throw
             }
+
+            It "#88 Sort-Object doesn't sort numbers correctly" {
+                $Sorted = Sort-ObjectGraph 100, 3, 20
+                $Sorted[0] | Should -be 3
+                $Sorted[1] | Should -be 20
+                $Sorted[2] | Should -be 100
+
+                $Sorted = ,(100, 3, 20) | Sort-ObjectGraph
+                $Sorted[0] | Should -be 3
+                $Sorted[1] | Should -be 20
+                $Sorted[2] | Should -be 100
+
+
+                $Sorted = @{ a = 100, 20, 3 } | Sort-ObjectGraph
+                $Sorted.a[0] | Should -be 3
+                $Sorted.a[1] | Should -be 20
+                $Sorted.a[2] | Should -be 100
+            }
+
+            It '#89 Sort-ObjectGraph adds $Null to empty lists' {
+                $Sorted = Sort-ObjectGraph @{ a = @() }
+                $Sorted.a.get_Count() | Should -be 0
+            }
         }
     }
 }

@@ -2,8 +2,9 @@
 
 using module ..\..\ObjectGraphTools
 
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object', Justification = 'False positive')]
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object',      Justification = 'False positive')]
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'ObjectGraph', Justification = 'False positive')]
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Nodes',       Justification = 'False positive')]
 param()
 
 Describe 'Get-Node' {
@@ -135,6 +136,21 @@ Describe 'Get-Node' {
             $Title.Value | Should -Be 'Learning PowerShell'
         }
 
+    }
+
+    Context 'Unique' {
+
+        BeforeAll {
+            $Nodes = ($Object | Get-Node 'data.name=*o*') + ($Object | Get-Node 'data.name=*t*')
+        }
+
+        it 'Concatenated nodes' {
+            ($Nodes | Get-Node).Count | Should -be 4
+        }
+
+        it 'Merged nodes' {
+            ($Nodes | Get-Node -Unique).Count | Should -be 3
+        }
     }
 
     Context 'Change value' {
