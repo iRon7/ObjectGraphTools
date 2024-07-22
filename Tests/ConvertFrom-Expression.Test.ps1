@@ -78,4 +78,12 @@ Describe 'ConvertFrom-Expression' {
 '@
         }
     }
+
+    Context 'Issues' {
+
+        It '#90 Add $PSCulture and $PSUICulture to the restricted language mode cmdlets and classes' {
+            '@{ Culture = $PSCulture }'   | ConvertFrom-Expression | ConvertTo-Expression | Should -be "@{ Culture = '$PSCulture' }"
+            '@{ Culture = $PSUICulture }' | ConvertFrom-Expression | ConvertTo-Expression | Should -be "@{ Culture = '$PSUICulture' }"
+        }
+    }
 }

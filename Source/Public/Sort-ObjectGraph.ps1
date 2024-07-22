@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Sort object graph
+    Sort an object graph
 
 .DESCRIPTION
     Recursively sorts a object graph.
@@ -69,7 +69,7 @@ function ConvertTo-SortedObjectGraph {
             }
             if ($Node -is [PSListNode]) {
                 $NodeList.Sort($PSListNodeComparer)
-                $Node.Value = @($NodeList.Value)
+                if ($NodeList.Count) { $Node.Value = @($NodeList.Value) } else { $Node.Value =  @() }
             }
             else { # if ($Node -is [PSMapNode])
                 $NodeList.Sort($PSMapNodeComparer)

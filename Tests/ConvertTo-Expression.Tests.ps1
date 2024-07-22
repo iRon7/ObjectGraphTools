@@ -625,7 +625,7 @@ Describe 'ConvertTo-Expression' {
         }
 
         It 'ConvertTo-Expression (Default)' {
-            $Expression = ConvertTo-Expression -InputObject $Object
+            $Expression = ConvertTo-Expression -InputObject $Object 
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
 @{
@@ -778,14 +778,14 @@ Describe 'ConvertTo-Expression' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-@{ first_name='John';last_name='Smith';is_alive=$True;age=27;address=@{ street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100' };phone_numbers=@(@{number='212 555-1234' }, @{number='646 555-4567' });children=@('Catherine');spouse=$Null }
+@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -ExpandSingleton -ExpandDepth -1' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandSingleton -ExpandDepth -1
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-@{ first_name='John';last_name='Smith';is_alive=$True;age=27;address=@{ street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100' };phone_numbers=@(@{ number='212 555-1234' }, @{ number='646 555-4567' });children=@('Catherine');spouse=$Null }
+@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -LanguageMode Constrained' {
@@ -1092,28 +1092,28 @@ Describe 'ConvertTo-Expression' {
             $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained -ExpandDepth -1
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[PSCustomObject]@{ first_name='John';last_name='Smith';is_alive=$True;age=27;address=[PSCustomObject]@{ street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100' };phone_numbers=@(@{number='212 555-1234' }, @{number='646 555-4567' });children=@('Catherine');spouse=$Null }
+[PSCustomObject]@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=[PSCustomObject]@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Constrained -FullTypeName' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Constrained -FullTypeName
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name='John';last_name='Smith';is_alive=$True;age=27;address=[System.Management.Automation.PSObject]@{ street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100' };phone_numbers=@(@{number='212 555-1234' }, @{number='646 555-4567' });children=@('Catherine');spouse=$Null }
+[System.Management.Automation.PSObject]@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=[System.Management.Automation.PSObject]@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[PSCustomObject]@{ first_name='John';last_name='Smith';is_alive=$True;age=27;address=[PSCustomObject]@{ street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100' };phone_numbers=@(@{ number='212 555-1234' }, @{ number='646 555-4567' });children=@('Catherine');spouse=$Null }
+[PSCustomObject]@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=[PSCustomObject]@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -FullTypeName' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -FullTypeName
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name='John';last_name='Smith';is_alive=$True;age=27;address=[System.Management.Automation.PSObject]@{ street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100' };phone_numbers=@(@{ number='212 555-1234' }, @{ number='646 555-4567' });children=@('Catherine');spouse=$Null }
+[System.Management.Automation.PSObject]@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=[System.Management.Automation.PSObject]@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -LanguageMode Constrained -Explicit' {
@@ -1420,28 +1420,28 @@ Describe 'ConvertTo-Expression' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Constrained -Explicit
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[PSCustomObject]@{ first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{ street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100' };phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234' }, [hashtable]@{number=[string]'646 555-4567' });children=[array]@([string]'Catherine');spouse=$Null }
+[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -FullTypeName -ExpandDepth -1 -LanguageMode Constrained -Explicit' {
             $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth -1 -LanguageMode Constrained -Explicit
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{ street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100' };phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234' }, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567' });children=[System.Object[]]@([System.String]'Catherine');spouse=$Null }
+[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -Explicit' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -Explicit
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[PSCustomObject]@{ first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{ street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100' };phone_numbers=[array]@([hashtable]@{ number=[string]'212 555-1234' }, [hashtable]@{ number=[string]'646 555-4567' });children=[array]@([string]'Catherine');spouse=$Null }
+[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -FullTypeName -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -Explicit' {
             $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -Explicit
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{ street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100' };phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{ number=[System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number=[System.String]'646 555-4567' });children=[System.Object[]]@([System.String]'Catherine');spouse=$Null }
+[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -LanguageMode Full' {
@@ -1748,28 +1748,28 @@ Describe 'ConvertTo-Expression' {
             $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full -ExpandDepth -1
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[PSCustomObject]@{ first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{ street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100' };phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234' }, [hashtable]@{number=[string]'646 555-4567' });children=[array]@([string]'Catherine');spouse=$Null }
+[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Full -FullTypeName' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Full -FullTypeName
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{ street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100' };phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234' }, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567' });children=[System.Object[]]@([System.String]'Catherine');spouse=$Null }
+[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Full -ExpandSingleton' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Full -ExpandSingleton
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[PSCustomObject]@{ first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{ street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100' };phone_numbers=[array]@([hashtable]@{ number=[string]'212 555-1234' }, [hashtable]@{ number=[string]'646 555-4567' });children=[array]@([string]'Catherine');spouse=$Null }
+[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -FullTypeName' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -FullTypeName
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{ street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100' };phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{ number=[System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number=[System.String]'646 555-4567' });children=[System.Object[]]@([System.String]'Catherine');spouse=$Null }
+[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -LanguageMode Full -Explicit' {
@@ -2076,28 +2076,28 @@ Describe 'ConvertTo-Expression' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Full -Explicit
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[PSCustomObject]@{ first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{ street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100' };phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234' }, [hashtable]@{number=[string]'646 555-4567' });children=[array]@([string]'Catherine');spouse=$Null }
+[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -FullTypeName -ExpandDepth -1 -LanguageMode Full -Explicit' {
             $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth -1 -LanguageMode Full -Explicit
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{ street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100' };phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234' }, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567' });children=[System.Object[]]@([System.String]'Catherine');spouse=$Null }
+[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -Explicit' {
             $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -Explicit
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[PSCustomObject]@{ first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{ street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100' };phone_numbers=[array]@([hashtable]@{ number=[string]'212 555-1234' }, [hashtable]@{ number=[string]'646 555-4567' });children=[array]@([string]'Catherine');spouse=$Null }
+[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
 '@
         }
         It 'ConvertTo-Expression -FullTypeName -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -Explicit' {
             $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -Explicit
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{ street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100' };phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{ number=[System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number=[System.String]'646 555-4567' });children=[System.Object[]]@([System.String]'Catherine');spouse=$Null }
+[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
 '@
         }
     }
@@ -2106,6 +2106,23 @@ Describe 'ConvertTo-Expression' {
 
         It '#59 quoting bug' {
             @{ Test = "foo'bar" } | ConvertTo-Expression | Should -Be "@{ Test = 'foo''bar' }"
+        }
+
+        It '#87 ConvertTo-Expression: keys with special characters should be quoted' { # https://stackoverflow.com/questions/62754771/unquoted-key-rules-and-best-practices
+            @{ a = 1 }     | ConvertTo-Expression | Should -Be '@{ a = 1 }'
+            @{ '$a'  = 1 } | ConvertTo-Expression | Should -Be '@{ ''$a'' = 1 }' # --> @{ '$a' = 1 }
+            @{ 'a b' = 1 } | ConvertTo-Expression | Should -Be "@{ 'a b' = 1 }"
+            @{ 'a"b' = 1 } | ConvertTo-Expression | Should -Be "@{ 'a""b' = 1 }" # --> @{ 'a"b' = 1 }
+            @{ "a'b" = 1 } | ConvertTo-Expression | Should -Be "@{ 'a''b' = 1 }"
+        }
+
+        It '#92 ConvertTo-Expression -Expand -1 leaves space after map value' {
+            @{ a = 1 } | ConvertTo-Expression -ExpandDepth -1 | Should -Be '@{a=1}'
+        }
+
+        It '#91 ConvertTo-Expression: better handle special type keys' {
+            @{ (Get-Date 1963-10-07) = 7 } | ConvertTo-Expression      | Should -Be "@{ '1963-10-07T00:00:00.0000000' = 7 }"
+            @{ @{ a = 1 } = 'Test' } | ConvertTo-Expression -Expand -1 | Should -Be "@{@{a=1}='Test'}"
         }
     }
 }
