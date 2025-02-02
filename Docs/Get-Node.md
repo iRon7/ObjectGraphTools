@@ -188,6 +188,6 @@ The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 * 2: [Extended dot notation][2]
 
 [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-[2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/XdnPath.md "Extended dot notation"
+[2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Xdn.md "Extended dot notation"
 
 [comment]: <> (Created with Get-MarkdownHelp: Install-Script -Name Get-MarkdownHelp)
