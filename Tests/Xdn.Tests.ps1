@@ -34,7 +34,8 @@ Describe 'Extended Dot Notation' {
 
         it 'ToColoredString' {
             $Esc = [Char]0x1b
-            $AnsiString = "$Esc[93m<Root>$Esc[39m$Esc[92m.$Esc[92m'Book Store'$Esc[39m$Esc[93m~$Esc[92mTitle$Esc[39m$Esc[93m=$Esc[96m*PowerShell*$Esc[39m$Esc[93m/$Esc[96m*Python*$Esc[39m$Esc[93m.$Esc[39m$Esc[92m.$Esc[92mPrice$Esc[39m"
+            $AnsiString = "$Esc[93m<Root>$Esc[92m.$Esc[92m'Book Store'$Esc[39m$Esc[93m~$Esc[92mTitle$Esc[39m$Esc[93m=$Esc[96m*PowerShell*$Esc[39m$Esc[93m/$Esc[96m*Python*$Esc[39m$Esc[93m.$Esc[92m.$Esc[92mPrice$Esc[39m$Esc[39m"
+
             $XdnPath.ToColoredString('<Root>') | Should -be $AnsiString
         }
     }

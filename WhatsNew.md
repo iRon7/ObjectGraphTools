@@ -1,3 +1,11 @@
+
+  - Break changes
+    - Renamed GetItem / SetItem methods to GetValue / SetValue
+
+## 2024-08-12 0.2.2 (iRon)
+  - Enhancements
+    - Added node view
+
 ## 2024-07-22 0.2.1 (iRon)
   - fixes
     - #87 ConvertTo-Expression: keys with special characters should be quoted

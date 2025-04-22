@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+    <ViewDefinitions>
+        <View>
+            <Name>PSNode</Name>
+            <ViewSelectedBy>
+                <TypeName>PSNode</TypeName>
+            </ViewSelectedBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader><Label>Path</Label></TableColumnHeader>
+                    <TableColumnHeader><Label>Name</Label></TableColumnHeader>
+                    <TableColumnHeader><Label>Depth</Label></TableColumnHeader>
+                    <TableColumnHeader><Label>Value</Label></TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <Wrap />
+                        <TableColumnItems>
+                            <TableColumnItem><PropertyName>Path</PropertyName></TableColumnItem>
+                            <TableColumnItem><PropertyName>Name</PropertyName></TableColumnItem>
+                            <TableColumnItem><PropertyName>Depth</PropertyName></TableColumnItem>
+                            <TableColumnItem><PropertyName>Value</PropertyName></TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+    </ViewDefinitions>
+</Configuration>

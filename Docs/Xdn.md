@@ -2,7 +2,7 @@
 
 **Xdn (Extended dot notation)** is an expression language designed to support the query or transformation of PowerShell Object-Graphs document similar to [**XPath**][1] for XML documents.
 The XdnPath language is based on a tree representation of Object-Graph, and provides the ability to navigate around the tree and selecting nodes by a variety of criteria.
-Extended dot notation helps you write simpler and shorter code for complex to handle complex Object-Graphs.
+Extended dot notation helps you use simpler and shorter code for complex to handle complex Object-Graphs.
 
 Throughout this document several examples are given that are based on the following Graph-Object:
 

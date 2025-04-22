@@ -625,7 +625,7 @@ Describe 'ConvertTo-Expression' {
         }
 
         It 'ConvertTo-Expression (Default)' {
-            $Expression = ConvertTo-Expression -InputObject $Object 
+            $Expression = ConvertTo-Expression -InputObject $Object
             { Invoke-Expression $Expression } | Should -not -Throw
             $Expression | Should -Be @'
 @{
@@ -2123,6 +2123,19 @@ Describe 'ConvertTo-Expression' {
         It '#91 ConvertTo-Expression: better handle special type keys' {
             @{ (Get-Date 1963-10-07) = 7 } | ConvertTo-Expression      | Should -Be "@{ '1963-10-07T00:00:00.0000000' = 7 }"
             @{ @{ a = 1 } = 'Test' } | ConvertTo-Expression -Expand -1 | Should -Be "@{@{a=1}='Test'}"
+        }
+
+        It "#97 RuntimeTypes don't properly ConvertTo-Expression" {
+            [Int] | ConvertTo-Expression                                                 | Should -be "'int'"
+            [Int] | ConvertTo-Expression -LanguageMode Constrained                       | Should -be "[Type]'int'"
+            [Int] | ConvertTo-Expression -LanguageMode Full                              | Should -be "[Type]'int'"
+            @{ Test = [Int] } | ConvertTo-Expression -Expand 0                           | Should -be "@{ Test = 'int' }"
+            @{ Test = [Int] } | ConvertTo-Expression -Expand 0 -LanguageMode Constrained | Should -be "@{ Test = [Type]'int' }"
+            @{ Test = [Int] } | ConvertTo-Expression -Expand 0 -LanguageMode Full        | Should -be "[hashtable]@{ Test = [Type]'int' }"
+        }
+
+        It '#112 ConvertTo-Expression should also escape fancy quotes' {
+            "test ‘fancy quotes’." | ConvertTo-Expression | Should -be "'test ‘‘fancy quotes’’.'"
         }
     }
 }
