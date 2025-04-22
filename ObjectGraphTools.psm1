@@ -4417,16 +4417,16 @@ Set-Alias -Name 'Test-ObjectGraph' -Value 'tso'
 #Region Format
 
 if (-not (Get-FormatData 'PSNode' -ErrorAction Ignore)) {
-    Update-FormatData -PrependPath Source\Formats\PSNode.Format.ps1xml
+    Update-FormatData -PrependPath $PSScriptRoot\Source\Formats\PSNode.Format.ps1xml
 }
 if (-not (Get-FormatData 'TestResult' -ErrorAction Ignore)) {
-    Update-FormatData -PrependPath Source\Formats\TestResultTable.Format.ps1xml
+    Update-FormatData -PrependPath $PSScriptRoot\Source\Formats\TestResultTable.Format.ps1xml
 }
 if (-not (Get-FormatData 'XdnName' -ErrorAction Ignore)) {
-    Update-FormatData -PrependPath Source\Formats\XdnName.Format.ps1xml
+    Update-FormatData -PrependPath $PSScriptRoot\Source\Formats\XdnName.Format.ps1xml
 }
 if (-not (Get-FormatData 'XdnPath' -ErrorAction Ignore)) {
-    Update-FormatData -PrependPath Source\Formats\XdnPath.Format.ps1xml
+    Update-FormatData -PrependPath $PSScriptRoot\Source\Formats\XdnPath.Format.ps1xml
 }
 
 #EndRegion Format

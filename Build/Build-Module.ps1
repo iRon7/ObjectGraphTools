@@ -424,7 +424,7 @@ Begin {
                         $Names = @($Names).foreach{ "'$_'" } -join ', '
                         "if (-not @($Names).where({ Get-FormatData '`$_' -ErrorAction Ignore }, 'first')) {"
                     }
-                    "    Update-FormatData -PrependPath $FileName"
+                    "    Update-FormatData -PrependPath `$PSScriptRoot\$FileName"
                     '}'
                 }
                 $this.AppendRegion('Format', $Formats)
