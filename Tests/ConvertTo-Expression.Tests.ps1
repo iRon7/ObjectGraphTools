@@ -2135,7 +2135,9 @@ Describe 'ConvertTo-Expression' {
         }
 
         It '#112 ConvertTo-Expression should also escape fancy quotes' {
-            "test ‘fancy quotes’." | ConvertTo-Expression | Should -be "'test ‘‘fancy quotes’’.'"
+            $FancyOpen  = [Char]0x2018
+            $FancyClose = [Char]0x2019
+            "test $($FancyOpen)fancy quotes$($FancyClose)." | ConvertTo-Expression | Should -be "'test $($FancyOpen)$($FancyOpen)fancy quotes$($FancyClose)$($FancyClose).'"
         }
     }
 }

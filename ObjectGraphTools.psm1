@@ -2678,7 +2678,7 @@ function Copy-ObjectGraph {
     [1]: https://learn.microsoft.com/dotnet/api/system.management.automation.pscustomobject "PSCustomObject Class"
     [2]: https://learn.microsoft.com/dotnet/api/system.componentmodel.component "Component Class"
 #>
-[Alias('CopyObject', 'cpo')]
+[Alias('Copy-Object', 'cpo')]
 [OutputType([Object[]])]
 [CmdletBinding(DefaultParameterSetName = 'ListAs', HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Copy-ObjectGraph.md')] param(
 
@@ -2843,7 +2843,7 @@ function Export-ObjectGraph {
 
 .PARAMETER MaxDepth
     Specifies how many levels of contained objects are included in the PowerShell representation.
-    The default value is define by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`).
+    The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
 
 .PARAMETER Encoding
     Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
@@ -3527,7 +3527,8 @@ function Merge-ObjectGraph {
     check the relation between the [-Template] and the [-InputObject].
 
 .PARAMETER MaxDepth
-    The maximal depth to recursively compare each embedded property (default: 10).
+    The maximal depth to recursively compare each embedded node.
+    The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
 #>
 
 [Alias('Merge-Object', 'mgo')]
@@ -3623,12 +3624,94 @@ The schema object has the following major features:
 
 * Independent of the object notation (as e.g. [Json (JavaScript Object Notation)][2] or [PowerShell Data Files][3])
 * Each test node is at the same level as the input node being validated
-* Each required node in an input node collection might be selected using a logical formula
+* Complex node requirements (as mutual exclusive nodes) might be selected using a logical formula
 
 .EXAMPLE
+#Test whether a `$Person` object meats the schema requirements.
 
+    $Person = [PSCustomObject]@{
+        FirstName = 'John'
+        LastName  = 'Smith'
+        IsAlive   = $True
+        Birthday  = [DateTime]'Monday,  October 7,  1963 10:47:00 PM'
+        Age       = 27
+        Address   = [PSCustomObject]@{
+            Street     = '21 2nd Street'
+            City       = 'New York'
+            State      = 'NY'
+            PostalCode = '10021-3100'
+        }
+        Phone = @{
+            Home   = '212 555-1234'
+            Mobile = '212 555-2345'
+            Work   = '212 555-3456', '212 555-3456', '646 555-4567'
+        }
+        Children = @('Dennis', 'Stefan')
+        Spouse = $Null
+    }
 
+    $Schema = @{
+        FirstName = @{ '@Type' = 'String' }
+        LastName  = @{ '@Type' = 'String' }
+        IsAlive   = @{ '@Type' = 'Bool' }
+        Birthday  = @{ '@Type' = 'DateTime' }
+        Age       = @{
+            '@Type' = 'Int'
+            '@Minimum' = 0
+            '@Maximum' = 99
+        }
+        Address = @{
+            '@Type' = 'PSMapNode'
+            Street     = @{ '@Type' = 'String' }
+            City       = @{ '@Type' = 'String' }
+            State      = @{ '@Type' = 'String' }
+            PostalCode = @{ '@Type' = 'String' }
+        }
+        Phone = @{
+            '@Type' = 'PSMapNode',  $Null
+            Home    = @{ '@Match' = '^\d{3} \d{3}-\d{4}$' }
+            Mobile  = @{ '@Match' = '^\d{3} \d{3}-\d{4}$' }
+            Work    = @{ '@Match' = '^\d{3} \d{3}-\d{4}$' }
+        }
+        Children  = @(@{ '@Type' = 'String', $Null })
+        Spouse    = @{ '@Type' = 'String', $Null }
+    }
 
+    $Person | Test-Object $Schema | Should -BeNullOrEmpty
+
+.PARAMETER InputObject
+Specifies the object to test for validity against the schema object.
+The object might be any object containing embedded (or even recursive) lists, dictionaries, objects or scalar
+values received from a application or an object notation as Json or YAML using their related `ConvertFrom-*`
+cmdlets.
+
+.PARAMETER SchemaObject
+Specifies a schema to validate the JSON input against. By default, if any discrepancies, toy will be reported
+in a object list containing the path to failed node, the value whether the node is valid or not and the issue.
+If no issues are found, the output is empty.
+
+For details on the schema object, see the [schema object definitions][1] documentation.
+
+.PARAMETER ValidateOnly
+
+If set, the cmdlet will stop at the first invalid node and return the test result object.
+
+.PARAMETER Elaborate
+
+If set, the cmdlet will return the test result object for all tested nodes, even if they are valid
+or ruled out in a possible list node branch selection.
+
+.PARAMETER AssertTestPrefix
+
+The prefix used to identify the assert test nodes in the schema object. By default, the prefix is `AssertTestPrefix`.
+
+.PARAMETER MaxDepth
+
+The maximal depth to recursively test each embedded node.
+The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
+
+.LINK
+    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/SchemaObject.md "Schema object definitions"
 
 #>
 
@@ -3689,8 +3772,8 @@ begin {
     }
 
     $Script:Tests = @{
-        Description      = 'Description'
-        References       = 'Assert references'
+        Description      = 'Describes the test node'
+        References       = 'Contains a list of assert references'
         Type             = 'The node or value is of type'
         NotType          = 'The node or value is not type'
         CaseSensitive    = 'The (descendant) node are considered case sensitive'
@@ -4313,7 +4396,7 @@ process {
 #Region Alias
 
 Set-Alias -Name 'ConvertFrom-Expression' -Value 'cfe'
-Set-Alias -Name 'Copy-ObjectGraph' -Value 'CopyObject'
+Set-Alias -Name 'Copy-ObjectGraph' -Value 'Copy-Object'
 Set-Alias -Name 'Copy-ObjectGraph' -Value 'cpo'
 Set-Alias -Name 'ConvertTo-Expression' -Value 'cto'
 Set-Alias -Name 'Export-ObjectGraph' -Value 'epo'
@@ -4351,8 +4434,8 @@ if (-not (Get-FormatData 'XdnPath' -ErrorAction Ignore)) {
 #Region Export
 
 $ModuleMembers = @{
+    Alias = 'cfe', 'cto', 'Copy-Object', 'cpo', 'Export-Object', 'epo', 'gcn', 'gn', 'Sort-ObjectGraph', 'sro', 'Import-Object', 'imo', 'Merge-Object', 'mgo', 'Test-Object', 'tso'
     Function = 'Compare-ObjectGraph', 'ConvertFrom-Expression', 'ConvertTo-Expression', 'Copy-ObjectGraph', 'Export-ObjectGraph', 'Get-ChildNode', 'Get-Node', 'Get-SortObjectGraph', 'Import-ObjectGraph', 'Merge-ObjectGraph', 'Test-ObjectGraph'
-    Alias = 'cfe', 'cto', 'CopyObject', 'cpo', 'Export-Object', 'epo', 'gcn', 'gn', 'Sort-ObjectGraph', 'sro', 'Import-Object', 'imo', 'Merge-Object', 'mgo', 'Test-Object', 'tso'
 }
 Export-ModuleMember @ModuleMembers
 

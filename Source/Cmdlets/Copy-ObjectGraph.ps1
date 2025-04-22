@@ -42,7 +42,7 @@ using module .\..\..\ObjectGraphTools.psm1
     [1]: https://learn.microsoft.com/dotnet/api/system.management.automation.pscustomobject "PSCustomObject Class"
     [2]: https://learn.microsoft.com/dotnet/api/system.componentmodel.component "Component Class"
 #>
-[Alias('CopyObject', 'cpo')]
+[Alias('Copy-Object', 'cpo')]
 [OutputType([Object[]])]
 [CmdletBinding(DefaultParameterSetName = 'ListAs', HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Copy-ObjectGraph.md')] param(
 

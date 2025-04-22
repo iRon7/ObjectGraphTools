@@ -1144,7 +1144,7 @@ Describe 'Test-Object' {
            $Data | Test-Object $RecurseSchema -ValidateOnly | Should -be $true
         }
 
-        it '[V] Recursive object' {
+        it '[V] Recursive object' -Skip:$($PSVersionTable.PSVersion -lt '6.0') {
             $Schema = @{
                 '@References' = @{
                     RecursePSDrive = @{
