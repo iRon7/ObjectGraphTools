@@ -1,4 +1,4 @@
-using module ..\..\ObjectGraphTools.psm1
+using module .\..\..\..\ObjectGraphTools
 
 using namespace System.Management.Automation
 using namespace System.Management.Automation.Language

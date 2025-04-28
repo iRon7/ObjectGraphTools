@@ -82,7 +82,7 @@ The list of existing assert nodes is limited to:
 
 * Each assert node describes or constrains the allowed opposite input object node or value as follows:
 
-#### `AssertTestPrefix`
+### `AssertTestPrefix`
 
 By default, each assert node is prefixed by a single at-sign (`@`) and defines the constrains of the input node
 value (see [assert nodes](#Assert-nodes) for more details). Any other node object in the test node collection
@@ -100,7 +100,7 @@ further defines any child nodes in the schema object branch (see [child nodes](#
 | Default     | `"@"`                                         |
 | Applies to  | Assert test name                              |
 
-#### `Description`
+### `Description`
 
 Defines the Description of the test node and has no further meaning.
 
@@ -111,7 +111,7 @@ Defines the Description of the test node and has no further meaning.
 | Default     |                         |
 | Applies to  | Test node               |
 
-#### `References`
+### `References`
 
 The `@References` assert node contains a map of references which might be used for repeating or recursive child
 nodes. Each reference is defined as follows:
@@ -122,7 +122,7 @@ nodes. Each reference is defined as follows:
 }
 ```
 
-**example:**
+#### Example:
 This example shows a schema object with an `Id` and  `Address` reference:
 
 ```PowerShell
@@ -147,7 +147,7 @@ This example shows a schema object with an `Id` and  `Address` reference:
 | Default     |                                      |
 | Applies to  | Test child node                      |
 
-#### `Type`
+### `Type`
 
 Tests whether the value or the node (derived from `[PSNode]`) is of a certain type.
 The value of the `@Type` assert might contain multiple types where the input node matches any of the types.
@@ -155,7 +155,7 @@ The value might be a runtime type (`[<typename>]`), any other type value will be
 representing the required type.
 A `$null` or an empty value might be defined as `$null`, `[null]` (`'null'`) or `[void]` (`'void'`).
 
-**example:**
+#### Example:
 
 ```PowerShell
 @{
@@ -170,7 +170,7 @@ A `$null` or an empty value might be defined as `$null`, `[null]` (`'null'`) or 
 | Default     |                              |
 | Applies to  | Value or node                |
 
-#### `NotType`
+### `NotType`
 
 Tests whether the value or the node (derived from `[PSNode]`) is *not* of a certain type.
 The value of the `@Type` assert might contain multiple types where the input node should *not* match any of the types.
@@ -178,7 +178,7 @@ The value might be a runtime type (`[<typename>]`), any other type value will be
 representing the required type.
 A `$null` or an empty value might be defined as `$null`, `[null]` (`'null'`) or `[void]` (`'void'`).
 
-**example:**
+#### Example:
 
 ```PowerShell
 @{
@@ -193,7 +193,7 @@ A `$null` or an empty value might be defined as `$null`, `[null]` (`'null'`) or 
 | Default     |                                  |
 | Applies to  | Value or node                    |
 
-#### `CaseSensitive`
+### `CaseSensitive`
 
 When set, the current node and any decedent node values are considered case sensitive.
 
@@ -202,7 +202,7 @@ When set, the current node and any decedent node values are considered case sens
 > `@ExclusiveMinimum`, `@Minimum`, `@Like`, `@Match`, `@NotLike` `@NotMatch` or `@Unique` values.
 > The case sensitivity of dictionary key name is determined by the comparer of the test node dictionary.
 
-**example:**
+#### Example:
 
 ```PowerShell
 @{
@@ -218,12 +218,12 @@ When set, the current node and any decedent node values are considered case sens
 | Default     | `False` (Case insensitive)                                 |
 | Applies to  | Test assert that apply to values                           |
 
-#### `Required`
+### `Required`
 
 When set, the specific node is required. If the parent node has already a [`@RequiredNodes`](#@RequiredNodes)
 assert node, the specific required nodes are added (`and`) to the required nodes (`@RequiredNodes`) definition.
 
-**example:**
+#### Example:
 
 ```PowerShell
 @{
@@ -238,10 +238,73 @@ assert node, the specific required nodes are added (`and`) to the required nodes
 | Default     | `False` (optional)   |
 | Applies to  | Node                 |
 
-#### `Unique`
+### `Unique`
 
-When set, the specific node *value* is unique. meaning that none of the sibling nodes should contain the same
-value.
+When set to `$true`, the specific node *value* should be unique to its sibling nodes.
+When the criteria of the `@Unique` assert node is a string, the value of the node is added to the pool
+(defined by the criteria) of nodes and should be unique to all the node that are already in the concerned pool.
+
+#### Unique collection example:
+All the server name (`'Server'`) should not reappear in either the `EnabledServers` or `DisabledServers` lists:
+```PowerShell
+$Schema = @{
+    EnabledServers  = @(@{'@Type' = 'String'; '@Unique' = 'Server' })
+    DisabledServers = @(@{'@Type' = 'String'; '@Unique' = 'Server' })
+}
+$Servers = @{
+    EnabledServers  = 'NL1234', 'NL1235', 'NL1236'
+    DisabledServers = 'NL1237', 'NL1235', 'NL1239'
+}
+$Servers | Test-Object $Schema
+Path              Value                                  Valid Issue
+----              -----                                  ----- -----
+EnabledServers[1] 'NL1235'                                [X]  The node is equal to the node: DisabledServers[1]
+EnabledServers    @('NL1234','NL1235','NL1236')           [X]  The following nodes are not accepted: 1
+                  @{DisabledSer…=@(…);EnabledServ…=@(…)}  [X]  The following nodes are not accepted: EnabledServ…
+```
+
+#### Unique decedents example:
+All the book titles (`'BookTitle'`) should be unique:
+```PowerShell
+$Schema = @{
+    BookStore = @(
+        @{
+            Book = @{
+                Title = @{ '@Type' = 'String'; '@Unique' = 'BookTitle' }
+                Price = @{ '@Type' = 'Double' }
+            }
+        }
+    )
+}
+$Books = @{
+    BookStore = @(
+        @{
+            Book = @{
+                Title = 'Harry Potter'
+                Price = 29.99
+            }
+        },
+        @{
+            Book = @{
+                Title = 'Learning PowerShell'
+                Price = 39.95
+            }
+        },
+        @{
+            Book = @{
+                Title = 'Harry Potter'
+                Price = 24.99
+            }
+        }
+    )
+}
+$Books | Test-Object $Schema
+Path         Value                                                                                                      Valid Issue
+----         -----                                                                                                      ----- -----
+BookStore[2] @{Book=@{Title='Harry Potter';…}}                                                                           [X]  The following nodes are not accepted: Book
+BookStore    @(@{Book=@{Title='Harry Potter';…}},@{Book=@{Title='Learning Powe…';…}},@{Book=@{Title='Harry Potter';…}})  [X]  The following nodes are not accepted: 2
+             @{BookStore=@(…)}                                                                                           [X]  The following nodes are not accepted: BookStore
+```
 
 > [!WARNING]
 > Validating whether a unique node is unique might get expensive as each sibling and its *decedents* is tested
@@ -254,11 +317,11 @@ value.
 | Default     | `False`            |
 | Applies to  | Node               |
 
-#### `Minimum`
+### `Minimum`
 
 Defines the minimum allowed value of a node (including the minimum value).
 
-**example:**
+#### Example:
 
 ```PowerShell
 @{
@@ -273,7 +336,7 @@ Defines the minimum allowed value of a node (including the minimum value).
 | Default     |                                                                   |
 | Applies to  | Value                                                             |
 
-#### `ExclusiveMinimum`
+### `ExclusiveMinimum`
 
 Defines the minimum allowed value of a node (excluding the minimum value).
 
@@ -284,7 +347,7 @@ Defines the minimum allowed value of a node (excluding the minimum value).
 | Default     |                                                                   |
 | Applies to  | Value                                                             |
 
-#### `ExclusiveMaximum`
+### `ExclusiveMaximum`
 
 Defines the maximum allowed value of a node (excluding the maximum value).
 
@@ -295,7 +358,7 @@ Defines the maximum allowed value of a node (excluding the maximum value).
 | Default     |                                                                   |
 | Applies to  | Value                                                             |
 
-#### `Maximum`
+### `Maximum`
 
 Defines the maximum allowed value of a node (including the maximum value).
 
@@ -306,7 +369,7 @@ Defines the maximum allowed value of a node (including the maximum value).
 | Default     |                                                                   |
 | Applies to  | Value                                                             |
 
-#### `MinimumLength`
+### `MinimumLength`
 
 Defines the minimum allowed (converted to) string length of the node value.
 
@@ -317,7 +380,7 @@ Defines the minimum allowed (converted to) string length of the node value.
 | Default     |                                                  |
 | Applies to  | (Scalar) value                                   |
 
-#### `Length`
+### `Length`
 
 Defines the (converted to) string length of the node value.
 
@@ -328,7 +391,7 @@ Defines the (converted to) string length of the node value.
 | Default     |                                        |
 | Applies to  | (Scalar) value                         |
 
-#### `MaximumLength`
+### `MaximumLength`
 
 Defines the minimum allowed (converted to) string length of the node value.
 
@@ -339,7 +402,7 @@ Defines the minimum allowed (converted to) string length of the node value.
 | Default     |                                                  |
 | Applies to  | (Scalar) value                                   |
 
-#### `MinimumCount`
+### `MinimumCount`
 
 Defines the minimum allowed (converted to) string length of the node value.
 
@@ -350,7 +413,7 @@ Defines the minimum allowed (converted to) string length of the node value.
 | Default     |                                      |
 | Applies to  | Collection                           |
 
-#### `Count`
+### `Count`
 
 Defines the allowed (converted to) string length of the node value.
 
@@ -361,7 +424,7 @@ Defines the allowed (converted to) string length of the node value.
 | Default     |                                    |
 | Applies to  | Collection                         |
 
-#### `MaximumCount`
+### `MaximumCount`
 
 Defines the maximum allowed (converted to) string length of the node value.
 
@@ -372,11 +435,11 @@ Defines the maximum allowed (converted to) string length of the node value.
 | Default     |                                      |
 | Applies to  | Collection                           |
 
-#### `Like`
+### `Like`
 
 The value of the input node should be like any of the values of this assert node.
 
-**example:**
+#### Example:
 
 ```PowerShell
 @{
@@ -391,11 +454,11 @@ The value of the input node should be like any of the values of this assert node
 | Default     |                               |
 | Applies to  | Value                         |
 
-#### `Match`
+### `Match`
 
 The value of the input node should match any of the values of this assert node.
 
-**example:**
+#### Example:
 
 ```PowerShell
 @{
@@ -410,7 +473,7 @@ The value of the input node should match any of the values of this assert node.
 | Default     |                                          |
 | Applies to  | Value                                    |
 
-#### `NotLike`
+### `NotLike`
 
 The value of the input node should *not* be like any of the values of this assert node.
 
@@ -421,7 +484,7 @@ The value of the input node should *not* be like any of the values of this asser
 | Default     |                                   |
 | Applies to  | Value                             |
 
-#### `NotMatch`
+### `NotMatch`
 
 The value of the input node should *not* match any of the values of this assert node.
 
@@ -432,7 +495,7 @@ The value of the input node should *not* match any of the values of this assert 
 | Default     |                                                   |
 | Applies to  | Value                                             |
 
-#### `Ordered`
+### `Ordered`
 
 The nodes in the input node collection should be in the same order as the child nodes (excluding the assert nodes)
 in the test node collection.
@@ -444,7 +507,7 @@ in the test node collection.
 | Default     | `False`                |
 | Applies to  | Child nodes            |
 
-#### `RequiredNodes`
+### `RequiredNodes`
 
 Defines the required child nodes in node collection where the input collection could be either a list node
 (`[PSListNode]`) or a mapping node (`[PSMapNode]`), see also [child nodes](#child-nodes). The value of the
@@ -487,7 +550,7 @@ A **logical expression** recognizes the following operators:
 | Default     |                                     |
 | Applies to  | Child nodes                         |
 
-#### `AllowExtraNodes`
+### `AllowExtraNodes`
 
 **Optional test nodes** are test nodes that are not covered in the [`@RequiredNodes`](#@RequiredNodes) condition
 (even *negated*, as e.g.: `not NodeName`) or node that have the [`@Required`](#@Required) assert node set.

@@ -1,5 +1,7 @@
-using module .\..\..\ObjectGraphTools.psm1
+using module .\..\..\..\ObjectGraphTools
 
+using namespace System.Management.Automation
+using namespace System.Management.Automation.Language
 Class PSKeyExpression {
     hidden static [Regex]$UnquoteMatch = '^[\?\*\p{L}\p{Lt}\p{Lm}\p{Lo}_][\?\*\p{L}\p{Lt}\p{Lm}\p{Lo}\p{Nd}_]*$' # https://stackoverflow.com/questions/62754771/unquoted-key-rules-and-best-practices
     hidden $Key
@@ -16,12 +18,12 @@ Class PSKeyExpression {
         $Name = $this.Key
         if ($Name -is [byte]  -or $Name -is [int16]  -or $Name -is [int32]  -or $Name -is [int64]  -or
             $Name -is [sByte] -or $Name -is [uint16] -or $Name -is [uint32] -or $Name -is [uint64] -or
-            $Name -is [float] -or $Name -is [double] -or $Name -is [decimal]) { return [Text]::Synopsis($Name, $this.MaxLength)
+            $Name -is [float] -or $Name -is [double] -or $Name -is [decimal]) { return [Abbreviate]::new($Name, $this.MaxLength)
         }
         if ($this.MaxLength) { $Name = "$Name" }
         if ($Name -is [String]) {
-            if ($Name -cMatch [PSKeyExpression]::UnquoteMatch) { return [Text]::Synopsis($Name, $this.MaxLength) }
-            return "'$([Text]::Synopsis($Name.Replace("'", "''"), ($this.MaxLength - 2)))'"
+            if ($Name -cMatch [PSKeyExpression]::UnquoteMatch) { return [Abbreviate]::new($Name, $this.MaxLength) }
+            return "'$([Abbreviate]::new($Name.Replace("'", "''"), ($this.MaxLength - 2)))'"
         }
         $Node = [PSNode]::ParseInput($Name, 2) # There is no way to expand keys more than 2 levels
         return  [PSSerialize]::new($Node, $this.LanguageMode, -$this.Compress)

@@ -1,4 +1,4 @@
-using module ..\..\ObjectGraphTools.psm1
+using module .\..\..\..\ObjectGraphTools
 
 enum XdnType { Root; Ancestor; Index; Child; Descendant; Equals; Error = 99 }
 

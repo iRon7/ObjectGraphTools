@@ -195,8 +195,6 @@ Class PSNode : IComparable {
 
     hidden [String] get_Expression() { return [PSSerialize]$this }
 
-    hidden [String] get_Synopsys() { return [PSSerialize]::new($this, [PSLanguageMode]'NoLanguage') }
-
     Remove() {
         if ($null -eq $this.ParentNode) { Throw "The root node can't be removed." }
         $this.ParentNode.RemoveAt($this.Name)
@@ -279,8 +277,6 @@ Class PSNode : IComparable {
         if ($NodeTable.Count -eq 1) { return $NodeTable[$NodeTable.Keys] }
         else                        { return [PSNode[]]$NodeTable.Values }
     }
-
-    [string] get_SimpleView() { return [PSSerialize]::new($this, [PSLanguageMode]'NoLanguage') }
 }
 
 Class PSLeafNode : PSNode {
@@ -301,7 +297,7 @@ Class PSLeafNode : PSNode {
     }
 
     [string]ToString() {
-        return "$([NumberColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
+        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
     }
 }
 
@@ -534,7 +530,7 @@ Class PSListNode : PSCollectionNode {
     }
 
     [string]ToString() {
-        return "$([CommandColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
+        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
     }
 }
 
@@ -659,7 +655,7 @@ Class PSDictionaryNode : PSMapNode {
     }
 
     [string]ToString() {
-        return "$([EmphasisColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
+        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
     }
 }
 
@@ -757,6 +753,6 @@ Class PSObjectNode : PSMapNode {
     }
 
     [string]ToString() {
-        return "$([StringColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
+        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
     }
 }

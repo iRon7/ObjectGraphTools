@@ -1,4 +1,4 @@
-using module .\..\..\ObjectGraphTools.psm1
+using module .\..\..\..\ObjectGraphTools
 
 Using NameSpace System.Management.Automation.Language
 
@@ -140,6 +140,9 @@ Using NameSpace System.Management.Automation.Language
 .PARAMETER IncludeSelf
     Includes the current node with the returned child nodes.
 
+.PARAMETER ValueOnly
+    returns the value of the node instead of the node itself.
+
 .LINK
     [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
     [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md "Get-Node"
@@ -178,7 +181,10 @@ Using NameSpace System.Management.Automation.Language
     $Leaf,
 
     [Alias('Self')][switch]
-    $IncludeSelf
+    $IncludeSelf,
+
+    [switch]
+    $ValueOnly
 )
 
 begin {

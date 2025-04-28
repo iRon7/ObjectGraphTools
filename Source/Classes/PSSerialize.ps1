@@ -1,8 +1,9 @@
-using module .\..\..\ObjectGraphTools.psm1
+using module .\..\..\..\ObjectGraphTools
 
+using namespace System.Management.Automation
+using namespace System.Management.Automation.Language
 using namespace System.Collections
 using namespace System.Collections.Generic
-enum PSNodeOutline { None; NoLanguage; Abbreviate }
 
 Class PSSerialize {
     # hidden static [Dictionary[String,Bool]]$IsConstrainedType = [Dictionary[String,Bool]]::new()
@@ -15,7 +16,7 @@ Class PSSerialize {
     hidden static [int]$MaxKeyLength        = 12
     hidden static [int]$MaxValueLength      = 16
     hidden static [int[]]$NoLanguageIndices = 0, 1, -1
-    hidden static [int[]]$NoLanguageItems   = 0, -1
+    hidden static [int[]]$NoLanguageItems   = 0, 1, -1
 
     hidden $_Object
 
@@ -187,10 +188,10 @@ Class PSSerialize {
             if     ($Null -eq $Expression)         { $Expression = '$Null' }
             elseif ($Expression -is [Bool])        { $Expression = "`$$Value" }
             elseif ($Expression -is [Char])        { $Expression = "'$Value'" }
-            elseif ($Expression -is [ScriptBlock]) { $Expression = [Text]::Synopsis('{', $Expression, $MaxLength, '}') }
+            elseif ($Expression -is [ScriptBlock]) { $Expression = [Abbreviate]::new('{', $Expression, $MaxLength, '}') }
             elseif ($Expression -is [HashTable])   { $Expression = '@{}' }
             elseif ($Expression -is [Array]) {
-                if ($this.LanguageMode -eq 'NoLanguage') { $Expression = [Text]::Synopsis('[', $Expression[0], $MaxLength, ']') }
+                if ($this.LanguageMode -eq 'NoLanguage') { $Expression = [Abbreviate]::new('[', $Expression[0], $MaxLength, ']') }
                 else {
                     $Space = if ($this.ExpandDepth -ge 0) { ' ' }
                     $New = if ($TypeInitializer) { '::new(' } else { '@(' }
@@ -202,10 +203,12 @@ Class PSSerialize {
                     } -Join ",$Space") + ')'
                 }
             }
-            elseif ($Type -and $Type.IsPrimitive) { }
+            elseif ($Type -and $Type.IsPrimitive) {
+                if ($this.LanguageMode -eq 'NoLanguage') { $Expression = [CommandColor]([String]$Expression[0]) }
+            }
             else {
                 if ($Expression -isnot [String]) { $Expression = "$Expression" }
-                if ($this.LanguageMode -eq 'NoLanguage') { $Expression = [Text]::Synopsis("'", $Expression, $MaxLength, "'") }
+                if ($this.LanguageMode -eq 'NoLanguage') { $Expression = [StringColor]([Abbreviate]::new("'", $Expression, $MaxLength, "'")) }
                 else {
                     if ($Expression.Contains("`n")) {
                         $Expression = "@'" + [Environment]::NewLine + "$Expression".Replace("'", "''") + [Environment]::NewLine + "'@"
@@ -221,7 +224,7 @@ Class PSSerialize {
             $this.StringBuilder.Append('@(')
             if ($this.LanguageMode -eq 'NoLanguage') {
                 if ($ChildNodes.Count -eq 0) { }
-                elseif ($IsSubNode) { $this.StringBuilder.Append('..') }
+                elseif ($IsSubNode) { $this.StringBuilder.Append([Abbreviate]::Ellipses) }
                 else {
                     $Indices = [PSSerialize]::NoLanguageIndices
                     if (-not $Indices -or $ChildNodes.Count -lt $Indices.Count) { $Indices = 0..($ChildNodes.Count - 1) }
@@ -229,7 +232,7 @@ Class PSSerialize {
                     foreach ($Index in $Indices) {
                         if ($Null -ne $LastIndex) { $this.StringBuilder.Append(',') }
                         if ($Index -lt 0) { $Index = $ChildNodes.Count + $Index }
-                        if ($Index -gt $LastIndex + 1) { $this.StringBuilder.Append('..,') }
+                        if ($Index -gt $LastIndex + 1) { $this.StringBuilder.Append("$([Abbreviate]::Ellipses),") }
                         $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
                         $LastIndex = $Index
                     }
@@ -257,17 +260,17 @@ Class PSSerialize {
             if ($ChildNodes) {
                 $this.StringBuilder.Append('@{')
                 if ($this.LanguageMode -eq 'NoLanguage') {
-                    if ($ChildNodes.Count -eq 0) { }
-                    elseif ($IsSubNode) { $this.StringBuilder.Append('..') }
-                    else {
+                    if ($ChildNodes.Count -gt 0) {
                         $Indices = [PSSerialize]::NoLanguageItems
                         if (-not $Indices -or $ChildNodes.Count -lt $Indices.Count) { $Indices = 0..($ChildNodes.Count - 1) }
                         $LastIndex = $Null
                         foreach ($Index in $Indices) {
+                            if ($IsSubNode -and $Index) { $this.StringBuilder.Append(";$([Abbreviate]::Ellipses)"); break }
                             if ($Null -ne $LastIndex) { $this.StringBuilder.Append(';') }
                             if ($Index -lt 0) { $Index = $ChildNodes.Count + $Index }
-                            if ($Index -gt $LastIndex + 1) { $this.StringBuilder.Append('..;') }
-                            $this.StringBuilder.Append([PSKeyExpression]::new($ChildNodes[$Index].Name, [PSSerialize]::MaxKeyLength))
+                            if ($Index -gt $LastIndex + 1) { $this.StringBuilder.Append("$([Abbreviate]::Ellipses);") }
+                            $this.StringBuilder.Append([VariableColor](
+                                [PSKeyExpression]::new($ChildNodes[$Index].Name, [PSSerialize]::MaxKeyLength)))
                             $this.StringBuilder.Append('=')
                             $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
                             $LastIndex = $Index

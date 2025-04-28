@@ -1,4 +1,4 @@
-using module .\..\..\ObjectGraphTools.psm1
+using module .\..\..\..\ObjectGraphTools
 
 Class PSInstance {
     static [Object]Create($Object) {

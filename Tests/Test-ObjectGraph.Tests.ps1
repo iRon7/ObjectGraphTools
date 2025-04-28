@@ -503,7 +503,7 @@ Describe 'Test-Object' {
             $Result                 | Should -BeOfType PSCustomObject
             $Result.Valid           | Should -BeFalse
             $Result.ObjectNode.Path | Should -BeNullOrEmpty
-            $Result.Issue           | Should -BeLike '*not allowed* 0'
+            $Result.Issue           | Should -BeLike '*not accepted*0*'
         }
 
         It "[X] Simple list node" {
@@ -522,7 +522,7 @@ Describe 'Test-Object' {
             $Result                 | Should -BeOfType PSCustomObject
             $Result.Valid           | Should -BeFalse
             $Result.ObjectNode.Path | Should -BeNullOrEmpty
-            $Result.Issue           | Should -BeLike "*not allowed* 'a'"
+            $Result.Issue           | Should -BeLike "*not accepted*a*"
         }
 
         It "[X] Complex object" {
@@ -531,7 +531,7 @@ Describe 'Test-Object' {
             $Result                 | Should -BeOfType PSCustomObject
             $Result.Valid           | Should -BeFalse
             $Result.ObjectNode.Path | Should -BeNullOrEmpty
-            $Result.Issue           | Should -BeLike "*not allowed* 'FirstName', 'LastName',*"
+            $Result.Issue           | Should -BeLike "*not accepted*FirstName*LastName*"
         }
 
 
@@ -541,7 +541,7 @@ Describe 'Test-Object' {
             $Result                 | Should -BeOfType PSCustomObject
             $Result.Valid           | Should -BeFalse
             $Result.ObjectNode.Path | Should -BeNullOrEmpty
-            $Result.Issue           | Should -BeLike "*not allowed* 'FirstName', 'LastName',*"
+            $Result.Issue           | Should -BeLike "*not accepted*FirstName*LastName*"
         }
     }
 
@@ -1035,6 +1035,92 @@ Describe 'Test-Object' {
             @{ a = 1; b = 2 }   | Test-Object $Schema | Should -not -BeNullOrEmpty
             @{ a = 1; b = '2' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
             @{ a = 1; b = '2' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+        }
+    }
+
+    Context 'Unique child nodes' {
+
+        it 'Unique' {
+            $Schema = @{
+                '@Type' = [PSListNode]
+                Children = @{'@Type' = [String]; '@Unique' = $true }
+            }
+            ,@('a', 'b', 'c') | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            ,@('a', 'b', 'c') | Test-Object $Schema | Should -BeNullOrEmpty
+            ,@('a', 'b', 'a') | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            ,@('a', 'b', 'a') | Test-Object $Schema | Should -not -BeNullOrEmpty
+        }
+
+        it 'Unique collection' {
+            $Schema = @{
+                EnabledServers  = @(@{'@Type' = 'String'; '@Unique' = 'Server' })
+                DisabledServers = @(@{'@Type' = 'String'; '@Unique' = 'Server' })
+            }
+            $Servers = @{
+                EnabledServers  = 'NL1234', 'NL1235', 'NL1236'
+                DisabledServers = 'NL1237', 'NL1238', 'NL1239'
+            }
+            $Servers | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Servers = @{
+                EnabledServers  = 'NL1234', 'NL1235', 'NL1236'
+                DisabledServers = 'NL1237', 'NL1235', 'NL1239'
+            }
+            $Servers | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            $Results = $Servers | Test-ObjectGraph $Schema
+            $Results[0].Issue | Should -BeLike '*equal to the node*'
+        }
+
+        it 'Unique decedents' {
+            $Schema = @{
+                BookStore = @(
+                    @{
+                        Book = @{
+                            Title = @{ '@Type' = 'String'; '@Unique' = 'Title' }
+                            Price = @{ '@Type' = 'Double' }
+                        }
+                    }
+                )
+            }
+            $Books = @{
+                BookStore = @(
+                    @{
+                        Book = @{
+                            Title = 'Harry Potter'
+                            Price = 29.99
+                        }
+                    },
+                    @{
+                        Book = @{
+                            Title = 'Learning PowerShell'
+                            Price = 39.95
+                        }
+                    }
+                )
+            }
+            $Books | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Books = @{
+                BookStore = @(
+                    @{
+                        Book = @{
+                            Title = 'Harry Potter'
+                            Price = 29.99
+                        }
+                    },
+                    @{
+                        Book = @{
+                            Title = 'Learning PowerShell'
+                            Price = 39.95
+                        }
+                    },
+                    @{
+                        Book = @{
+                            Title = 'Harry Potter'
+                            Price = 24.99
+                        }
+                    }
+                )
+            }
+            $Books | Test-Object $Schema -ValidateOnly | Should -BeFalse
         }
     }
 

@@ -39,11 +39,6 @@ enum ObjectCompareMode {
     MatchMapOrder   = 8
     Descending      = 128
 }
-enum PSNodeOutline {
-    None       = 0
-    NoLanguage = 1
-    Abbreviate = 2
-}
 enum XdnType {
     Root       = 0
     Ancestor   = 1
@@ -66,6 +61,44 @@ enum XdnColorName {
 
 #Region Class
 
+Class Abbreviate {
+    hidden static [String]$Ellipses = [Char]0x2026
+
+    hidden [String] $Prefix
+    hidden [String] $String
+    hidden [String] $AndSoForth = [Abbreviate]::Ellipses
+    hidden [String] $Suffix
+    hidden [Int] $MaxLength
+
+    Abbreviate([String]$Prefix, [String]$String, [Int]$MaxLength, [String]$AndSoForth, [String]$Suffix) {
+        $this.Prefix     = $Prefix
+        $this.String     = $String
+        $this.MaxLength  = $MaxLength
+        $this.AndSoForth = $AndSoForth
+        $this.Suffix     = $Suffix
+    }
+    Abbreviate([String]$Prefix, [String]$String, [Int]$MaxLength, [String]$Suffix) {
+        $this.Prefix    = $Prefix
+        $this.String    = $String
+        $this.MaxLength = $MaxLength
+        $this.Suffix    = $Suffix
+    }
+    Abbreviate([String]$String, [Int]$MaxLength) {
+        $this.String    = $String
+        $this.MaxLength = $MaxLength
+    }
+
+    [String] ToString() {
+        if ($this.MaxLength -le 0) { return $this.String }
+        if ($this.String.Length -gt 3 * $this.MaxLength) { $this.String = $this.String.SubString(0, (3 * $this.MaxLength)) } # https://stackoverflow.com/q/78787537/1701026
+        $this.String = [Regex]::Replace($this.String, '\s+', ' ')
+        if ($this.Prefix.Length + $this.String.Length + $this.Suffix.Length -gt $this.MaxLength) {
+            $Length = $this.MaxLength - $this.Prefix.Length - $this.AndSoForth.Length - $this.Suffix.Length
+            if ($Length -gt 0) { $this.String = $this.String.SubString(0, $Length) + $this.AndSoForth } else { $this.String = $this.AndSoForth }
+        }
+        return $this.Prefix + $this.String + $this.Suffix
+    }
+}
 class LogicalTerm {}
 Class PSNodePath {
     hidden [PSNode[]]$Nodes
@@ -234,8 +267,6 @@ Class PSNode : IComparable {
 
     hidden [String] get_Expression() { return [PSSerialize]$this }
 
-    hidden [String] get_Synopsys() { return [PSSerialize]::new($this, [PSLanguageMode]'NoLanguage') }
-
     Remove() {
         if ($null -eq $this.ParentNode) { Throw "The root node can't be removed." }
         $this.ParentNode.RemoveAt($this.Name)
@@ -318,8 +349,6 @@ Class PSNode : IComparable {
         if ($NodeTable.Count -eq 1) { return $NodeTable[$NodeTable.Keys] }
         else                        { return [PSNode[]]$NodeTable.Values }
     }
-
-    [string] get_SimpleView() { return [PSSerialize]::new($this, [PSLanguageMode]'NoLanguage') }
 }
 class ObjectComparer {
 
@@ -778,12 +807,12 @@ Class PSKeyExpression {
         $Name = $this.Key
         if ($Name -is [byte]  -or $Name -is [int16]  -or $Name -is [int32]  -or $Name -is [int64]  -or
             $Name -is [sByte] -or $Name -is [uint16] -or $Name -is [uint32] -or $Name -is [uint64] -or
-            $Name -is [float] -or $Name -is [double] -or $Name -is [decimal]) { return [Text]::Synopsis($Name, $this.MaxLength)
+            $Name -is [float] -or $Name -is [double] -or $Name -is [decimal]) { return [Abbreviate]::new($Name, $this.MaxLength)
         }
         if ($this.MaxLength) { $Name = "$Name" }
         if ($Name -is [String]) {
-            if ($Name -cMatch [PSKeyExpression]::UnquoteMatch) { return [Text]::Synopsis($Name, $this.MaxLength) }
-            return "'$([Text]::Synopsis($Name.Replace("'", "''"), ($this.MaxLength - 2)))'"
+            if ($Name -cMatch [PSKeyExpression]::UnquoteMatch) { return [Abbreviate]::new($Name, $this.MaxLength) }
+            return "'$([Abbreviate]::new($Name.Replace("'", "''"), ($this.MaxLength - 2)))'"
         }
         $Node = [PSNode]::ParseInput($Name, 2) # There is no way to expand keys more than 2 levels
         return  [PSSerialize]::new($Node, $this.LanguageMode, -$this.Compress)
@@ -829,7 +858,7 @@ Class PSSerialize {
     hidden static [int]$MaxKeyLength        = 12
     hidden static [int]$MaxValueLength      = 16
     hidden static [int[]]$NoLanguageIndices = 0, 1, -1
-    hidden static [int[]]$NoLanguageItems   = 0, -1
+    hidden static [int[]]$NoLanguageItems   = 0, 1, -1
 
     hidden $_Object
 
@@ -1001,10 +1030,10 @@ Class PSSerialize {
             if     ($Null -eq $Expression)         { $Expression = '$Null' }
             elseif ($Expression -is [Bool])        { $Expression = "`$$Value" }
             elseif ($Expression -is [Char])        { $Expression = "'$Value'" }
-            elseif ($Expression -is [ScriptBlock]) { $Expression = [Text]::Synopsis('{', $Expression, $MaxLength, '}') }
+            elseif ($Expression -is [ScriptBlock]) { $Expression = [Abbreviate]::new('{', $Expression, $MaxLength, '}') }
             elseif ($Expression -is [HashTable])   { $Expression = '@{}' }
             elseif ($Expression -is [Array]) {
-                if ($this.LanguageMode -eq 'NoLanguage') { $Expression = [Text]::Synopsis('[', $Expression[0], $MaxLength, ']') }
+                if ($this.LanguageMode -eq 'NoLanguage') { $Expression = [Abbreviate]::new('[', $Expression[0], $MaxLength, ']') }
                 else {
                     $Space = if ($this.ExpandDepth -ge 0) { ' ' }
                     $New = if ($TypeInitializer) { '::new(' } else { '@(' }
@@ -1016,10 +1045,12 @@ Class PSSerialize {
                     } -Join ",$Space") + ')'
                 }
             }
-            elseif ($Type -and $Type.IsPrimitive) { }
+            elseif ($Type -and $Type.IsPrimitive) {
+                if ($this.LanguageMode -eq 'NoLanguage') { $Expression = [CommandColor]([String]$Expression[0]) }
+            }
             else {
                 if ($Expression -isnot [String]) { $Expression = "$Expression" }
-                if ($this.LanguageMode -eq 'NoLanguage') { $Expression = [Text]::Synopsis("'", $Expression, $MaxLength, "'") }
+                if ($this.LanguageMode -eq 'NoLanguage') { $Expression = [StringColor]([Abbreviate]::new("'", $Expression, $MaxLength, "'")) }
                 else {
                     if ($Expression.Contains("`n")) {
                         $Expression = "@'" + [Environment]::NewLine + "$Expression".Replace("'", "''") + [Environment]::NewLine + "'@"
@@ -1035,7 +1066,7 @@ Class PSSerialize {
             $this.StringBuilder.Append('@(')
             if ($this.LanguageMode -eq 'NoLanguage') {
                 if ($ChildNodes.Count -eq 0) { }
-                elseif ($IsSubNode) { $this.StringBuilder.Append('..') }
+                elseif ($IsSubNode) { $this.StringBuilder.Append([Abbreviate]::Ellipses) }
                 else {
                     $Indices = [PSSerialize]::NoLanguageIndices
                     if (-not $Indices -or $ChildNodes.Count -lt $Indices.Count) { $Indices = 0..($ChildNodes.Count - 1) }
@@ -1043,7 +1074,7 @@ Class PSSerialize {
                     foreach ($Index in $Indices) {
                         if ($Null -ne $LastIndex) { $this.StringBuilder.Append(',') }
                         if ($Index -lt 0) { $Index = $ChildNodes.Count + $Index }
-                        if ($Index -gt $LastIndex + 1) { $this.StringBuilder.Append('..,') }
+                        if ($Index -gt $LastIndex + 1) { $this.StringBuilder.Append("$([Abbreviate]::Ellipses),") }
                         $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
                         $LastIndex = $Index
                     }
@@ -1071,17 +1102,17 @@ Class PSSerialize {
             if ($ChildNodes) {
                 $this.StringBuilder.Append('@{')
                 if ($this.LanguageMode -eq 'NoLanguage') {
-                    if ($ChildNodes.Count -eq 0) { }
-                    elseif ($IsSubNode) { $this.StringBuilder.Append('..') }
-                    else {
+                    if ($ChildNodes.Count -gt 0) {
                         $Indices = [PSSerialize]::NoLanguageItems
                         if (-not $Indices -or $ChildNodes.Count -lt $Indices.Count) { $Indices = 0..($ChildNodes.Count - 1) }
                         $LastIndex = $Null
                         foreach ($Index in $Indices) {
+                            if ($IsSubNode -and $Index) { $this.StringBuilder.Append(";$([Abbreviate]::Ellipses)"); break }
                             if ($Null -ne $LastIndex) { $this.StringBuilder.Append(';') }
                             if ($Index -lt 0) { $Index = $ChildNodes.Count + $Index }
-                            if ($Index -gt $LastIndex + 1) { $this.StringBuilder.Append('..;') }
-                            $this.StringBuilder.Append([PSKeyExpression]::new($ChildNodes[$Index].Name, [PSSerialize]::MaxKeyLength))
+                            if ($Index -gt $LastIndex + 1) { $this.StringBuilder.Append("$([Abbreviate]::Ellipses);") }
+                            $this.StringBuilder.Append([VariableColor](
+                                [PSKeyExpression]::new($ChildNodes[$Index].Name, [PSSerialize]::MaxKeyLength)))
                             $this.StringBuilder.Append('=')
                             $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
                             $LastIndex = $Index
@@ -1192,26 +1223,13 @@ Class TextStyle {
         $this.Text = $Text
         $this.AnsiCode = $AnsiCode
     }
-    [String] ToString() { return "$($this.AnsiCode)$($this.Text)$($this.ResetCode)" }
-}
-Class Text {
-    static [String] Synopsis([String]$Prefix, [String]$String, [Int]$MaxLength, [String]$AndSoForth, [String]$Suffix) {
-        if ($MaxLength -le 0) { return $String }
-        if ($String.Length -gt 3 * $MaxLength) { $String = $String.SubString(0, (3 * $MaxLength)) } # https://stackoverflow.com/q/78787537/1701026
-        $String = [Regex]::Replace($String, '\s+', ' ')
-        if ($Prefix.Length + $String.Length + $Suffix.Length -gt $MaxLength) {
-            $Length = $MaxLength - $Prefix.Length - $AndSoForth.Length - $Suffix.Length
-            if ($Length -gt 0) { $String = $String.SubString(0, $Length) + $AndSoForth } else { $String = $AndSoForth }
+    [String] ToString() {
+        if ($this.ResetCode -eq [ANSI]::ResetColor) {
+            return "$($this.AnsiCode)$($this.Text.Replace($this.ResetCode, $this.AnsiCode))$($this.ResetCode)"
         }
-        return $Prefix + $String + $Suffix
-    }
-
-    static [String] Synopsis([String]$Prefix, [String]$String, [Int]$MaxLength, [String]$Suffix) {
-        return [Text]::Synopsis($Prefix, $String, $MaxLength, '...', $Suffix)
-    }
-
-    static [String] Synopsis([String]$String, [Int]$MaxLength) {
-        return [Text]::Synopsis('', $String, $MaxLength, '...', '')
+        else {
+            return "$($this.AnsiCode)$($this.Text)$($this.ResetCode)"
+        }
     }
 }
 class XdnName {
@@ -1596,7 +1614,7 @@ Class PSLeafNode : PSNode {
     }
 
     [string]ToString() {
-        return "$([NumberColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
+        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
     }
 }
 Class PSCollectionNode : PSNode {
@@ -1827,7 +1845,7 @@ Class PSListNode : PSCollectionNode {
     }
 
     [string]ToString() {
-        return "$([CommandColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
+        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
     }
 }
 Class PSMapNode : PSCollectionNode {
@@ -1950,7 +1968,7 @@ Class PSDictionaryNode : PSMapNode {
     }
 
     [string]ToString() {
-        return "$([EmphasisColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
+        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
     }
 }
 Class PSObjectNode : PSMapNode {
@@ -2047,7 +2065,7 @@ Class PSObjectNode : PSMapNode {
     }
 
     [string]ToString() {
-        return "$([StringColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
+        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
     }
 }
 class PSListNodeComparer : ObjectComparer, IComparer[Object] { # https://github.com/PowerShell/PowerShell/issues/23959
@@ -3053,6 +3071,9 @@ function Get-ChildNode {
 .PARAMETER IncludeSelf
     Includes the current node with the returned child nodes.
 
+.PARAMETER ValueOnly
+    returns the value of the node instead of the node itself.
+
 .LINK
     [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
     [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md "Get-Node"
@@ -3091,7 +3112,10 @@ function Get-ChildNode {
     $Leaf,
 
     [Alias('Self')][switch]
-    $IncludeSelf
+    $IncludeSelf,
+
+    [switch]
+    $ValueOnly
 )
 
 begin {
@@ -3223,6 +3247,9 @@ function Get-Node {
 .PARAMETER Literal
     If Literal switch is set, all (map) nodes in the given path are considered literal.
 
+.PARAMETER ValueOnly
+    returns the value of the node instead of the node itself.
+
 .PARAMETER Unique
     Specifies that if a subset of the nodes has identical properties and values,
     only a single node of the subset should be selected.
@@ -3259,6 +3286,9 @@ function Get-Node {
     $Literal,
 
     [switch]
+    $ValueOnly,
+
+    [switch]
     $Unique,
 
     [Int]
@@ -3289,7 +3319,9 @@ process {
             $UniqueNodes[$PathName] = [System.Collections.Generic.HashSet[Object]]::new()
         }
         $UniqueNodes[$PathName].Add($Node.Value)
-    ))  { $Node }
+    ))  {
+        if ($Value) { $Node.Value } else { $Node }
+    }
 }
 }
 function Get-SortObjectGraph {
@@ -3743,9 +3775,6 @@ The default value is defined by the PowerShell object node parser (`[PSNode]::De
 
 begin {
 
-    Enum UniqueType { None; Node; Match } # if a node isn't unique the related option isn't uniquely matched either
-    Enum CompareType { Scalar; OneOf; AllOf }
-
     $Script:Yield = {
         $Name = "$Args" -Replace '\W'
         $Value = Get-Variable -Name $Name -ValueOnly -ErrorAction SilentlyContinue
@@ -3765,7 +3794,7 @@ begin {
     }
 
     function SchemaError($Message, $ObjectNode, $SchemaNode, $Object = $SchemaObject) {
-        $Exception = [ArgumentException]"$($SchemaNode.Synopsys) $Message"
+        $Exception = [ArgumentException]"$([String]$SchemaNode) $Message"
         $Exception.Data.Add('ObjectNode', $ObjectNode)
         $Exception.Data.Add('SchemaNode', $SchemaNode)
         StopError -Exception $Exception -Id 'SchemaError' -Category InvalidOperation -Object $Object
@@ -3850,7 +3879,7 @@ begin {
             $AssertNode.Cache['TestReferences'] = $References
             $References[$LeafNode.Value]
         }
-        else { SchemaError "Unknown reference: $($LeafNode.Value)" $ObjectNode $LeafNode }
+        else { SchemaError "Unknown reference: $LeafNode" $ObjectNode $LeafNode }
     }
 
     function MatchNode (
@@ -3902,50 +3931,55 @@ begin {
             }
             return
         }
-        else {
-            if ($ChildNode -is [PSNode]) {
-                $Violates = $Null
+        if ($ChildNode -is [PSNode]) {
+            $Issue = $Null
+            $TestParams = @{
+                ObjectNode     = $ChildNode
+                SchemaNode     = $AssertNode
+                Elaborate      = $Elaborate
+                CaseSensitive  = $CaseSensitive
+                ValidateOnly   = $ValidateOnly
+                RefInvalidNode = [Ref]$Issue
+            }
+            TestNode @TestParams
+            if (-not $Issue) { $null = $MatchedNames.Add($ChildNode.Name) }
+        }
+        elseif ($null -eq $ChildNode) {
+            $SingleIssue = $Null
+            foreach ($ChildNode in $ChildNodes) {
+                if ($MatchedNames.Contains($ChildNode.Name)) { continue }
+                $Issue = $Null
                 $TestParams = @{
                     ObjectNode     = $ChildNode
                     SchemaNode     = $AssertNode
-                    Elaborate     = $Elaborate
+                    Elaborate      = $Elaborate
                     CaseSensitive  = $CaseSensitive
-                    ValidateOnly   = $ValidateOnly
-                    RefInvalidNode = [Ref]$Violates
+                    ValidateOnly   = $true
+                    RefInvalidNode = [Ref]$Issue
                 }
                 TestNode @TestParams
-                if (-not $Violates) { $null = $MatchedNames.Add($ChildNode.Name) }
-            }
-            elseif ($null -eq $ChildNode) {
-                foreach ($ChildNode in $ChildNodes) {
-                    if ($MatchedNames.Contains($ChildNode.Name)) { continue }
-                    $Violates = $Null
-                    $TestParams = @{
-                        ObjectNode     = $ChildNode
-                        SchemaNode     = $AssertNode
-                        Elaborate     = $Elaborate
-                        CaseSensitive  = $CaseSensitive
-                        ValidateOnly   = $true
-                        RefInvalidNode = [Ref]$Violates
+                if($Issue) {
+                    if ($Elaborate) { $Issue }
+                    elseif (-not $ValidateOnly -and $MatchAll) {
+                        if ($null -eq $SingleIssue) { $SingleIssue = $Issue } else { $SingleIssue = $false }
                     }
-                    TestNode @TestParams
-                    if (-not $Violates) {
-                        $null = $MatchedNames.Add($ChildNode.Name)
-                        if (-not $MatchAll) { break }
-                    }
-                    elseif ($Elaborate) { $Violates }
+                }
+                else {
+                    $null = $MatchedNames.Add($ChildNode.Name)
+                    if (-not $MatchAll) { break }
                 }
             }
-            elseif ($ChildNode -eq $false) { $AssertResults[$Name] = $false }
-            else { throw "Unexpected return reference: $ChildNode" }
+            if ($SingleIssue) { $SingleIssue }
         }
+        elseif ($ChildNode -eq $false) { $AssertResults[$Name] = $false }
+        else { throw "Unexpected return reference: $ChildNode" }
     }
 
     function TestNode (
         [PSNode]$ObjectNode,
         [PSNode]$SchemaNode,
         [Switch]$Elaborate,            # if set, include the failed test results in the output
-        [Nullable[Bool]]$CaseSensitive, # inherited the CaseSensitivity from the parent node if not defined
+        [Nullable[Bool]]$CaseSensitive, # inherited the CaseSensitivity frm the parent node if not defined
         [Switch]$ValidateOnly,          # if set, stop at the first invalid node
         $RefInvalidNode                 # references the first invalid node
     ) {
@@ -3953,12 +3987,11 @@ begin {
         # if ($CallStack.Count -gt 20) { Throw 'Call stack failsafe' }
         if ($DebugPreference -in 'Stop', 'Continue', 'Inquire') {
             $Caller = $CallStack[1]
-            Write-Host "$([ANSI]::ParameterColor)Caller (line: $($Caller.ScriptLineNumber))$([ANSI]::ResetColor):" $Caller.InvocationInfo.Line.Trim()
-            Write-Host "$([ANSI]::ParameterColor)ObjectNode:$([ANSI]::ResetColor)" $ObjectNode.Path "$ObjectNode"
-            Write-Host "$([ANSI]::ParameterColor)SchemaNode:$([ANSI]::ResetColor)" $SchemaNode.Path "$SchemaNode"
-            Write-Host "$([ANSI]::ParameterColor)ValidateOnly:$([ANSI]::ResetColor)" ([Bool]$ValidateOnly)
+            Write-Host "$([ParameterColor]'Caller (line: $($Caller.ScriptLineNumber))'):" $Caller.InvocationInfo.Line.Trim()
+            Write-Host "$([ParameterColor]'ObjectNode:')" $ObjectNode.Path "$ObjectNode"
+            Write-Host "$([ParameterColor]'SchemaNode:')" $SchemaNode.Path "$SchemaNode"
+            Write-Host "$([ParameterColor]'ValidateOnly:')" ([Bool]$ValidateOnly)
         }
-
         if ($SchemaNode -is [PSListNode] -and $SchemaNode.Count -eq 0) { return } # Allow any node
 
         $AssertValue = $ObjectNode.Value
@@ -4130,7 +4163,7 @@ begin {
 
             elseif ($TestName -in 'MinimumCount', 'Count', 'MaximumCount') {
                 if ($ObjectNode -isnot [PSCollectionNode]) {
-                    $Violates = "The node '$($AssertNode.Name)' is not a collection node"
+                    $Violates = "The node $ObjectNode is not a collection node"
                 }
                 elseif ($TestName -eq 'MinimumCount') {
                     if ($ChildNodes.Count -lt $Criteria) {
@@ -4150,19 +4183,27 @@ begin {
             }
 
             elseif ($TestName -eq 'Required') { }
-            elseif ($TestName -eq 'Unique') {
-                $ParentNode = $ObjectNode.ParentNode
-                if (-not $ParentNode) {
+            elseif ($TestName -eq 'Unique' -and $Criteria) {
+                if (-not $ObjectNode.ParentNode) {
                     SchemaError "The unique assert can't be used on a root node" $ObjectNode $SchemaNode
                 }
+                if ($Criteria -eq $true) { $UniqueCollection = $ObjectNode.ParentNode.ChildNodes }
+                elseif ($Criteria -is [String]) {
+                    if (-not $UniqueCollections.Contains($Criteria)) {
+                        $UniqueCollections[$Criteria] = [List[PSNode]]::new()
+                    }
+                    $UniqueCollection = $UniqueCollections[$Criteria]
+                }
+                else { SchemaError "The unique assert value should be a boolean or a string" $ObjectNode $SchemaNode }
                 $ObjectComparer = [ObjectComparer]::new([ObjectComparison][Int][Bool]$CaseSensitive)
-                foreach ($SiblingNode in $ParentNode.ChildNodes) {
-                    if ($ObjectNode.Name -ceq $SiblingNode.Name) { continue } # Self
-                    if ($ObjectComparer.IsEqual($ObjectNode, $SiblingNode)) {
-                        $Violates = $true
+                foreach ($UniqueNode in $UniqueCollection) {
+                    if ([object]::ReferenceEquals($ObjectNode, $UniqueNode)) { continue } # Self
+                    if ($ObjectComparer.IsEqual($ObjectNode, $UniqueNode)) {
+                        $Violates = "The node is equal to the node: $($UniqueNode.Path)"
                         break
                     }
                 }
+                if ($Criteria -is [String]) { $UniqueCollection.Add($ObjectNode) }
             }
             elseif ($TestName -eq 'AllowExtraNodes') {}
             elseif ($TestName -in 'Ordered', 'RequiredNodes') {
@@ -4207,10 +4248,10 @@ begin {
 
         if ($TestNodes.Count -and -not $AssertNodes.Contains('Type')) {
             if ($SchemaNode -is [PSListNode] -and $ObjectNode -isnot [PSListNode]) {
-                $Violates = 'The node is not a list node'
+                $Violates = "The node $ObjectNode is not a list node"
             }
             if ($SchemaNode -is [PSMapNode] -and $ObjectNode -isnot [PSMapNode]) {
-                $Violates = 'The node is not a map node'
+                $Violates = "The node $ObjectNode is not a map node"
             }
         }
 
@@ -4260,7 +4301,7 @@ begin {
                                     $MatchParams = @{
                                         ObjectNode    = $ObjectNode
                                         TestNode      = $SchemaNode.GetChildNode($Name)
-                                        Elaborate    = $Elaborate
+                                        Elaborate     = $Elaborate
                                         ValidateOnly  = $ValidateOnly
                                         Ordered       = $AssertNodes['Ordered']
                                         CaseSensitive = $CaseSensitive
@@ -4339,7 +4380,7 @@ begin {
                 $MatchParams = @{
                     ObjectNode    = $ObjectNode
                     TestNode      = $TestNode
-                    Elaborate    = $Elaborate
+                    Elaborate     = $Elaborate
                     ValidateOnly  = $ValidateOnly
                     Ordered       = $AssertNodes['Ordered']
                     CaseSensitive = $CaseSensitive
@@ -4348,15 +4389,28 @@ begin {
                 }
                 MatchNode @MatchParams
                 if ($AllowExtraNodes -and $MatchedNames.Count -eq $MatchCount0) {
-                    $Violates = "When extra nodes are allowed, the node $($TestNode.Name) should be accepted"
+                    $Violates = "When extra nodes are allowed, the node $ObjectNode should be accepted"
                     break
                 }
                 $AssertResults[$TestNode.Name] = $MatchedNames.Count -gt $MatchCount0
             }
 
             if (-not $AllowExtraNodes -and $MatchedNames.Count -lt $ChildNodes.Count) {
-                $Extra = $ChildNodes.Name.where{ -not $MatchedNames.Contains($_) }.foreach{ [PSSerialize]$_ } -Join ', '
-                $Violates = "The following nodes are not allowed: $Extra"
+                $Count = 0; $LastName = $Null
+                $Names = foreach ($Name in $ChildNodes.Name) {
+                    if ($MatchedNames.Contains($Name)) { continue }
+                    if ($Count++ -lt 4) {
+                        if ($ObjectNode -is [PSListNode]) { [CommandColor]$Name }
+                            else { [StringColor][PSKeyExpression]::new($Name, [PSSerialize]::MaxKeyLength)}
+                    }
+                    else { $LastName = $Name }
+                }
+                $Violates = "The following nodes are not accepted: $($Names -join ', ')"
+                if ($LastName) {
+                    $LastName = if ($ObjectNode -is [PSListNode]) { [CommandColor]$LastName }
+                        else { [StringColor][PSKeyExpression]::new($LastName, [PSSerialize]::MaxKeyLength) }
+                    $Violates += " .. $LastName"
+                }
             }
         }
 
@@ -4367,7 +4421,7 @@ begin {
                 ObjectNode = $ObjectNode
                 SchemaNode = $SchemaNode
                 Valid      = -not $Violates
-                Issue      = if ($Violates) { $Violates } else { 'All the child nodes are allowed'}
+                Issue      = if ($Violates) { $Violates } else { 'All the child nodes are valid'}
             }
             $Output.PSTypeNames.Insert(0, 'TestResult')
             if ($Violates) { $RefInvalidNode.Value = $Output }
@@ -4378,6 +4432,7 @@ begin {
 
 process {
     $ObjectNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
+    $Script:UniqueCollections = @{}
     $Invalid = $Null
     $TestParams = @{
         ObjectNode     = $ObjectNode

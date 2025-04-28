@@ -1,13 +1,25 @@
 
+## 2025-04-05 0.3.0 (iRon)
   - Break changes
     - Renamed GetItem / SetItem methods to GetValue / SetValue
+
+  - Fixes
+    - #112 ConvertTo-Expression should also escape fancy quotes
+
+  - Enhancements
+    - Added Test-ObjectGraph cmdlet
+    - #105 added -ValueOnly parameter to Get-Node -and Get-ChildNode cmdlets
+    - Improved coloring (#100)
+
 
 ## 2024-08-12 0.2.2 (iRon)
   - Enhancements
     - Added node view
+    - #113 Improved node abbreviation (`.ToString`) method
+
 
 ## 2024-07-22 0.2.1 (iRon)
-  - fixes
+  - Fixes
     - #87 ConvertTo-Expression: keys with special characters should be quoted
     - #89 Sort-ObjectGraph adds $Null to empty lists
     - #92 ConvertTo-Expression -Expand -1 leaves spaces in map

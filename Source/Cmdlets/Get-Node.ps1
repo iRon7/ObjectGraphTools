@@ -1,4 +1,4 @@
-using module .\..\..\ObjectGraphTools.psm1
+using module .\..\..\..\ObjectGraphTools
 
 Using NameSpace System.Management.Automation.Language
 
@@ -88,6 +88,9 @@ Using NameSpace System.Management.Automation.Language
 .PARAMETER Literal
     If Literal switch is set, all (map) nodes in the given path are considered literal.
 
+.PARAMETER ValueOnly
+    returns the value of the node instead of the node itself.
+
 .PARAMETER Unique
     Specifies that if a subset of the nodes has identical properties and values,
     only a single node of the subset should be selected.
@@ -124,6 +127,9 @@ Using NameSpace System.Management.Automation.Language
     $Literal,
 
     [switch]
+    $ValueOnly,
+
+    [switch]
     $Unique,
 
     [Int]
@@ -154,5 +160,7 @@ process {
             $UniqueNodes[$PathName] = [System.Collections.Generic.HashSet[Object]]::new()
         }
         $UniqueNodes[$PathName].Add($Node.Value)
-    ))  { $Node }
+    ))  {
+        if ($Value) { $Node.Value } else { $Node }
+    }
 }

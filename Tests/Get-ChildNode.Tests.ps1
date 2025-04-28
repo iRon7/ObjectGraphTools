@@ -154,6 +154,14 @@ Describe 'Get-ChildNode' {
         }
     }
 
+    Context 'ValueOnly' {
+
+        It 'Leaf node by name' {
+
+            $Object | Get-ChildNode -Recurse -Value -Include Name | Should -be 'One', 'Two', 'Three'
+        }
+    }
+
     Context 'Warnings' {
 
         it 'Is a leaf node' {

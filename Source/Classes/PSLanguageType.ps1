@@ -1,4 +1,4 @@
-using module .\..\..\ObjectGraphTools.psm1
+using module .\..\..\..\ObjectGraphTools
 
 using namespace System.Collections.Generic
 Class PSLanguageType {

@@ -20,7 +20,7 @@
                             <TableColumnItem><PropertyName>Path</PropertyName></TableColumnItem>
                             <TableColumnItem><PropertyName>Name</PropertyName></TableColumnItem>
                             <TableColumnItem><PropertyName>Depth</PropertyName></TableColumnItem>
-                            <TableColumnItem><PropertyName>Value</PropertyName></TableColumnItem>
+                            <TableColumnItem><ScriptBlock>$_</ScriptBlock></TableColumnItem>
                         </TableColumnItems>
                     </TableRowEntry>
                 </TableRowEntries>
