@@ -161,6 +161,6 @@ process {
         }
         $UniqueNodes[$PathName].Add($Node.Value)
     ))  {
-        if ($Value) { $Node.Value } else { $Node }
+        if ($ValueOnly) { $Node.Value } else { $Node }
     }
 }

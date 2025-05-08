@@ -1,12 +1,20 @@
 $Expression = {
     Param($TestFolder)
-    Write-Host
-    Write-Host "Testing with PowerShell version $($PSVersionTable.PSVersion)"
+    $Version = $PSVersionTable.PSVersion
     Import-Module $TestFolder\.. -Force
-    $TestFiles = Get-ChildItem -Path $TestFolder -Filter *.Tests.ps1
-    foreach ($TestFile in $TestFiles) {
-        Write-Host "Running $($TestFile.Name)"
-        . $TestFile.FullName
+    Get-ChildItem -Path $TestFolder -Filter *.Tests.ps1 |
+    ForEach-Object { 
+        $InformationRecord = . $_.FullName *>&1
+        foreach ($Message in $InformationRecord.MessageData.Message) {
+            if ($Message -match '^\S*\[\+\]') {
+                Write-Host -NoNewline "$Version "
+                Write-Host -ForegroundColor Green $_.BaseName
+            }
+            elseif ($Message -match '^\S*\[-\]([^\r\n]*)') {
+                Write-Host -NoNewline "$Version "
+                Write-Host -ForegroundColor Red "$($_.BaseName) $($Matches[1])"
+            }
+        }
     }
 }.ToString()
 PowerShell.exe -NoProfile -Command "& {$Expression} -TestFolder '$PSScriptRoot'"

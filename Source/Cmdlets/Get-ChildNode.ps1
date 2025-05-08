@@ -143,6 +143,19 @@ Using NameSpace System.Management.Automation.Language
 .PARAMETER ValueOnly
     returns the value of the node instead of the node itself.
 
+.PARAMETER MaxDepth
+    Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
+    The failsafe will prevent infinitive loops for circular references as e.g. in:
+
+        $Test = @{Guid = New-Guid}
+        $Test.Parent = $Test
+
+    The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
+
+    > [!Note]
+    > The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
+    > at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
+
 .LINK
     [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
     [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md "Get-Node"
@@ -184,31 +197,34 @@ Using NameSpace System.Management.Automation.Language
     $IncludeSelf,
 
     [switch]
-    $ValueOnly
+    $ValueOnly,
+
+    [Int]
+    $MaxDepth
 )
 
 begin {
     $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
         [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
-    } elseif ($Recurse) { -1 } else { 0 }
-    $NodeOrigin =
-        if ($ListChild) { [PSNodeOrigin]'List' }
-        elseif ($Null -ne $Include -or $Null -ne $Exclude) { [PSNodeOrigin]'Map' }
-        else { [PSNodeOrigin]0 }
+    } elseif ($Recurse) { -1 } else { 1 }
 }
 
 process {
     if ($InputObject -is [PSNode]) { $Self = $InputObject }
     else { $Self = [PSNode]::ParseInput($InputObject, $MaxDepth) }
-
-    $NodeList = [System.Collections.Generic.List[PSNode]]::new()
-    if ($IncludeSelf) { $NodeList.Add($Self) }
-    if ($Self -is [PSLeafNode]) { Write-Warning "The node '$($Self.Path)' is a leaf node which does not contain any child nodes." }
+    if ($Self -is [PSCollectionNode]) { $NodeList = $Self.GetNodeList($SearchDepth, $Leaf) }
     else {
-        $Self.CollectChildNodes($NodeList, $SearchDepth, $NodeOrigin, $Leaf)
+        Write-Warning "The node '$($Self.Path)' is a leaf node which does not contain any child nodes."
+        $NodeList = [System.Collections.Generic.List[Object]]::new()
     }
+    if ($IncludeSelf) { $NodeList.Insert(0, $Self) }
     foreach ($Node in $NodeList) {
         if (
+            (
+                (-not $ListChild -and $PSCmdlet.ParameterSetName -ne 'MapChild') -or
+                ($ListChild -and $Node.ParentNode -is [PSListNode]) -or
+                ($PSCmdlet.ParameterSetName -eq 'MapChild' -and $Node.ParentNode -is [PSMapNode])
+            ) -and
             (
                 -not $PSBoundParameters.ContainsKey('AtDepth') -or $Node.Depth -in $AtDepth
             ) -and

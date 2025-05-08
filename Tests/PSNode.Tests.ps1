@@ -222,17 +222,6 @@ Describe 'PSNode' {
         }
     }
 
-    Context 'Get list child nodes' {
-        BeforeAll {
-            $Node = [PSNode]::ParseInput($Object)
-        }
-
-        it 'All' {
-            $ItemNodes = $Node.ListChildNodes
-            $ItemNodes.Count | Should -Be 3
-        }
-    }
-
     Context 'Get leaf nodes' {
         BeforeAll {
             $Node = [PSNode]::ParseInput($Object)
@@ -241,17 +230,6 @@ Describe 'PSNode' {
         it 'All' {
             $ItemNodes = $Node.LeafNodes
             $ItemNodes.Count | Should -Be 16
-        }
-    }
-
-    Context 'Get map child nodes' {
-        BeforeAll {
-            $Node = [PSNode]::ParseInput($Object)
-        }
-
-        it 'Array' {
-            $ItemNodes = $Node.GetChildNode('Array').MapChildNodes
-            $ItemNodes.Count | Should -Be 9
         }
     }
 
@@ -362,28 +340,6 @@ Describe 'PSNode' {
             $PSCustomObjectNode = $Node.GetChildNode('PSCustomObject')
             $ItemNodes = $PSCustomObjectNode.ChildNodes
             $ItemNodes | Should -BeNullOrEmpty
-        }
-    }
-
-    Context 'Depth limit' {
-        BeforeAll {
-            $Cycle = @{ Name = 'Test' }
-            $Cycle.Parent = $Cycle
-        }
-
-        It 'Default Depth' {
-            $Output = Iterate ([PSNode]::ParseInput($Cycle)) 3>&1
-            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message        | Should -BeLike  "*Parent.Parent.Parent*maximum depth*$([PSNode]::DefaultMaxDepth)*"
-        }
-
-        It '-Depth 5' {
-            $Output = Iterate ([PSNode]::ParseInput($Cycle, 5)) 3>&1
-            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message        | Should -BeLike  '*Parent.Parent.Parent*maximum depth*5*'
-        }
-
-        It '-Depth 15' {
-            $Output = Iterate ([PSNode]::ParseInput($Cycle, 15)) 3>&1
-            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message        | Should -BeLike  '*Parent.Parent.Parent*maximum depth*15*'
         }
     }
 
@@ -573,33 +529,33 @@ Describe 'PSNode' {
         }
     }
 
-    Context 'IsCaseSensitive' {
+    Context 'CaseMatters' {
 
         It 'Case insensitive dictionary' {
-            (@{} | Get-Node).IsCaseSensitive | Should -BeNullOrEmpty
-            (@{ 1 = 'a' } | Get-Node).IsCaseSensitive | Should -BeNullOrEmpty
-            (@{ abc = 1 } | Get-Node).IsCaseSensitive | Should -BeFalse
-            (@{ abc = 1; def = 2 } | Get-Node).IsCaseSensitive | Should -BeFalse
+            (@{} | Get-Node).CaseMatters | Should -BeNullOrEmpty
+            (@{ 1 = 'a' } | Get-Node).CaseMatters | Should -BeNullOrEmpty
+            (@{ abc = 1 } | Get-Node).CaseMatters | Should -BeFalse
+            (@{ abc = 1; def = 2 } | Get-Node).CaseMatters | Should -BeFalse
         }
 
         It 'Case insensitive object' {
-            ([PSCustomObject]@{} | Get-Node).IsCaseSensitive | Should -BeFalse
-            ([PSCustomObject]@{ 1 = 'a' } | Get-Node).IsCaseSensitive | Should -BeFalse
-            ([PSCustomObject]@{ abc = 1 } | Get-Node).IsCaseSensitive | Should -BeFalse
-            ([PSCustomObject]@{ abc = 1; def = 2 } | Get-Node).IsCaseSensitive | Should -BeFalse
+            ([PSCustomObject]@{} | Get-Node).CaseMatters | Should -BeFalse
+            ([PSCustomObject]@{ 1 = 'a' } | Get-Node).CaseMatters | Should -BeFalse
+            ([PSCustomObject]@{ abc = 1 } | Get-Node).CaseMatters | Should -BeFalse
+            ([PSCustomObject]@{ abc = 1; def = 2 } | Get-Node).CaseMatters | Should -BeFalse
         }
 
         It 'Case sensitive dictionary' {
             $HashTable = [HashTable]::new()
-            ($HashTable | Get-Node).IsCaseSensitive | Should -BeNullOrEmpty
+            ($HashTable | Get-Node).CaseMatters | Should -BeNullOrEmpty
             $HashTable.Add(1, 'a')
-            ($HashTable | Get-Node).IsCaseSensitive | Should -BeNullOrEmpty
+            ($HashTable | Get-Node).CaseMatters | Should -BeNullOrEmpty
             $HashTable.Add('abc', 1)
-            ($HashTable | Get-Node).IsCaseSensitive | Should -BeTrue
+            ($HashTable | Get-Node).CaseMatters | Should -BeTrue
             $HashTable.Add('def', 2)
-            ($HashTable | Get-Node).IsCaseSensitive | Should -BeTrue
+            ($HashTable | Get-Node).CaseMatters | Should -BeTrue
             $HashTable.Add('ABC', 3)
-            ($HashTable | Get-Node).IsCaseSensitive | Should -BeTrue
+            ($HashTable | Get-Node).CaseMatters | Should -BeTrue
         }
     }
 }

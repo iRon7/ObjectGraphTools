@@ -85,8 +85,10 @@
 
         PSData = @{
 
+            Prerelease = 'Preview'
+
             # Tags applied to this module. These help with module discovery in online galleries.
-            Tags = 'Object', 'Graph', 'Complex', 'Dictionary', 'List', 'HashTable', 'Array', 'Merge', 'Sort'
+            Tags = 'Object', 'Graph', 'Complex', 'Dictionary', 'List', 'HashTable', 'Array', 'Merge', 'Sort', 'Test'
 
             # A URL to the license for this module.
             LicenseUri = 'https://github.com/iRon7/ObjectGraphTools/LICENSE'

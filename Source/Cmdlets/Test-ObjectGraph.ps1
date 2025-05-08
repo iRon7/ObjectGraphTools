@@ -214,7 +214,7 @@ begin {
                         continue
                     }
                     $RefNode = if ($TestNode.Contains($At.References)) { $TestNode.GetChildNode($At.References) }
-                    $TestNode.Cache['TestReferences'] = [HashTable]::new($Ordinal[[Bool]$RefNode.IsCaseSensitive])
+                    $TestNode.Cache['TestReferences'] = [HashTable]::new($Ordinal[[Bool]$RefNode.CaseMatters])
                     if ($RefNode) {
                         foreach ($ChildNode in $RefNode.ChildNodes) {
                             if (-not $TestNode.Cache['TestReferences'].ContainsKey($ChildNode.Name)) {
@@ -618,7 +618,7 @@ begin {
 
         if (-Not $Violates) {
             $RequiredNodes = $AssertNodes['RequiredNodes']
-            $CaseSensitiveNames = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.IsCaseSensitive }
+            $CaseSensitiveNames = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.CaseMatters }
             $AssertResults = [HashTable]::new($Ordinal[[Bool]$CaseSensitiveNames])
 
             if ($RequiredNodes) { $RequiredList = [List[Object]]$RequiredNodes.Value } else { $RequiredList = [List[Object]]::new() }

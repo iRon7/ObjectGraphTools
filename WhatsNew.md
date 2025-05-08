@@ -5,18 +5,18 @@
 
   - Fixes
     - #112 ConvertTo-Expression should also escape fancy quotes
+    - #111 Compare-ObjectGraph fails with certain object graphs, presumably due to cyclical references
 
   - Enhancements
     - Added Test-ObjectGraph cmdlet
-    - #105 added -ValueOnly parameter to Get-Node -and Get-ChildNode cmdlets
     - Improved coloring (#100)
-
+    - #105 added -ValueOnly parameter to Get-Node -and Get-ChildNode cmdlets
+    - #114 added unique pools
 
 ## 2024-08-12 0.2.2 (iRon)
   - Enhancements
     - Added node view
     - #113 Improved node abbreviation (`.ToString`) method
-
 
 ## 2024-07-22 0.2.1 (iRon)
   - Fixes

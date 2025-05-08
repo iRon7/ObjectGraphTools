@@ -157,8 +157,6 @@ Class PSNode : IComparable {
     hidden [Int]$_MaxDepth = [PSNode]::DefaultMaxDepth
     [PSNode]$ParentNode
     [PSNode]$RootNode = $this
-    # hidden [PSNodePath]$_Path
-    # hidden [String]$_PathName
     hidden [Dictionary[String,Object]]$Cache = [Dictionary[String,Object]]::new()
     hidden [DateTime]$MaxDepthWarningTime            # Warn ones per item branch
 
@@ -200,7 +198,7 @@ Class PSNode : IComparable {
     hidden [object] get_Value() { return ,$this._Value }
 
     hidden set_Value($Value) {
-        $this.Cache.Clear()
+        $this.Cache.Remove('ChildNodes')
         $this._Value = $Value
         if ($Null -ne $this.ParentNode) { $this.ParentNode.SetValue($this._Name,  $Value) }
         if ($this.GetType() -ne [PSNode]::ParseInput($Value).GetType()) { # The root node is of type PSNode (always false)
@@ -236,14 +234,6 @@ Class PSNode : IComparable {
 
     [Int]GetHashCode() { return $this.GetHashCode($false) } # Ignore the case of a string value
 
-    hidden [PSNode] Append($Object) {
-        $Node = [PSNode]::ParseInput($Object)
-        $Node.Depth       = $this.Depth + 1
-        $Node.RootNode    = [PSNode]$this.RootNode
-        $Node.ParentNode  = $this
-        return $Node
-    }
-
     hidden [Object] get_Path() {
         if (-not $this.Cache.ContainsKey('Path')) {
             if ($this.ParentNode) {
@@ -270,7 +260,7 @@ Class PSNode : IComparable {
     Remove() {
         if ($null -eq $this.ParentNode) { Throw "The root node can't be removed." }
         $this.ParentNode.RemoveAt($this.Name)
-        $this.Cache.Clear()
+        $this.Cache.Remove('ChildNodes')
     }
 
     [Bool] Equals($Object)  {  # https://learn.microsoft.com/dotnet/api/system.globalization.compareoptions
@@ -288,12 +278,12 @@ Class PSNode : IComparable {
     }
 
     hidden CollectNodes($NodeTable, [XdnPath]$Path, [Int]$PathIndex) {
-        $Entry = $Path._Entries[$PathIndex]
-        $NextIndex = if ($PathIndex -lt $Path._Entries.Count -1) { $PathIndex + 1 }
-        $NextEntry = if ($NextIndex) { $Path._Entries[$NextIndex] }
+        $Entry = $Path.Entries[$PathIndex]
+        $NextIndex = if ($PathIndex -lt $Path.Entries.Count -1) { $PathIndex + 1 }
+        $NextEntry = if ($NextIndex) { $Path.Entries[$NextIndex] }
         $Equals    = if ($NextEntry -and $NextEntry.Key -eq 'Equals') {
             $NextEntry.Value
-            $NextIndex = if ($NextIndex -lt $Path._Entries.Count -1) { $NextIndex + 1 }
+            $NextIndex = if ($NextIndex -lt $Path.Entries.Count -1) { $NextIndex + 1 }
         }
         switch ($Entry.Key) {
             Root {
@@ -324,16 +314,28 @@ Class PSNode : IComparable {
                 }
                 elseif ($this -is [PSMapNode]) {
                     $Found = $False
-                    $ChildNodes = $this.get_ChildNodes()
-                    foreach ($Node in $ChildNodes) {
-                        if ($Entry.Value -eq $Node.Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
-                            $Found = $True
-                            if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                            else { $NodeTable[$Node.getPathName()] = $Node }
+                    foreach ($Value in $Entry.Value) {
+                        $Name = $Value._Value
+                        if ($Value.ContainsWildcard()) {
+                            foreach ($Node in $this.ChildNodes) {
+                                if ($Node.Name -like $Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
+                                    $Found = $True
+                                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
+                                    else { $NodeTable[$Node.getPathName()] = $Node }
+                                }
+                            }
+                        }
+                        elseif ($this.Contains($Name)) {
+                            $Node = $this.GetChildNode($Name)
+                            if (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value)) {
+                                $Found = $True
+                                if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
+                                else { $NodeTable[$Node.getPathName()] = $Node }
+                            }
                         }
                     }
                     if (-not $Found -and $Entry.Key -eq 'Descendant') {
-                        foreach ($Node in $ChildNodes) {
+                        foreach ($Node in $this.ChildNodes) {
                             $Node.CollectNodes($NodeTable, $Path, $PathIndex)
                         }
                     }
@@ -1114,7 +1116,10 @@ Class PSSerialize {
                             $this.StringBuilder.Append([VariableColor](
                                 [PSKeyExpression]::new($ChildNodes[$Index].Name, [PSSerialize]::MaxKeyLength)))
                             $this.StringBuilder.Append('=')
-                            $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
+                            if (-not $IsSubNode -or $this.StringBuilder.Length -le [PSSerialize]::MaxKeyLength) {
+                                $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
+                            }
+                            else { $this.StringBuilder.Append([Abbreviate]::Ellipses) }
                             $LastIndex = $Index
                         }
                     }
@@ -1296,7 +1301,7 @@ class XdnName {
 class XdnPath {
     hidden $_Entries = [List[KeyValuePair[XdnType, Object]]]::new()
 
-    hidden [Object]get_Entries() { return ,$this._Entries }
+    hidden [Object]get_Entries() { return ,$this._Entries } # Read-only
 
     XdnPath ([String]$Path)                 { $this.FromString($Path, $False) }
     XdnPath ([String]$Path, [Bool]$Literal) { $this.FromString($Path, $Literal) }
@@ -1669,31 +1674,31 @@ Class PSCollectionNode : PSNode {
         return $List
     }
 
-    [List[PSNode]]GetNodeList($Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
+    [List[PSNode]]GetNodeList($Levels, [Bool]$LeafNodesOnly) {
         $NodeList = [List[PSNode]]::new()
-        $this.CollectChildNodes($NodeList, $Levels, $NodeOrigin, $Leaf)
+        $Stack = [Stack]::new()
+        $Stack.Push($this.get_ChildNodes().GetEnumerator())
+        $Level = 1
+        While ($Stack.Count -gt 0) {
+            $Enumerator = $Stack.Pop()
+            $Level--
+            while ($Enumerator.MoveNext()) {
+                $Node = $Enumerator.Current
+                if ($Node.MaxDepthReached() -or ($Levels -ge 0 -and $Level -ge $Levels)) { break }
+                if (-not $LeafNodesOnly -or $Node -is [PSLeafNode]) { $NodeList.Add($Node) }
+                if ($Node -is [PSCollectionNode]) {
+                    $Stack.Push($Enumerator)
+                    $Level++
+                    $Enumerator = $Node.get_ChildNodes().GetEnumerator()
+                }
+            }
+        }
         return $NodeList
     }
-    [List[PSNode]]GetNodeList()                                       { return $this.GetNodeList(0, 0, $False) }
-    [List[PSNode]]GetNodeList([Int]$Levels)                           { return $this.GetNodeList($Levels, 0, $False) }
-    [List[PSNode]]GetNodeList([PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) { return $this.GetNodeList(0, $NodeOrigin, $Leaf) }
-
-    hidden [PSNode[]]get_ChildNodes() {
-        # There is no link between the 'ChildNodes' cache and the 'GetChildNode()' function
-        # because the comparer of the contained value collection is unknown and
-        # it is too expensive and ambiguous to linear search for the actual/original key name.
-        # see: https://stackoverflow.com/a/78656228/1701026
-        if (-not $this.Cache.ContainsKey('ChildNodes')) { $this.Cache['ChildNodes'] = [PSNode[]]$this.GetNodeList(0, 0, $False) }
-        return $this.Cache['ChildNodes']
-    }
-
-    #hidden [PSNode[]]get_ChildNodes()      { return $this.GetNodeList(0, 0, $False) }
-    hidden [PSNode[]]get_ListChildNodes()  { return $this.GetNodeList(0, 'List', $False) }
-    hidden [PSNode[]]get_MapChildNodes()   { return $this.GetNodeList(0, 'Map',  $False) }
-    hidden [PSNode[]]get_DescendantNodes() { return $this.GetNodeList(-1, 0, $False) }
-    hidden [PSNode[]]get_LeafNodes()       { return $this.GetNodeList(-1, 0, $True) }
-    # hidden [PSNode]_($Name)                { return $this.GetChildNode($Name) }       # CLI Shorthand ("alias") for GetChildNode (don't use in scripts)
-    # hidden [Object]Get($Path)              { return $this.GetDescendantNode($Path) }  # CLI Shorthand ("alias") for GetDescendantNode (don't use in scripts)
+    [List[PSNode]]GetNodeList()             { return $this.GetNodeList(1, $False) }
+    [List[PSNode]]GetNodeList([Int]$Levels) { return $this.GetNodeList($Levels, $False) }
+    hidden [PSNode[]]get_DescendantNodes()  { return $this.GetNodeList(-1, $False) }
+    hidden [PSNode[]]get_LeafNodes()        { return $this.GetNodeList(-1, $True) }
 
     Sort() { $this.Sort($Null, 0) }
     Sort([ObjectComparison]$ObjectComparison) { $this.Sort($Null, $ObjectComparison) }
@@ -1745,6 +1750,8 @@ Class PSListNode : PSCollectionNode {
         return ,@($this._Value)
     }
 
+    hidden [Object]get_CaseMatters() { return $false }
+
     [Bool]Contains($Index) {
        return $Index -ge 0 -and $Index -lt $this.get_Count()
     }
@@ -1768,7 +1775,7 @@ Class PSListNode : PSCollectionNode {
         if ($Value -is [PSNode]) { $Value = $Value._Value }
         if ($this._Value.GetType().GetMethod('Add')) { $null = $This._Value.Add($Value) }
         else { $this._Value = ($this._Value + $Value) -as $this._Value.GetType() }
-        $this.Cache.Clear()
+        $this.Cache.Remove('ChildNodes')
     }
 
     Remove($Value) {
@@ -1779,14 +1786,14 @@ Class PSListNode : PSCollectionNode {
             $cList = [List[Object]]::new()
             $iList = [List[Object]]::new()
             $ceq = $false
-            foreach ($ChildNode in $this.ChildNodes) {
+            foreach ($ChildNode in $this.get_ChildNodes()) {
                 if (-not $ceq -and $ChildNode.Value -ceq $Value) { $ceq = $true } else { $cList.Add($ChildNode.Value) }
                 if (-not $ceq -and $ChildNode.Value -ine $Value)                       { $iList.Add($ChildNode.Value) }
             }
             if ($ceq) { $this._Value = $cList -as $this._Value.GetType() }
             else      { $this._Value = $iList -as $this._Value.GetType() }
         }
-        $this.Cache.Clear()
+        $this.Cache.Remove('ChildNodes')
     }
 
     RemoveAt([Int]$Index) {
@@ -1797,30 +1804,35 @@ Class PSListNode : PSCollectionNode {
                 if ($i -ne $index) { $this._Value[$i] }
             }) -as $this.ValueType
         }
-        $this.Cache.Clear()
-    }
-
-    hidden CollectChildNodes($NodeList, [Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
-        if (-not $this.MaxDepthReached()) {
-            for ($Index = 0; $Index -lt $this._Value.get_Count(); $Index++) {
-                $Node = $this.Append($this._Value[$Index])
-                $Node._Name = $Index
-                if ($NodeOrigin -in 0, 'List' -and (-not $Leaf -or $Node -is [PSLeafNode])) { $NodeList.Add($Node) }
-                if ($Node -is [PSCollectionNode] -and ($Levels -ne 0 -or $NodeOrigin -eq 'Map')) { # $NodeOrigin -eq 'Map' --> Member Access Enumeration
-                    $Levels_1 = if ($Levels -gt 0) { $Levels - 1 } else { $Levels }
-                    $Node.CollectChildNodes($NodeList, $Levels_1, $NodeOrigin, $Leaf)
-                }
-            }
-        }
+        $this.Cache.Remove('ChildNodes')
     }
 
     [Object]GetChildNode([Int]$Index) {
-        if ($this.MaxDepthReached()) { return $Null }
+        if ($this.MaxDepthReached()) { return @() }
         $Count = $this._Value.get_Count()
         if ($Index -lt -$Count -or $Index -ge $Count) { throw "The <Object>$($this.Path) doesn't contain a child index: $Index" }
-        $Node = $this.Append($this._Value[$Index])
-        $Node._Name = $Index
-        return $Node
+        if ($Index -lt 0) { $Index = $Count + $Index } # Negative index
+        if (-not $this.Cache.ContainsKey('ChildNode')) { $this.Cache['ChildNode'] = [Dictionary[Int,Object]]::new() }
+        if (
+            -not $this.Cache.ChildNode.ContainsKey($Index) -or
+            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Index]._Value, $this._Value[$Index])
+        ) {
+            $Node             = [PSNode]::ParseInput($this._Value[$Index])
+            $Node._Name       = $Index
+            $Node.Depth       = $this.Depth + 1
+            $Node.RootNode    = [PSNode]$this.RootNode
+            $Node.ParentNode  = $this
+            $this.Cache.ChildNode[$Index] = $Node
+        }
+        return $this.Cache.ChildNode[$Index]
+    }
+
+    hidden [Object[]]get_ChildNodes() {
+        if (-not $this.Cache.ContainsKey('ChildNodes')) {
+            $ChildNodes = for ($Index = 0; $Index -lt $this._Value.get_Count(); $Index++) { $this.GetChildNode($Index) }
+            if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
+        }
+        return $this.Cache['ChildNodes']
     }
 
     [Int]GetHashCode($CaseSensitive) {
@@ -1892,17 +1904,18 @@ Class PSDictionaryNode : PSMapNode {
         return ,$this._Value.get_Values()
     }
 
-    hidden [Object]get_IsCaseSensitive() { #Returns Nullable[Boolean]
-        if (-not $this.Cache.ContainsKey('IsCaseSensitive')) {
-            $this.Cache['IsCaseSensitive'] = foreach ($Name in $this.Names) {
-                if ($Name -match '[a-z]') {
-                    $Case = if ([Int][Char]($Matches[0]) -ge 97) { $Name.ToUpper() } else { $Name.ToLower() }
-                    -not $this.Contains($Case) -or $Case -cin $this.Names
+    hidden [Object]get_CaseMatters() { #Returns Nullable[Boolean]
+        if (-not $this.Cache.ContainsKey('CaseMatters')) {
+            $this.Cache['CaseMatters'] = $null # else $Null means that there is no key with alphabetic characters in the dictionary
+            foreach ($Key in $this._Value.Get_Keys()) {
+                if ($Key -is [String] -and $Key -match '[a-z]') {
+                    $Case = if ([Int][Char]($Matches[0]) -ge 97) { $Key.ToUpper() } else { $Key.ToLower() }
+                    $this.Cache['CaseMatters'] = -not $this.Contains($Case) -or $Case -cin $this._Value.Get_Keys()
                     break
-                } # else $Null means that there is no key with alphabetic characters in the dictionary
+                }
             }
         }
-        return $this.Cache['IsCaseSensitive']
+        return $this.Cache['CaseMatters']
     }
 
     [Bool]Contains($Key) {
@@ -1924,47 +1937,75 @@ Class PSDictionaryNode : PSMapNode {
     SetValue($Key, $Value) {
         if ($Value -is [PSNode]) { $Value = $Value.Value }
         $this._Value[$Key] = $Value
-        $this.Cache.Clear()
+        $this.Cache.Remove('ChildNodes')
     }
 
     Add($Key, $Value) {
         if ($this.Contains($Key)) { Throw "Item '$Key' has already been added." }
         if ($Value -is [PSNode]) { $Value = $Value.Value }
         $this._Value.Add($Key, $Value)
-        $this.Cache.Clear()
+        $this.Cache.Remove('ChildNodes')
     }
 
     Remove($Key) {
         $null = $this._Value.Remove($Key)
-        $this.Cache.Clear()
+        $this.Cache.Remove('ChildNodes')
     }
 
     hidden RemoveAt($Key) { # General method for: ChildNode.Remove() { $_.ParentNode.Remove($_.Name) }
         if (-not $this.Contains($Key)) { Throw "Item '$Key' doesn't exist." }
         $null = $this._Value.Remove($Key)
-        $this.Cache.Clear()
+        $this.Cache.Remove('ChildNodes')
     }
 
-    hidden CollectChildNodes($NodeList, [Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
-        if (-not $this.MaxDepthReached()) {
-            foreach($Key in $this._Value.get_Keys()) {
-                $Node = $this.Append($this._Value[$Key])
-                $Node._Name = $Key
-                if ($NodeOrigin -in 0, 'Map' -and (-not $Leaf -or $Node -is [PSLeafNode])) { $NodeList.Add($Node) }
-                if ($Node -is [PSCollectionNode] -and ($Levels -ne 0 -or $NodeOrigin -eq 'List')) {
-                    $Levels_1 = if ($Levels -gt 0) { $Levels - 1 } else { $Levels }
-                    $Node.CollectChildNodes($NodeList, $Levels_1, $NodeOrigin, $Leaf)
+    [Object]GetChildNode([Object]$Key) {
+        if ($this.MaxDepthReached()) { return @() }
+        if (-not $this.Contains($Key)) { Throw "The <Object>$($this.Path) doesn't contain a child named: $Key" }
+        if (-not $this.Cache.ContainsKey('ChildNode')) {
+            # The ChildNode cache case sensitivity is based on the current dictionary population.
+            # The ChildNode cache is always ordinal, if the contained dictionary is invariant, extra entries might
+            # appear in the cache but shouldn't effect the results other than slightly slow down the performance.
+            # In other words, do not use the cache to count the entries. Custom comparers are not supported.
+            $this.Cache['ChildNode'] = if ($this.get_CaseMatters()) { [HashTable]::new() } else { @{} } # default is case insensitive
+        }
+        elseif (
+            -not $this.Cache.ChildNode.ContainsKey($Key) -or
+            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Key]._Value, $this._Value[$Key])
+        ) {
+            if($null -eq $this.get_CaseMatters()) { # If the case was undetermined, check the new key for case sensitivity
+                $this.Cache.CaseMatters = if ($Key -is [String] -and $Key -match '[a-z]') {
+                    $Case = if ([Int][Char]($Matches[0]) -ge 97) { $Key.ToUpper() } else { $Key.ToLower() }
+                    -not $this._Value.Contains($Case) -or $Case -cin $this._Value.Get_Keys()
+                }
+                if ($this.get_CaseMatters()) {
+                    $ChildNode = $this.Cache['ChildNode']
+                    $this.Cache['ChildNode'] = [HashTable]::new() # Create a new cache as it appears to be case sensitive
+                    foreach ($Key in $ChildNode.get_Keys()) { # Migrate the content
+                        $this.Cache.ChildNode[$Key] = $ChildNode[$Key]
+                    }
                 }
             }
         }
+        if (
+            -not $this.Cache.ChildNode.ContainsKey($Key) -or
+            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Key].Value, $this._Value[$Key])
+        ) {
+            $Node             = [PSNode]::ParseInput($this._Value[$Key])
+            $Node._Name       = $Key
+            $Node.Depth       = $this.Depth + 1
+            $Node.RootNode    = [PSNode]$this.RootNode
+            $Node.ParentNode  = $this
+            $this.Cache.ChildNode[$Key] = $Node
+        }
+        return $this.Cache.ChildNode[$Key]
     }
 
-    [Object]GetChildNode($Key) {
-        if ($this.MaxDepthReached()) { return $Null }
-        if (-not $this._Value.Contains($Key)) { Throw "The <Object>$($this.Path) doesn't contain a child named: $Key" }
-        $Node = $this.Append($this._Value[$Key])
-        $Node._Name = $Key
-        return $Node
+    hidden [Object[]]get_ChildNodes() {
+        if (-not $this.Cache.ContainsKey('ChildNodes')) {
+            $ChildNodes = foreach ($Key in $this._Value.get_Keys()) { $this.GetChildNode($Key) }
+            if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
+        }
+        return $this.Cache['ChildNodes']
     }
 
     [string]ToString() {
@@ -1990,7 +2031,7 @@ Class PSObjectNode : PSMapNode {
         return ,$this._Value.PSObject.Properties.Value
     }
 
-    hidden [Bool]get_IsCaseSensitive() { return $false }
+    hidden [Object]get_CaseMatters() { return $false }
 
     [Bool]Contains($Name) {
         return $this._Value.PSObject.Properties[$Name]
@@ -2013,16 +2054,15 @@ Class PSObjectNode : PSMapNode {
             foreach ($Property in $this._Value.PSObject.Properties) { $Properties[$Property.Name] = $Property.Value }
             $Properties[$Name] = $Value
             $this._Value = [PSCustomObject]$Properties
-            $this.Cache.Clear()
+            $this.Cache.Remove('ChildNodes')
         }
         elseif ($this._Value.PSObject.Properties[$Name]) {
             $this._Value.PSObject.Properties[$Name].Value = $Value
         }
         else {
             Add-Member -InputObject $this._Value -Type NoteProperty -Name $Name -Value $Value
-            $this.Cache.Clear()
+            $this.Cache.Remove('ChildNodes')
         }
-
     }
 
     Add($Name, $Value) {
@@ -2032,36 +2072,41 @@ Class PSObjectNode : PSMapNode {
 
     Remove($Name) {
         $this._Value.PSObject.Properties.Remove($Name)
-        $this.Cache.Clear()
+        $this.Cache.Remove('ChildNodes')
     }
 
     hidden RemoveAt($Name) { # General method for: ChildNode.Remove() { $_.ParentNode.Remove($_.Name) }
         if (-not $this.Contains($Name)) { Throw "Item '$Name' doesn't exist." }
         $this._Value.PSObject.Properties.Remove($Name)
-        $this.Cache.Clear()
-    }
-
-    hidden CollectChildNodes($NodeList, [Int]$Levels, [PSNodeOrigin]$NodeOrigin, [Bool]$Leaf) {
-        if (-not $this.MaxDepthReached()) {
-            foreach($Property in $this._Value.PSObject.Properties) {
-                if ($Property.Value -is [Reflection.MemberInfo]) { continue }
-                $Node = $this.Append($Property.Value)
-                $Node._Name = $Property.Name
-                if ($NodeOrigin -in 0, 'Map' -and (-not $Leaf -or $Node -is [PSLeafNode])) { $NodeList.Add($Node) }
-                if ($Node -is [PSCollectionNode] -and ($Levels -ne 0 -or $NodeOrigin -eq 'List')) {
-                    $Levels_1 = if ($Levels -gt 0) { $Levels - 1 } else { $Levels }
-                    $Node.CollectChildNodes($NodeList, $Levels_1, $NodeOrigin, $Leaf)
-                }
-            }
-        }
+        $this.Cache.Remove('ChildNodes')
     }
 
     [Object]GetChildNode([String]$Name) {
-        if ($this.MaxDepthReached()) { return $Null }
-        if ($Name -NotIn $this._Value.PSObject.Properties.Name) { Throw "$($this.GetPathName('<Root>')) doesn't contain a child named: $Name" }
-        $Node = $this.Append($this._Value.PSObject.Properties[$Name].Value)
-        $Node._Name = $Name
-        return $Node
+        if ($this.MaxDepthReached()) { return @() }
+        if (-not $this.Contains($Name)) { Throw Throw "$($this.GetPathName('<Root>')) doesn't contain a child named: $Name"  }
+        if (-not $this.Cache.ContainsKey('ChildNode')) { $this.Cache['ChildNode'] = @{} } # Object properties are case insensitive
+        if (
+            -not $this.Cache.ChildNode.ContainsKey($Name) -or
+            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Name]._Value, $this._Value.PSObject.Properties[$Name].Value)
+        ) {
+            $Node             = [PSNode]::ParseInput($this._Value.PSObject.Properties[$Name].Value)
+            $Node._Name       = $Name
+            $Node.Depth       = $this.Depth + 1
+            $Node.RootNode    = [PSNode]$this.RootNode
+            $Node.ParentNode  = $this
+            $this.Cache.ChildNode[$Name] = $Node
+        }
+        return $this.Cache.ChildNode[$Name]
+    }
+
+    hidden [Object[]]get_ChildNodes() {
+        if (-not $this.Cache.ContainsKey('ChildNodes')) {
+            $ChildNodes = foreach ($Property in $this._Value.PSObject.Properties) {
+                if ($Property.Value -isnot [Reflection.MemberInfo]) { $this.GetChildNode($Property.Name) }
+            }
+            if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
+        }
+        return $this.Cache['ChildNodes']
     }
 
     [string]ToString() {
@@ -3074,6 +3119,19 @@ function Get-ChildNode {
 .PARAMETER ValueOnly
     returns the value of the node instead of the node itself.
 
+.PARAMETER MaxDepth
+    Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
+    The failsafe will prevent infinitive loops for circular references as e.g. in:
+
+        $Test = @{Guid = New-Guid}
+        $Test.Parent = $Test
+
+    The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
+
+    > [!Note]
+    > The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
+    > at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
+
 .LINK
     [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
     [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md "Get-Node"
@@ -3115,31 +3173,34 @@ function Get-ChildNode {
     $IncludeSelf,
 
     [switch]
-    $ValueOnly
+    $ValueOnly,
+
+    [Int]
+    $MaxDepth
 )
 
 begin {
     $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
         [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
-    } elseif ($Recurse) { -1 } else { 0 }
-    $NodeOrigin =
-        if ($ListChild) { [PSNodeOrigin]'List' }
-        elseif ($Null -ne $Include -or $Null -ne $Exclude) { [PSNodeOrigin]'Map' }
-        else { [PSNodeOrigin]0 }
+    } elseif ($Recurse) { -1 } else { 1 }
 }
 
 process {
     if ($InputObject -is [PSNode]) { $Self = $InputObject }
     else { $Self = [PSNode]::ParseInput($InputObject, $MaxDepth) }
-
-    $NodeList = [System.Collections.Generic.List[PSNode]]::new()
-    if ($IncludeSelf) { $NodeList.Add($Self) }
-    if ($Self -is [PSLeafNode]) { Write-Warning "The node '$($Self.Path)' is a leaf node which does not contain any child nodes." }
+    if ($Self -is [PSCollectionNode]) { $NodeList = $Self.GetNodeList($SearchDepth, $Leaf) }
     else {
-        $Self.CollectChildNodes($NodeList, $SearchDepth, $NodeOrigin, $Leaf)
+        Write-Warning "The node '$($Self.Path)' is a leaf node which does not contain any child nodes."
+        $NodeList = [System.Collections.Generic.List[Object]]::new()
     }
+    if ($IncludeSelf) { $NodeList.Insert(0, $Self) }
     foreach ($Node in $NodeList) {
         if (
+            (
+                (-not $ListChild -and $PSCmdlet.ParameterSetName -ne 'MapChild') -or
+                ($ListChild -and $Node.ParentNode -is [PSListNode]) -or
+                ($PSCmdlet.ParameterSetName -eq 'MapChild' -and $Node.ParentNode -is [PSMapNode])
+            ) -and
             (
                 -not $PSBoundParameters.ContainsKey('AtDepth') -or $Node.Depth -in $AtDepth
             ) -and
@@ -3320,7 +3381,7 @@ process {
         }
         $UniqueNodes[$PathName].Add($Node.Value)
     ))  {
-        if ($Value) { $Node.Value } else { $Node }
+        if ($ValueOnly) { $Node.Value } else { $Node }
     }
 }
 }
@@ -3853,7 +3914,7 @@ begin {
                         continue
                     }
                     $RefNode = if ($TestNode.Contains($At.References)) { $TestNode.GetChildNode($At.References) }
-                    $TestNode.Cache['TestReferences'] = [HashTable]::new($Ordinal[[Bool]$RefNode.IsCaseSensitive])
+                    $TestNode.Cache['TestReferences'] = [HashTable]::new($Ordinal[[Bool]$RefNode.CaseMatters])
                     if ($RefNode) {
                         foreach ($ChildNode in $RefNode.ChildNodes) {
                             if (-not $TestNode.Cache['TestReferences'].ContainsKey($ChildNode.Name)) {
@@ -3978,7 +4039,7 @@ begin {
     function TestNode (
         [PSNode]$ObjectNode,
         [PSNode]$SchemaNode,
-        [Switch]$Elaborate,            # if set, include the failed test results in the output
+        [Switch]$Elaborate,             # if set, include the failed test results in the output
         [Nullable[Bool]]$CaseSensitive, # inherited the CaseSensitivity frm the parent node if not defined
         [Switch]$ValidateOnly,          # if set, stop at the first invalid node
         $RefInvalidNode                 # references the first invalid node
@@ -4257,7 +4318,7 @@ begin {
 
         if (-Not $Violates) {
             $RequiredNodes = $AssertNodes['RequiredNodes']
-            $CaseSensitiveNames = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.IsCaseSensitive }
+            $CaseSensitiveNames = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.CaseMatters }
             $AssertResults = [HashTable]::new($Ordinal[[Bool]$CaseSensitiveNames])
 
             if ($RequiredNodes) { $RequiredList = [List[Object]]$RequiredNodes.Value } else { $RequiredList = [List[Object]]::new() }
@@ -4489,8 +4550,8 @@ if (-not (Get-FormatData 'XdnPath' -ErrorAction Ignore)) {
 #Region Export
 
 $ModuleMembers = @{
-    Alias = 'cfe', 'cto', 'Copy-Object', 'cpo', 'Export-Object', 'epo', 'gcn', 'gn', 'Sort-ObjectGraph', 'sro', 'Import-Object', 'imo', 'Merge-Object', 'mgo', 'Test-Object', 'tso'
     Function = 'Compare-ObjectGraph', 'ConvertFrom-Expression', 'ConvertTo-Expression', 'Copy-ObjectGraph', 'Export-ObjectGraph', 'Get-ChildNode', 'Get-Node', 'Get-SortObjectGraph', 'Import-ObjectGraph', 'Merge-ObjectGraph', 'Test-ObjectGraph'
+    Alias = 'cfe', 'cto', 'Copy-Object', 'cpo', 'Export-Object', 'epo', 'gcn', 'gn', 'Sort-ObjectGraph', 'sro', 'Import-Object', 'imo', 'Merge-Object', 'mgo', 'Test-Object', 'tso'
 }
 Export-ModuleMember @ModuleMembers
 

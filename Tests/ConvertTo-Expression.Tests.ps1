@@ -2102,6 +2102,33 @@ Describe 'ConvertTo-Expression' {
         }
     }
 
+    Context 'Null and Empty' {
+
+        It 'Array with empty array' -Skip { # https://github.com/iRon7/ObjectGraphTools/issues/116
+            ,@(,@()) | ConvertTo-Expression -Expand 0 | Should -Be '@(,@())'
+        }
+
+        It 'Array with empty directory' {
+            ,@(@{}) | ConvertTo-Expression -Expand 0 | Should -Be '@(@{})'
+        }
+
+        It 'Array with null' {
+            ,@($null) | ConvertTo-Expression -Expand 0 | Should -Be '@($null)'
+        }
+        It 'Dictionary with empty array' {
+            @{ a = @() } | ConvertTo-Expression -Expand 0 | Should -Be '@{ a = @() }'
+        }
+
+        It 'Dictionary with empty directory' {
+            @{ a = @{} } | ConvertTo-Expression -Expand 0 | Should -Be '@{ a = @{} }'
+        }
+
+
+        It 'Dictionary with null' {
+            @{ a = $null } | ConvertTo-Expression -Expand 0 | Should -Be '@{ a = $null }'
+        }
+    }
+
     Context 'Issues' {
 
         It '#59 quoting bug' {

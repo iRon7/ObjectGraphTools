@@ -272,7 +272,10 @@ Class PSSerialize {
                             $this.StringBuilder.Append([VariableColor](
                                 [PSKeyExpression]::new($ChildNodes[$Index].Name, [PSSerialize]::MaxKeyLength)))
                             $this.StringBuilder.Append('=')
-                            $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
+                            if (-not $IsSubNode -or $this.StringBuilder.Length -le [PSSerialize]::MaxKeyLength) {
+                                $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
+                            }
+                            else { $this.StringBuilder.Append([Abbreviate]::Ellipses) }
                             $LastIndex = $Index
                         }
                     }

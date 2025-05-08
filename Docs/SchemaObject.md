@@ -313,7 +313,7 @@ BookStore    @(@{Book=@{Title='Harry Potter';…}},@{Book=@{Title='Learning Powe
 | Name        | @Unique            |
 | ----------- | ------------------ |
 | Description | The node is unique |
-| Type        | `Bool`             |
+| Type        | `Bool` or `String` |
 | Default     | `False`            |
 | Applies to  | Node               |
 

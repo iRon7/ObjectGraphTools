@@ -69,7 +69,7 @@ class XdnName {
 class XdnPath {
     hidden $_Entries = [List[KeyValuePair[XdnType, Object]]]::new()
 
-    hidden [Object]get_Entries() { return ,$this._Entries }
+    hidden [Object]get_Entries() { return ,$this._Entries } # Read-only
 
     XdnPath ([String]$Path)                 { $this.FromString($Path, $False) }
     XdnPath ([String]$Path, [Bool]$Literal) { $this.FromString($Path, $Literal) }
