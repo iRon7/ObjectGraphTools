@@ -171,6 +171,7 @@ Class PSNode : IComparable {
                 elseif ($Object -is [Collections.ICollection])              { [PSListNode]::new($Object) }
                 elseif ($Object -is [ValueType])                            { [PSLeafNode]::new($Object) }
                 elseif ($Object -is [String])                               { [PSLeafNode]::new($Object) }
+                elseif ($Object -is [Type])                                 { [PSLeafNode]::new($Object) }
                 elseif ($Object -is [ScriptBlock])                          { [PSLeafNode]::new($Object) }
                 elseif ($Object.PSObject.Properties)                        { [PSObjectNode]::new($Object) }
                 else                                                        { [PSLeafNode]::new($Object) }
@@ -442,6 +443,9 @@ class ObjectComparer {
             # }
             $Items1 = $Node1.ChildNodes
             $Items2 = $Node2.ChildNodes
+            if (-not $Items1 -and -not $Items2) {
+                if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return @() }
+            }
             if ($Items1.Count) { $Indices1 = [Collections.Generic.List[Int]]$Items1.Name } else { $Indices1 = @() }
             if ($Items2.Count) { $Indices2 = [Collections.Generic.List[Int]]$Items2.Name } else { $Indices2 = @() }
             if ($this.PrimaryKey) {
@@ -536,14 +540,18 @@ class ObjectComparer {
                     if (($Mode -eq 'Equals' -and -not $Compare) -or ($Mode -eq 'Compare' -and $Compare)) { return $Compare }
                 }
             }
-            if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return $null }
+            if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return @() }
         }
         elseif ($Node1 -is [PSMapNode] -and $Node2 -is [PSMapNode]) {
+            $Items1 = $Node1.ChildNodes
+            $Items2 = $Node2.ChildNodes
+            if (-not $Items1 -and -not $Items2) {
+                if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return @() }
+            }
             $MatchOrder = [Bool]($Comparison -band 'MatchMapOrder')
             if ($MatchOrder -and $Node1._Value -isnot [HashTable] -and $Node2._Value -isnot [HashTable]) {
-                $Items2 = $Node2.ChildNodes
                 $Index = 0
-                foreach ($Item1 in $Node1.ChildNodes) {
+                foreach ($Item1 in $Items1) {
                     if ($Index -lt $Items2.Count) { $Item2 = $Items2[$Index++] } else { break }
                     $EqualName = if ($MatchCase) { $Item1.Name -ceq $Item2.Name } else { $Item1.Name -eq $Item2.Name }
                     if ($EqualName) {
@@ -568,7 +576,7 @@ class ObjectComparer {
             }
             else {
                 $Found = [HashTable]::new() # (Case sensitive)
-                foreach ($Item2 in $Node2.ChildNodes) {
+                foreach ($Item2 in $Items2) {
                     if ($Node1.Contains($Item2.Name)) {
                         $Item1 = $Node1.GetChildNode($Item2.Name) # Left defines the comparer
                         $Found[$Item1.Name] = $true
@@ -607,7 +615,7 @@ class ObjectComparer {
                     }
                 }
             }
-            if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return $null }
+            if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return @() }
         }
         else { # Different structure
             Switch ($Mode) {
@@ -627,7 +635,7 @@ class ObjectComparer {
         }
         if ($Mode -eq 'Equals')  { throw 'Equals comparison should have returned boolean.' }
         if ($Mode -eq 'Compare') { throw 'Compare comparison should have returned integer.' }
-        return $null
+        return @()
     }
 }
 class PSMapNodeComparer : IComparer[Object] {
@@ -1013,21 +1021,23 @@ Class PSSerialize {
 
         if ($Node -is [PSLeafNode] -or (-not $this.HighFidelity -and [PSSerialize]::RoundTripProperty.Contains($Node.ValueType.FullName))) {
             $MaxLength = if ($IsSubNode) { [PSSerialize]::MaxValueLength } else { [PSSerialize]::MaxLeafLength }
-            $Expression =
-                if ([PSSerialize]::RoundTripProperty.Contains($Node.ValueType.FullName)) {
-                    $Property = [PSSerialize]::RoundTripProperty[$Node.ValueType.FullName]
-                        if ($Null -eq $Property)          { $Null }
-                    elseif ($Property -is [String])       { if ($Property) { ,$Value.$Property } else { "$Value" } }
-                    elseif ($Property -is [ScriptBlock] ) { Invoke-Command $Property -InputObject $Value }
-                    elseif ($Property -is [HashTable])    { if ($this.LanguageMode -eq 'Restricted') { $Null } else { @{} } }
-                    elseif ($Property -is [Array])        { @($Property.foreach{ $Value.$_ }) }
-                    else { Throw "Unknown round trip property type: $($Property.GetType())."}
-                }
-                elseif ($Type.IsPrimitive)                        { $Value }
-                elseif (-not $Type.GetConstructors())             { "$TypeName" }
-                elseif ($Type.GetMethod('ToString', [Type[]]@())) { $Value.ToString() }
-                elseif ($Value -is [Collections.ICollection])     { ,$Value }
-                else                                              { $Value } # Handle compression
+
+            if ([PSSerialize]::RoundTripProperty.Contains($Node.ValueType.FullName)) {
+                $Property = [PSSerialize]::RoundTripProperty[$Node.ValueType.FullName]
+                    if ($Null -eq $Property)          { $Expression = $Null }
+                elseif ($Property -is [String])       { $Expression = if ($Property) { ,$Value.$Property } else { "$Value" } }
+                elseif ($Property -is [ScriptBlock] ) { $Expression = Invoke-Command $Property -InputObject $Value }
+                elseif ($Property -is [HashTable])    { $Expression = if ($this.LanguageMode -eq 'Restricted') { $Null } else { @{} } }
+                elseif ($Property -is [Array])        { $Expression = @($Property.foreach{ $Value.$_ }) }
+                else { Throw "Unknown round trip property type: $($Property.GetType())."}
+            }
+            elseif ($Value -is [Type])                        { $Expression = @() }
+            elseif ($Value -is [Attribute])                   { $Expression = @() }
+            elseif ($Type.IsPrimitive)                        { $Expression = $Value }
+            elseif (-not $Type.GetConstructors())             { $Expression = "$TypeName" }
+            elseif ($Type.GetMethod('ToString', [Type[]]@())) { $Expression = $Value.ToString() }
+            elseif ($Value -is [Collections.ICollection])     { $Expression = ,$Value }
+            else                                              { $Expression = $Value } # Handle compression
 
             if     ($Null -eq $Expression)         { $Expression = '$Null' }
             elseif ($Expression -is [Bool])        { $Expression = "`$$Value" }
@@ -1129,7 +1139,8 @@ Class PSSerialize {
                     $StartLine = $this.LineNumber
                     $Index = 0
                     $ExpandSingle = $this.ExpandSingleton -or $ChildNodes.Count -gt 1 -or $ChildNodes[0] -isnot [PSLeafNode]
-                    $ChildNodes.foreach{
+                    foreach ($ChildNode in $ChildNodes) {
+                        if ($ChildNode.Name -eq 'TypeId' -and $Node._Value -is $ChildNode._Value) { continue }
                         if ($Index++) {
                             $Separator = if ($this.ExpandDepth -ge 0) { '; ' } else { ';' }
                             $this.NewWord($Separator)
@@ -1137,9 +1148,9 @@ Class PSSerialize {
                         elseif ($this.ExpandDepth -ge 0) {
                             if ($ExpandSingle) { $this.NewWord() } else { $this.StringBuilder.Append(' ') }
                         }
-                        $this.StringBuilder.Append([PSKeyExpression]::new($_.Name, $this.LanguageMode, ($this.ExpandDepth -lt 0)))
+                        $this.StringBuilder.Append([PSKeyExpression]::new($ChildNode.Name, $this.LanguageMode, ($this.ExpandDepth -lt 0)))
                         if ($this.ExpandDepth -ge 0) { $this.StringBuilder.Append(' = ') } else { $this.StringBuilder.Append('=') }
-                        $this.Stringify($_)
+                        $this.Stringify($ChildNode)
                     }
                     $this.Offset--
                     if ($this.LineNumber -gt $StartLine) { $this.NewWord() }
@@ -2043,7 +2054,7 @@ Class PSObjectNode : PSMapNode {
 
     [Object]GetValue($Name) { return $this._Value.PSObject.Properties[$Name].Value }
     [Object]GetValue($Name, $Default) {
-        if (-not $This.Contains($Name)) { return $Default }
+        if (-not $this.Contains($Name)) { return $Default }
         return $this._Value[$Name]
     }
 
@@ -2101,9 +2112,9 @@ Class PSObjectNode : PSMapNode {
 
     hidden [Object[]]get_ChildNodes() {
         if (-not $this.Cache.ContainsKey('ChildNodes')) {
-            $ChildNodes = foreach ($Property in $this._Value.PSObject.Properties) {
-                if ($Property.Value -isnot [Reflection.MemberInfo]) { $this.GetChildNode($Property.Name) }
-            }
+            $ChildNodes = foreach ($Property in $this._Value.PSObject.Properties) { $this.GetChildNode($Property.Name) }
+            #     if ($Property.Value -isnot [Reflection.MemberInfo]) { $this.GetChildNode($Property.Name) }
+            # }
             if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
         }
         return $this.Cache['ChildNodes']

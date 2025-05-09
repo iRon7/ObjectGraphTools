@@ -92,7 +92,7 @@ using module .\..\..\..\ObjectGraphTools
     due to constructor limitations such as readonly property.
 
     > [!Note]
-    > Objects properties of type `[Reflection.MemberInfo]` are always excluded.
+    > The Object property `TypeId = [<ParentType>]` is always excluded.
 
 .PARAMETER ExpandSingleton
     (List or map) collections nodes that contain a single item will not be expanded unless this

@@ -99,6 +99,7 @@ Class PSNode : IComparable {
                 elseif ($Object -is [Collections.ICollection])              { [PSListNode]::new($Object) }
                 elseif ($Object -is [ValueType])                            { [PSLeafNode]::new($Object) }
                 elseif ($Object -is [String])                               { [PSLeafNode]::new($Object) }
+                elseif ($Object -is [Type])                                 { [PSLeafNode]::new($Object) }
                 elseif ($Object -is [ScriptBlock])                          { [PSLeafNode]::new($Object) }
                 elseif ($Object.PSObject.Properties)                        { [PSObjectNode]::new($Object) }
                 else                                                        { [PSLeafNode]::new($Object) }
@@ -728,7 +729,7 @@ Class PSObjectNode : PSMapNode {
 
     [Object]GetValue($Name) { return $this._Value.PSObject.Properties[$Name].Value }
     [Object]GetValue($Name, $Default) {
-        if (-not $This.Contains($Name)) { return $Default }
+        if (-not $this.Contains($Name)) { return $Default }
         return $this._Value[$Name]
     }
 
@@ -786,9 +787,9 @@ Class PSObjectNode : PSMapNode {
 
     hidden [Object[]]get_ChildNodes() {
         if (-not $this.Cache.ContainsKey('ChildNodes')) {
-            $ChildNodes = foreach ($Property in $this._Value.PSObject.Properties) {
-                if ($Property.Value -isnot [Reflection.MemberInfo]) { $this.GetChildNode($Property.Name) }
-            }
+            $ChildNodes = foreach ($Property in $this._Value.PSObject.Properties) { $this.GetChildNode($Property.Name) }
+            #     if ($Property.Value -isnot [Reflection.MemberInfo]) { $this.GetChildNode($Property.Name) }
+            # }
             if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
         }
         return $this.Cache['ChildNodes']

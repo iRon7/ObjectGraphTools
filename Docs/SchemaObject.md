@@ -72,6 +72,12 @@ The list of existing assert nodes is limited to:
 * `@Maximum`
 * `@ExclusiveMinimum`
 * `@Minimum`
+* `@MinimumLength`
+* `@Length`
+* `@MaximumLength`
+* `@MinimumCount`
+* `@Count`
+* `@MaximumCount`
 * `@Like`
 * `@Match`
 * `@NotLike`

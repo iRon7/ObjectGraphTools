@@ -1,17 +1,20 @@
+## 2025-04-05 0.3.1-Preview (iRon)
+  - Fixes
+    - #111 Compare-ObjectGraph fails with certain object graphs, presumably due to cyclical references
 
-## 2025-04-05 0.3.0 (iRon)
+## 2025-04-05 0.3.0-Preview (iRon)
   - Break changes
     - Renamed GetItem / SetItem methods to GetValue / SetValue
 
   - Fixes
     - #112 ConvertTo-Expression should also escape fancy quotes
-    - #111 Compare-ObjectGraph fails with certain object graphs, presumably due to cyclical references
 
   - Enhancements
-    - Added Test-ObjectGraph cmdlet
-    - Improved coloring (#100)
+    - #70 Added Test-ObjectGraph cmdlet
+    - #100 Improved coloring
     - #105 added -ValueOnly parameter to Get-Node -and Get-ChildNode cmdlets
     - #114 added unique pools
+    - #117 Improve performance of Get-Node with literal node names
 
 ## 2024-08-12 0.2.2 (iRon)
   - Enhancements

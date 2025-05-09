@@ -169,21 +169,23 @@ Class PSSerialize {
 
         if ($Node -is [PSLeafNode] -or (-not $this.HighFidelity -and [PSSerialize]::RoundTripProperty.Contains($Node.ValueType.FullName))) {
             $MaxLength = if ($IsSubNode) { [PSSerialize]::MaxValueLength } else { [PSSerialize]::MaxLeafLength }
-            $Expression =
-                if ([PSSerialize]::RoundTripProperty.Contains($Node.ValueType.FullName)) {
-                    $Property = [PSSerialize]::RoundTripProperty[$Node.ValueType.FullName]
-                        if ($Null -eq $Property)          { $Null }
-                    elseif ($Property -is [String])       { if ($Property) { ,$Value.$Property } else { "$Value" } }
-                    elseif ($Property -is [ScriptBlock] ) { Invoke-Command $Property -InputObject $Value }
-                    elseif ($Property -is [HashTable])    { if ($this.LanguageMode -eq 'Restricted') { $Null } else { @{} } }
-                    elseif ($Property -is [Array])        { @($Property.foreach{ $Value.$_ }) }
-                    else { Throw "Unknown round trip property type: $($Property.GetType())."}
-                }
-                elseif ($Type.IsPrimitive)                        { $Value }
-                elseif (-not $Type.GetConstructors())             { "$TypeName" }
-                elseif ($Type.GetMethod('ToString', [Type[]]@())) { $Value.ToString() }
-                elseif ($Value -is [Collections.ICollection])     { ,$Value }
-                else                                              { $Value } # Handle compression
+
+            if ([PSSerialize]::RoundTripProperty.Contains($Node.ValueType.FullName)) {
+                $Property = [PSSerialize]::RoundTripProperty[$Node.ValueType.FullName]
+                    if ($Null -eq $Property)          { $Expression = $Null }
+                elseif ($Property -is [String])       { $Expression = if ($Property) { ,$Value.$Property } else { "$Value" } }
+                elseif ($Property -is [ScriptBlock] ) { $Expression = Invoke-Command $Property -InputObject $Value }
+                elseif ($Property -is [HashTable])    { $Expression = if ($this.LanguageMode -eq 'Restricted') { $Null } else { @{} } }
+                elseif ($Property -is [Array])        { $Expression = @($Property.foreach{ $Value.$_ }) }
+                else { Throw "Unknown round trip property type: $($Property.GetType())."}
+            }
+            elseif ($Value -is [Type])                        { $Expression = @() }
+            elseif ($Value -is [Attribute])                   { $Expression = @() }
+            elseif ($Type.IsPrimitive)                        { $Expression = $Value }
+            elseif (-not $Type.GetConstructors())             { $Expression = "$TypeName" }
+            elseif ($Type.GetMethod('ToString', [Type[]]@())) { $Expression = $Value.ToString() }
+            elseif ($Value -is [Collections.ICollection])     { $Expression = ,$Value }
+            else                                              { $Expression = $Value } # Handle compression
 
             if     ($Null -eq $Expression)         { $Expression = '$Null' }
             elseif ($Expression -is [Bool])        { $Expression = "`$$Value" }
@@ -285,7 +287,8 @@ Class PSSerialize {
                     $StartLine = $this.LineNumber
                     $Index = 0
                     $ExpandSingle = $this.ExpandSingleton -or $ChildNodes.Count -gt 1 -or $ChildNodes[0] -isnot [PSLeafNode]
-                    $ChildNodes.foreach{
+                    foreach ($ChildNode in $ChildNodes) {
+                        if ($ChildNode.Name -eq 'TypeId' -and $Node._Value -is $ChildNode._Value) { continue }
                         if ($Index++) {
                             $Separator = if ($this.ExpandDepth -ge 0) { '; ' } else { ';' }
                             $this.NewWord($Separator)
@@ -293,9 +296,9 @@ Class PSSerialize {
                         elseif ($this.ExpandDepth -ge 0) {
                             if ($ExpandSingle) { $this.NewWord() } else { $this.StringBuilder.Append(' ') }
                         }
-                        $this.StringBuilder.Append([PSKeyExpression]::new($_.Name, $this.LanguageMode, ($this.ExpandDepth -lt 0)))
+                        $this.StringBuilder.Append([PSKeyExpression]::new($ChildNode.Name, $this.LanguageMode, ($this.ExpandDepth -lt 0)))
                         if ($this.ExpandDepth -ge 0) { $this.StringBuilder.Append(' = ') } else { $this.StringBuilder.Append('=') }
-                        $this.Stringify($_)
+                        $this.Stringify($ChildNode)
                     }
                     $this.Offset--
                     if ($this.LineNumber -gt $StartLine) { $this.NewWord() }

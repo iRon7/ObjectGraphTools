@@ -103,6 +103,9 @@ class ObjectComparer {
             # }
             $Items1 = $Node1.ChildNodes
             $Items2 = $Node2.ChildNodes
+            if (-not $Items1 -and -not $Items2) {
+                if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return @() }
+            }
             if ($Items1.Count) { $Indices1 = [Collections.Generic.List[Int]]$Items1.Name } else { $Indices1 = @() }
             if ($Items2.Count) { $Indices2 = [Collections.Generic.List[Int]]$Items2.Name } else { $Indices2 = @() }
             if ($this.PrimaryKey) {
@@ -197,14 +200,18 @@ class ObjectComparer {
                     if (($Mode -eq 'Equals' -and -not $Compare) -or ($Mode -eq 'Compare' -and $Compare)) { return $Compare }
                 }
             }
-            if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return $null }
+            if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return @() }
         }
         elseif ($Node1 -is [PSMapNode] -and $Node2 -is [PSMapNode]) {
+            $Items1 = $Node1.ChildNodes
+            $Items2 = $Node2.ChildNodes
+            if (-not $Items1 -and -not $Items2) {
+                if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return @() }
+            }
             $MatchOrder = [Bool]($Comparison -band 'MatchMapOrder')
             if ($MatchOrder -and $Node1._Value -isnot [HashTable] -and $Node2._Value -isnot [HashTable]) {
-                $Items2 = $Node2.ChildNodes
                 $Index = 0
-                foreach ($Item1 in $Node1.ChildNodes) {
+                foreach ($Item1 in $Items1) {
                     if ($Index -lt $Items2.Count) { $Item2 = $Items2[$Index++] } else { break }
                     $EqualName = if ($MatchCase) { $Item1.Name -ceq $Item2.Name } else { $Item1.Name -eq $Item2.Name }
                     if ($EqualName) {
@@ -229,7 +236,7 @@ class ObjectComparer {
             }
             else {
                 $Found = [HashTable]::new() # (Case sensitive)
-                foreach ($Item2 in $Node2.ChildNodes) {
+                foreach ($Item2 in $Items2) {
                     if ($Node1.Contains($Item2.Name)) {
                         $Item1 = $Node1.GetChildNode($Item2.Name) # Left defines the comparer
                         $Found[$Item1.Name] = $true
@@ -268,7 +275,7 @@ class ObjectComparer {
                     }
                 }
             }
-            if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return $null }
+            if ($Mode -eq 'Equals') { return $true } elseif ($Mode -eq 'Compare') { return 0 } else { return @() }
         }
         else { # Different structure
             Switch ($Mode) {
@@ -288,7 +295,7 @@ class ObjectComparer {
         }
         if ($Mode -eq 'Equals')  { throw 'Equals comparison should have returned boolean.' }
         if ($Mode -eq 'Compare') { throw 'Compare comparison should have returned integer.' }
-        return $null
+        return @()
     }
 }
 
