@@ -158,21 +158,21 @@ Describe 'PSNode' {
         it 'Array' {
             $ItemNode = $Node.GetChildNode('Array')
             $ItemNode.GetChildNode(1).GetChildNode('Comment').Value | Should -Be 'Second item'
-            $ItemNode.SetItem(1, @{ Index = 2; Name = 'Two'; Comment = 'Foo Bar' })
+            $ItemNode.SetValue(1, @{ Index = 2; Name = 'Two'; Comment = 'Foo Bar' })
             $ItemNode.GetChildNode(1).GetChildNode('Comment').Value | Should -Be  'Foo Bar'
         }
 
         it 'HashTable' {
             $ItemNode = $Node.GetChildNode('HashTable')
             $ItemNode.GetChildNode('Two').Value | Should -Be 2
-            $ItemNode.SetItem('Two', 22)
+            $ItemNode.SetValue('Two', 22)
             $ItemNode.GetChildNode('Two').Value | Should -Be 22
         }
 
         it 'PSCustomObject' {
             $ItemNode = $Node.GetChildNode('PSCustomObject')
             $ItemNode.GetChildNode('Two').Value | Should -Be 2
-            $ItemNode.SetItem('Two', 22)
+            $ItemNode.SetValue('Two', 22)
             $ItemNode.GetChildNode('Two').Value | Should -Be 22
         }
     }
@@ -222,17 +222,6 @@ Describe 'PSNode' {
         }
     }
 
-    Context 'Get list child nodes' {
-        BeforeAll {
-            $Node = [PSNode]::ParseInput($Object)
-        }
-
-        it 'All' {
-            $ItemNodes = $Node.ListChildNodes
-            $ItemNodes.Count | Should -Be 3
-        }
-    }
-
     Context 'Get leaf nodes' {
         BeforeAll {
             $Node = [PSNode]::ParseInput($Object)
@@ -241,17 +230,6 @@ Describe 'PSNode' {
         it 'All' {
             $ItemNodes = $Node.LeafNodes
             $ItemNodes.Count | Should -Be 16
-        }
-    }
-
-    Context 'Get map child nodes' {
-        BeforeAll {
-            $Node = [PSNode]::ParseInput($Object)
-        }
-
-        it 'Array' {
-            $ItemNodes = $Node.GetChildNode('Array').MapChildNodes
-            $ItemNodes.Count | Should -Be 9
         }
     }
 
@@ -365,25 +343,219 @@ Describe 'PSNode' {
         }
     }
 
-    Context 'Warning' {
-        BeforeAll {
-            $Cycle = @{ Name = 'Test' }
-            $Cycle.Parent = $Cycle
+    Context 'Add node' {
+
+        It 'Array' {
+            $ArrayNode = ,@('a', 'b', 'c') | Get-Node
+            $ArrayNode.Add('d')
+            ,$ArrayNode.Value | Should -BeOfType Array
+            $ArrayNode.Value  | Should -be 'a', 'b', 'c', 'd'
         }
 
-        It 'Default Depth' {
-            $Output = Iterate ([PSNode]::ParseInput($Cycle)) 3>&1
-            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message        | Should -BeLike  "*Parent.Parent.Parent*maximum depth*$([PSNode]::DefaultMaxDepth)*"
+        It 'List' {
+            $ListNode = ,[System.Collections.Generic.List[Object]]@('a', 'b', 'c') | Get-Node
+            $ListNode.Add('d')
+            ,$ListNode.Value | Should -BeOfType System.Collections.Generic.List[Object]
+            $ListNode.Value  | Should -be 'a', 'b', 'c', 'd'
         }
 
-        It '-Depth 5' {
-            $Output = Iterate ([PSNode]::ParseInput($Cycle, 5)) 3>&1
-            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message        | Should -BeLike  '*Parent.Parent.Parent*maximum depth*5*'
+        It 'String[]' {
+            $Strings = ,[String[]]@('a', 'b', 'c') | Get-Node
+            $Strings.Add('d')
+            ,$Strings.Value | Should -BeOfType String[]
+            $Strings.Value  | Should -be 'a', 'b', 'c', 'd'
         }
 
-        It '-Depth 15' {
-            $Output = Iterate ([PSNode]::ParseInput($Cycle, 15)) 3>&1
-            $Output.where{$_ -is    [System.Management.Automation.WarningRecord]}.Message        | Should -BeLike  '*Parent.Parent.Parent*maximum depth*15*'
+        It 'HashTable' {
+            $HashTableNode = @{ a = 1; b = 2; c = 3 } | Get-Node
+            $HashTableNode.Add('d', 4)
+            $HashTableNode.Value        | Should -BeOfType HashTable
+            $HashTableNode.Value.Keys   | Sort-Object  | Should -be 'a', 'b', 'c', 'd'
+            $HashTableNode.Value.Values | Sort-Object  | Should -be 1, 2, 3, 4
+        }
+
+        It 'Ordered' {
+            $OrderedNode = [Ordered]@{ a = 1; b = 2; c = 3 } | Get-Node
+            $OrderedNode.Add('d', 4)
+            $OrderedNode.Value        | Should -BeOfType System.Collections.Specialized.OrderedDictionary
+            $OrderedNode.Value.Keys   | Should -be 'a', 'b', 'c', 'd'
+            $OrderedNode.Value.Values | Should -be 1, 2, 3, 4
+        }
+
+        It 'Dictionary' {
+            $DictionaryNode = [System.Collections.Generic.Dictionary[String,Int]]::new() | Get-Node
+            $DictionaryNode.Add('a', 1)
+            $DictionaryNode.Add('b', 2)
+            $DictionaryNode.Add('c', 3)
+            $DictionaryNode.Add('d', 4)
+            $DictionaryNode.Value        | Should -BeOfType 'System.Collections.Generic.Dictionary[String,Int]'
+            $DictionaryNode.Value.Keys   | Should -be 'a', 'b', 'c', 'd'
+            $DictionaryNode.Value.Values | Should -be 1, 2, 3, 4
+        }
+
+        It 'PSCustomObject' {
+            $PSCustomObject = [PSCustomObject]@{ a = 1; b = 2; c = 3 } | Get-Node
+            $PSCustomObject.Add('d', 4)
+            $PSCustomObject.Value                           | Should -BeOfType System.Management.Automation.PSCustomObject
+            $PSCustomObject.Value.PSObject.Properties.Name  | Should -be 'a', 'b', 'c', 'd'
+            $PSCustomObject.Value.PSObject.Properties.Value | Should -be 1, 2, 3, 4
+        }
+    }
+
+    Context 'Remove node' {
+
+        It 'Array' {
+            $ArrayNode = ,@('a', 'b', 'c', 'd') | Get-Node
+            $ArrayNode.Remove('b')
+            ,$ArrayNode.Value | Should -BeOfType Array
+            $ArrayNode.Value  | Should -be 'a', 'c', 'd'
+        }
+
+        It 'List' {
+            $ListNode = ,[System.Collections.Generic.List[Object]]@('a', 'b', 'c', 'd') | Get-Node
+            $ListNode.Remove('b')
+            ,$ListNode.Value | Should -BeOfType System.Collections.Generic.List[Object]
+            $ListNode.Value  | Should -be 'a', 'c', 'd'
+        }
+
+        It 'String[]' {
+            $Strings = ,[String[]]@('a', 'b', 'c', 'd') | Get-Node
+            $Strings.Remove('b')
+            ,$Strings.Value | Should -BeOfType String[]
+            $Strings.Value  | Should -be 'a', 'c', 'd'
+        }
+
+        It 'HashTable' {
+            $HashTableNode = @{ a = 1; b = 2; c = 3; d = 4 } | Get-Node
+            $HashTableNode.remove('b')
+            $HashTableNode.Value        | Should -BeOfType HashTable
+            $HashTableNode.Value.Keys   | Sort-Object  | Should -be 'a', 'c', 'd'
+            $HashTableNode.Value.Values | Sort-Object  | Should -be 1, 3, 4
+        }
+
+        It 'Ordered' {
+            $OrderedNode = [Ordered]@{ a = 1; b = 2; c = 3; d = 4 } | Get-Node
+            $OrderedNode.remove('b')
+            $OrderedNode.Value        | Should -BeOfType System.Collections.Specialized.OrderedDictionary
+            $OrderedNode.Value.Keys   | Should -be 'a', 'c', 'd'
+            $OrderedNode.Value.Values | Should -be 1, 3, 4
+        }
+
+        It 'Dictionary' {
+            $DictionaryNode = [System.Collections.Generic.Dictionary[String,Int]]::new() | Get-Node
+            $DictionaryNode.Add('a', 1)
+            $DictionaryNode.Add('b', 2)
+            $DictionaryNode.Add('c', 3)
+            $DictionaryNode.Add('d', 4)
+            $DictionaryNode.remove('b')
+            $DictionaryNode.Value        | Should -BeOfType 'System.Collections.Generic.Dictionary[String,Int]'
+            $DictionaryNode.Value.Keys   | Should -be 'a', 'c', 'd'
+            $DictionaryNode.Value.Values | Should -be 1, 3, 4
+        }
+
+        It 'PSCustomObject' {
+            $PSCustomObject = [PSCustomObject]@{ a = 1; b = 2; c = 3; d = 4 } | Get-Node
+            $PSCustomObject.Remove('b')
+            $PSCustomObject.Value                           | Should -BeOfType System.Management.Automation.PSCustomObject
+            $PSCustomObject.Value.PSObject.Properties.Name  | Should -be 'a', 'c', 'd'
+            $PSCustomObject.Value.PSObject.Properties.Value | Should -be 1, 3, 4
+        }
+    }
+
+    Context 'Remove me' {
+
+        It 'Array' {
+            $ArrayNode = ,@('a', 'b', 'c', 'd') | Get-Node
+            $bNode = $ArrayNode | Get-Node '[1]'
+            $bNode.Remove()
+            ,$ArrayNode.Value | Should -BeOfType Array
+            $ArrayNode.Value  | Should -be 'a', 'c', 'd'
+        }
+
+        It 'List' {
+            $ListNode = ,[System.Collections.Generic.List[Object]]@('a', 'b', 'c', 'd') | Get-Node
+            $bNode = $ListNode | Get-Node '[1]'
+            $bNode.Remove()
+            ,$ListNode.Value | Should -BeOfType System.Collections.Generic.List[Object]
+            $ListNode.Value  | Should -be 'a', 'c', 'd'
+        }
+
+        It 'String[]' {
+            $Strings = ,[String[]]@('a', 'b', 'c', 'd') | Get-Node
+            $bNode = $Strings | Get-Node '[1]'
+            $bNode.Remove()
+            ,$Strings.Value | Should -BeOfType String[]
+            $Strings.Value  | Should -be 'a', 'c', 'd'
+        }
+
+        It 'HashTable' {
+            $HashTableNode = @{ a = 1; b = 2; c = 3; d = 4 } | Get-Node
+            $bNode = $HashTableNode | Get-Node b
+            $bNode.Remove()
+            $HashTableNode.Value        | Should -BeOfType HashTable
+            $HashTableNode.Value.Keys   | Sort-Object  | Should -be 'a', 'c', 'd'
+            $HashTableNode.Value.Values | Sort-Object  | Should -be 1, 3, 4
+        }
+
+        It 'Ordered' {
+            $OrderedNode = [Ordered]@{ a = 1; b = 2; c = 3; d = 4 } | Get-Node
+            $bNode = $OrderedNode | Get-Node b
+            $bNode.Remove()
+            $OrderedNode.Value        | Should -BeOfType System.Collections.Specialized.OrderedDictionary
+            $OrderedNode.Value.Keys   | Should -be 'a', 'c', 'd'
+            $OrderedNode.Value.Values | Should -be 1, 3, 4
+        }
+
+        It 'Dictionary' {
+            $DictionaryNode = [System.Collections.Generic.Dictionary[String,Int]]::new() | Get-Node
+            $DictionaryNode.Add('a', 1)
+            $DictionaryNode.Add('b', 2)
+            $DictionaryNode.Add('c', 3)
+            $DictionaryNode.Add('d', 4)
+            $bNode = $DictionaryNode | Get-Node b
+            $bNode.Remove()
+            $DictionaryNode.Value        | Should -BeOfType 'System.Collections.Generic.Dictionary[String,Int]'
+            $DictionaryNode.Value.Keys   | Should -be 'a', 'c', 'd'
+            $DictionaryNode.Value.Values | Should -be 1, 3, 4
+        }
+
+        It 'PSCustomObject' {
+            $PSCustomObject = [PSCustomObject]@{ a = 1; b = 2; c = 3; d = 4 } | Get-Node
+            $bNode = $PSCustomObject | Get-Node b
+            $bNode.Remove()
+            $PSCustomObject.Value                           | Should -BeOfType System.Management.Automation.PSCustomObject
+            $PSCustomObject.Value.PSObject.Properties.Name  | Should -be 'a', 'c', 'd'
+            $PSCustomObject.Value.PSObject.Properties.Value | Should -be 1, 3, 4
+        }
+    }
+
+    Context 'CaseMatters' {
+
+        It 'Case insensitive dictionary' {
+            (@{} | Get-Node).CaseMatters | Should -BeNullOrEmpty
+            (@{ 1 = 'a' } | Get-Node).CaseMatters | Should -BeNullOrEmpty
+            (@{ abc = 1 } | Get-Node).CaseMatters | Should -BeFalse
+            (@{ abc = 1; def = 2 } | Get-Node).CaseMatters | Should -BeFalse
+        }
+
+        It 'Case insensitive object' {
+            ([PSCustomObject]@{} | Get-Node).CaseMatters | Should -BeFalse
+            ([PSCustomObject]@{ 1 = 'a' } | Get-Node).CaseMatters | Should -BeFalse
+            ([PSCustomObject]@{ abc = 1 } | Get-Node).CaseMatters | Should -BeFalse
+            ([PSCustomObject]@{ abc = 1; def = 2 } | Get-Node).CaseMatters | Should -BeFalse
+        }
+
+        It 'Case sensitive dictionary' {
+            $HashTable = [HashTable]::new()
+            ($HashTable | Get-Node).CaseMatters | Should -BeNullOrEmpty
+            $HashTable.Add(1, 'a')
+            ($HashTable | Get-Node).CaseMatters | Should -BeNullOrEmpty
+            $HashTable.Add('abc', 1)
+            ($HashTable | Get-Node).CaseMatters | Should -BeTrue
+            $HashTable.Add('def', 2)
+            ($HashTable | Get-Node).CaseMatters | Should -BeTrue
+            $HashTable.Add('ABC', 3)
+            ($HashTable | Get-Node).CaseMatters | Should -BeTrue
         }
     }
 }

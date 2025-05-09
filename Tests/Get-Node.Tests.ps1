@@ -254,4 +254,31 @@ $Json = '
             $Eric.GetNode('....Position').Value | Should -Be 'Payroll Manager'
         }
     }
+
+    Context 'Issues' {
+
+        It '#105 `Get-Node` add `-Value` parameter' {
+            $Person = [PSCustomObject]@{
+                FirstName = 'John'
+                LastName  = 'Smith'
+                IsAlive   = $True
+                Birthday  = [DateTime]'Monday,  October 7,  1963 10:47:00 PM'
+                Age       = 27
+                Address   = [PSCustomObject]@{
+                    Street     = '21 2nd Street'
+                    City       = 'New York'
+                    State      = 'NY'
+                    PostalCode = '10021-3100'
+                }
+                Phone = @{
+                    Home   = '212 555-1234'
+                    Mobile = '212 555-2345'
+                    Work   = '212 555-3456', '212 555-3456', '646 555-4567'
+                }
+                Children = @('Dennis', 'Stefan')
+                Spouse = $Null
+            }
+            $Person | Get-Node -Value ~Mobile | Should -be '212 555-2345'
+        }
+    }
 }

@@ -12,6 +12,8 @@ Get-ChildNode
     [-AtDepth <Int32[]>]
     [-Leaf]
     [-IncludeSelf]
+    [-ValueOnly]
+    [-MaxDepth <Int32>]
     [<CommonParameters>]
 ```
 
@@ -69,8 +71,8 @@ The following example will receive all leaf nodes:
 ```PowerShell
 $Object | Get-ChildNode -Recurse -Leaf
 
-PathName         Name    Depth Value
---------         ----    ----- -----
+Path             Name    Depth Value
+----             ----    ----- -----
 .Data[0].Comment Comment     3 First item
 .Data[0].Name    Name        3 One
 .Data[0].Index   Index       3 1
@@ -259,6 +261,44 @@ Includes the current node with the returned child nodes.
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
+<tr><td>Mandatory:</td><td>False</td></tr>
+<tr><td>Position:</td><td>Named</td></tr>
+<tr><td>Default value:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
+<tr><td>Accept wildcard characters:</td><td>False</td></tr>
+</table>
+
+### <a id="-valueonly">**`-ValueOnly`**</a>
+
+returns the value of the node instead of the node itself.
+
+<table>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
+<tr><td>Mandatory:</td><td>False</td></tr>
+<tr><td>Position:</td><td>Named</td></tr>
+<tr><td>Default value:</td><td></td></tr>
+<tr><td>Accept pipeline input:</td><td>False</td></tr>
+<tr><td>Accept wildcard characters:</td><td>False</td></tr>
+</table>
+
+### <a id="-maxdepth">**`-MaxDepth <Int32>`**</a>
+
+Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
+The failsafe will prevent infinitive loops for circular references as e.g. in:
+
+```PowerShell
+$Test = @{Guid = New-Guid}
+$Test.Parent = $Test
+```
+
+The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
+
+> [!Note]
+> The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
+> at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
+
+<table>
+<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
 <tr><td>Mandatory:</td><td>False</td></tr>
 <tr><td>Position:</td><td>Named</td></tr>
 <tr><td>Default value:</td><td></td></tr>

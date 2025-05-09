@@ -29,7 +29,7 @@ Import-ObjectGraph
 ## Description
 
 The `Import-ObjectGraph` cmdlet safely converts a PowerShell formatted expression contained by a file
-to an object-graph existing of a mixture of nested arrays, hashtables and objects that contain a list
+to an object-graph existing of a mixture of nested arrays, hash tables and objects that contain a list
 of strings and values.
 
 ## Parameters
@@ -66,7 +66,7 @@ PowerShell not to interpret any characters as escape sequences.
 
 ### <a id="-listas">**`-ListAs <Object>`**</a>
 
-If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown or
+If supplied, the array sub-expression `@( )` syntaxes without an type initializer or with an unknown or
 denied type initializer will be converted to the given list type.
 
 <table>
@@ -80,7 +80,7 @@ denied type initializer will be converted to the given list type.
 
 ### <a id="-mapas">**`-MapAs <Object>`**</a>
 
-If supplied, the array subexpression `@{ }` syntaxes without an type initializer or with an unknown or
+If supplied, the array sub-expression `@{ }` syntaxes without an type initializer or with an unknown or
 denied type initializer will be converted to the given map (dictionary or object) type.
 
 The default `MapAs` is an (ordered) `PSCustomObject` for PowerShell Data (`psd1`) files and

@@ -2,2127 +2,1299 @@
 
 using module ..\..\ObjectGraphTools
 
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object', Justification = 'False positive')]
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'ObjectGraph', Justification = 'False positive')]
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'False positive')]
+
 param()
 
-# $PesterPreference = [PesterConfiguration]::Default
-# $PesterPreference.Should.ErrorAction = 'Stop'
-
-Describe 'ConvertTo-Expression' {
+Describe 'Test-Object' {
 
     BeforeAll {
 
         Set-StrictMode -Version Latest
+
+        $Person = [PSCustomObject]@{
+            FirstName = 'John'
+            LastName  = 'Smith'
+            IsAlive   = $True
+            Birthday  = [DateTime]'Monday,  October 7,  1963 10:47:00 PM'
+            Age       = 27
+            Address   = [PSCustomObject]@{
+                Street     = '21 2nd Street'
+                City       = 'New York'
+                State      = 'NY'
+                PostalCode = '10021-3100'
+            }
+            Phone = @{
+                Home   = '212 555-1234'
+                Mobile = '212 555-2345'
+                Work   = '212 555-3456', '212 555-3456', '646 555-4567'
+            }
+            Children = @('Dennis', 'Stefan')
+            Spouse = $Null
+        }
     }
 
     Context 'Existence Check' {
 
         It 'Help' {
-            ConvertTo-Expression -? | Out-String -Stream | Should -Contain SYNOPSIS
+            Test-Object -? | Out-String -Stream | Should -Contain SYNOPSIS
         }
     }
 
-    Context 'Constrained values' {
-        It 'adsi' {
-            $Object = [adsi]'WinNT://WORKGROUP/./Administrator'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'WinNT://WORKGROUP/./Administrator'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[adsi]'WinNT://WORKGROUP/./Administrator'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[adsi]'WinNT://WORKGROUP/./Administrator'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[adsi]'WinNT://WORKGROUP/./Administrator'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[adsi]'WinNT://WORKGROUP/./Administrator'"
+    Context 'Type (as string)' {
+
+        It 'Report' {
+            $True | Test-Object @{ '@Type' = 'Bool' } | Should -BeNullOrEmpty
+            $Report = 123 | Test-ObjectGraph @{ '@Type' = 'Bool' } -Elaborate
+            $Report.ObjectNode.Value | Should -Be 123
+            $Report.Valid            | Should -Be $False
+            $Report.Issue            | Should -Not -BeNullOrEmpty
         }
 
-        It 'adsisearcher' {
-            $Object = [adsisearcher]'0123'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[adsisearcher]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[adsisearcher]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[adsisearcher]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[adsisearcher]'0123'"
+        It 'Bool' {
+            $True  | Test-Object @{ '@Type' = 'Bool' } -ValidateOnly | Should -BeTrue
+            'True' | Test-Object @{ '@Type' = 'Bool' } -ValidateOnly | Should -BeFalse
         }
 
-        It 'Alias' {
-            $Object = [Alias]::new('Example')
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@('Example')"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[Alias]::new('Example')"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[Alias]::new('Example')"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[Alias]::new('Example')"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[Alias]::new('Example')"
+        It 'Int' {
+            123    | Test-Object @{ '@Type' = 'Int' } -ValidateOnly | Should -BeTrue
+            '123'  | Test-Object @{ '@Type' = 'Int' } -ValidateOnly | Should -BeFalse
         }
 
-        It 'AllowEmptyCollection' {
-            $Object = [AllowEmptyCollection]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[AllowEmptyCollection]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[AllowEmptyCollection]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[AllowEmptyCollection]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[AllowEmptyCollection]::new()"
+        It 'String' {
+            'True' | Test-Object @{ '@Type' = 'String' } -ValidateOnly | Should -BeTrue
+            '123'  | Test-Object @{ '@Type' = 'String' } -ValidateOnly | Should -BeTrue
+            123    | Test-Object @{ '@Type' = 'String' } -ValidateOnly | Should -BeFalse
         }
 
-        It 'AllowEmptyString' {
-            $Object = [AllowEmptyString]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[AllowEmptyString]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[AllowEmptyString]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[AllowEmptyString]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[AllowEmptyString]::new()"
+        It 'Array' {
+            ,@(1,2)    | Test-Object @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@(1)      | Test-Object @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@()       | Test-Object @{ '@Type' = 'Array' }                             -ValidateOnly | Should -BeTrue
+            'Test'     | Test-Object @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-Object @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
 
-        It 'AllowNull' {
-            $Object = [AllowNull]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[AllowNull]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[AllowNull]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[AllowNull]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[AllowNull]::new()"
+        It 'HashTable' {
+            @{ a = 1 } | Test-Object @{ '@Type' = 'HashTable'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            @{}        | Test-Object @{ '@Type' = 'HashTable' }                             -ValidateOnly | Should -BeTrue
+            'Test'     | Test-Object @{ '@Type' = 'HashTable'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1, 2)   | Test-Object @{ '@Type' = 'HashTable'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
-
-        It 'ArgumentCompleter' {
-            $Object = [ArgumentCompleter]{'Example'}
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "{'Example'}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ArgumentCompleter]{'Example'}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ArgumentCompleter]{'Example'}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ArgumentCompleter]{'Example'}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ArgumentCompleter]{'Example'}"
-        }
-
-        It 'bigint' {
-            $Object = [bigint]'1234567890'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'1234567890'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[bigint]'1234567890'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[bigint]'1234567890'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[bigint]'1234567890'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[bigint]'1234567890'"
-        }
-
-        It 'bool' {
-            $Object = [bool]$True
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be '$True'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be '$True'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be '[bool]$True'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be '[bool]$True'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be '[bool]$True'
-        }
-
-        It 'byte' {
-            $Object = [byte]123
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[byte]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[byte]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[byte]123"
-        }
-
-        It 'char' {
-            $Object = [char]'a'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'a'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "'a'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[char]'a'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[char]'a'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[char]'a'"
-        }
-
-        It 'ciminstance' {
-            $Object = [ciminstance]'Example'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'Example'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ciminstance]'Example'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ciminstance]'Example'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ciminstance]'Example'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ciminstance]'Example'"
-        }
-
-        It 'CimSession' {
-            $Object = [CimSession]'0123'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[CimSession]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[CimSession]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[CimSession]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[CimSession]'0123'"
-        }
-
-        It 'cimtype' {
-            $Object = [cimtype]'Boolean'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'Boolean'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[cimtype]'Boolean'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[cimtype]'Boolean'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[cimtype]'Boolean'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[cimtype]'Boolean'"
-        }
-
-        # It 'CmdletBinding' {
-        #     $Object = [CmdletBinding]@{ PositionalBinding = [bool]$True; DefaultParameterSetName = [string]''; SupportsShouldProcess = [bool]$False; SupportsPaging = [bool]$False; SupportsTransactions = [bool]$False; ConfirmImpact = [System.Management.Automation.ConfirmImpact]'None'; HelpUri = [string]''; RemotingCapability = [System.Management.Automation.RemotingCapability]'None' }
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be '@{ PositionalBinding = $True; DefaultParameterSetName = ''; SupportsShouldProcess = $False; SupportsPaging = $False; SupportsTransactions = $False; ConfirmImpact = 'None'; HelpUri = ''; RemotingCapability = 'None' }'
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be '[CmdletBinding]@{ PositionalBinding = $True; DefaultParameterSetName = ''; SupportsShouldProcess = $False; SupportsPaging = $False; SupportsTransactions = $False; ConfirmImpact = [System.Management.Automation.ConfirmImpact]'None'; HelpUri = ''; RemotingCapability = [System.Management.Automation.RemotingCapability]'None' }'
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be '[CmdletBinding]@{ PositionalBinding = [bool]$True; DefaultParameterSetName = [string]''; SupportsShouldProcess = [bool]$False; SupportsPaging = [bool]$False; SupportsTransactions = [bool]$False; ConfirmImpact = [System.Management.Automation.ConfirmImpact]'None'; HelpUri = [string]''; RemotingCapability = [System.Management.Automation.RemotingCapability]'None' }'
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be '[CmdletBinding]@{ PositionalBinding = [bool]$True; DefaultParameterSetName = [string]''; SupportsShouldProcess = [bool]$False; SupportsPaging = [bool]$False; SupportsTransactions = [bool]$False; ConfirmImpact = [System.Management.Automation.ConfirmImpact]'None'; HelpUri = [string]''; RemotingCapability = [System.Management.Automation.RemotingCapability]'None' }'
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be '[CmdletBinding]@{ PositionalBinding = [bool]$True; DefaultParameterSetName = [string]''; SupportsShouldProcess = [bool]$False; SupportsPaging = [bool]$False; SupportsTransactions = [bool]$False; ConfirmImpact = [System.Management.Automation.ConfirmImpact]'None'; HelpUri = [string]''; RemotingCapability = [System.Management.Automation.RemotingCapability]'None' }'
-        # }
-
-        It 'cultureinfo' {
-            $Object = [cultureinfo]'en-US'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'en-US'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[cultureinfo]'en-US'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[cultureinfo]'en-US'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[cultureinfo]'en-US'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[cultureinfo]'en-US'"
-        }
-
-        It 'datetime' {
-            $Object = [datetime]'1963-10-07T17:56:53.8139055'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'1963-10-07T17:56:53.8139055'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[datetime]'1963-10-07T17:56:53.8139055'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[datetime]'1963-10-07T17:56:53.8139055'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[datetime]'1963-10-07T17:56:53.8139055'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[datetime]'1963-10-07T17:56:53.8139055'"
-        }
-
-        It 'decimal' {
-            $Object = [decimal]'0.123'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'0.123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[decimal]'0.123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[decimal]'0.123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[decimal]'0.123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[decimal]'0.123'"
-        }
-
-        It 'double' {
-            $Object = [double]123
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[double]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[double]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[double]123"
-        }
-
-        It 'DscLocalConfigurationManager' {
-            $Object = [DscLocalConfigurationManager]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[DscLocalConfigurationManager]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[DscLocalConfigurationManager]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[DscLocalConfigurationManager]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[DscLocalConfigurationManager]::new()"
-        }
-
-        It 'DscProperty' {
-            $Object = [DscProperty]@{ Key = [bool]$False; Mandatory = [bool]$False; NotConfigurable = [bool]$False }
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be '@{ Key = $False; Mandatory = $False; NotConfigurable = $False }'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be '[DscProperty]@{ Key = $False; Mandatory = $False; NotConfigurable = $False }'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be '[DscProperty]@{ Key = [bool]$False; Mandatory = [bool]$False; NotConfigurable = [bool]$False }'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be '[DscProperty]@{ Key = [bool]$False; Mandatory = [bool]$False; NotConfigurable = [bool]$False }'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be '[DscProperty]@{ Key = [bool]$False; Mandatory = [bool]$False; NotConfigurable = [bool]$False }'
-        }
-
-        It 'DscResource' {
-            $Object = [DscResource]@{ RunAsCredential = [System.Management.Automation.DSCResourceRunAsCredential]'Default' }
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{ RunAsCredential = 'Default' }"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[DscResource]@{ RunAsCredential = [System.Management.Automation.DSCResourceRunAsCredential]'Default' }"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[DscResource]@{ RunAsCredential = [System.Management.Automation.DSCResourceRunAsCredential]'Default' }"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[DscResource]@{ RunAsCredential = [System.Management.Automation.DSCResourceRunAsCredential]'Default' }"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[DscResource]@{ RunAsCredential = [System.Management.Automation.DSCResourceRunAsCredential]'Default' }"
-        }
-
-        It 'ExperimentAction' -Skip:(-not ('ExperimentAction' -as [Type])) {
-            $Object = [ExperimentAction]'None'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'None'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ExperimentAction]'None'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ExperimentAction]'None'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ExperimentAction]'None'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ExperimentAction]'None'"
-        }
-
-        It 'float' {
-            $Object = [float]123
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[float]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[float]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[float]123"
-        }
-
-        It 'guid' {
-            $Object = [guid]'19631007-bd7b-41cc-a6c7-bb1772d6ef46'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'19631007-bd7b-41cc-a6c7-bb1772d6ef46'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[guid]'19631007-bd7b-41cc-a6c7-bb1772d6ef46'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[guid]'19631007-bd7b-41cc-a6c7-bb1772d6ef46'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[guid]'19631007-bd7b-41cc-a6c7-bb1772d6ef46'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[guid]'19631007-bd7b-41cc-a6c7-bb1772d6ef46'"
-        }
-
-        It 'int' {
-            $Object = [int]123
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[int]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[int]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[int]123"
-        }
-
-        It 'short' -Skip:(-not ('short' -as [Type])) {
-            $Object = [short]123
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[short]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[short]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[short]123"
-        }
-
-        It 'long' {
-            $Object = [long]123
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[long]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[long]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[long]123"
-        }
-
-        It 'ipaddress' {
-            $Object = [ipaddress]'198.168.1.1'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'198.168.1.1'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ipaddress]'198.168.1.1'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ipaddress]'198.168.1.1'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ipaddress]'198.168.1.1'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ipaddress]'198.168.1.1'"
-        }
-
-        It 'IPEndpoint' {
-            $Object = [IPEndpoint]::new(16885958, 123)
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@(16885958, 123)"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[IPEndpoint]::new(16885958, 123)"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[IPEndpoint]::new(16885958, 123)"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[IPEndpoint]::new(16885958, 123)"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[IPEndpoint]::new(16885958, 123)"
-        }
-
-        It 'mailaddress' {
-            $Object = [mailaddress]'iron@contoso.com'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'iron@contoso.com'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[mailaddress]'iron@contoso.com'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[mailaddress]'iron@contoso.com'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[mailaddress]'iron@contoso.com'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[mailaddress]'iron@contoso.com'"
-        }
-
-        It 'Microsoft.PowerShell.Commands.ModuleSpecification' {
-            $Object = [Microsoft.PowerShell.Commands.ModuleSpecification]'0123'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[Microsoft.PowerShell.Commands.ModuleSpecification]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[Microsoft.PowerShell.Commands.ModuleSpecification]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[Microsoft.PowerShell.Commands.ModuleSpecification]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[Microsoft.PowerShell.Commands.ModuleSpecification]'0123'"
-        }
-
-        It 'NoRunspaceAffinity' -Skip:(-not ('NoRunspaceAffinity' -as [Type])) {
-            $Object = [NoRunspaceAffinity]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[NoRunspaceAffinity]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[NoRunspaceAffinity]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[NoRunspaceAffinity]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[NoRunspaceAffinity]::new()"
-        }
-
-        It 'OutputType' {
-            $Object = [OutputType]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[OutputType]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[OutputType]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[OutputType]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[OutputType]::new()"
-        }
-
-        # It 'Parameter' {
-        #     $Object = [Parameter]@{ Position = [int]1 }
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be '@{ ExperimentName = $Null; ExperimentAction = 'None'; Position = 1; ParameterSetName = '__AllParameterSets'; Mandatory = $False; ValueFromPipeline = $False; ValueFromPipelineByPropertyName = $False; ValueFromRemainingArguments = $False; HelpMessage = $Null; HelpMessageBaseName = $Null; HelpMessageResourceId = $Null; DontShow = $False }'
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be '[Parameter]@{ ExperimentName = $Null; ExperimentAction = [ExperimentAction]'None'; Position = 1; ParameterSetName = '__AllParameterSets'; Mandatory = $False; ValueFromPipeline = $False; ValueFromPipelineByPropertyName = $False; ValueFromRemainingArguments = $False; HelpMessage = $Null; HelpMessageBaseName = $Null; HelpMessageResourceId = $Null; DontShow = $False }'
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be '[Parameter]@{ ExperimentName = $Null; ExperimentAction = [ExperimentAction]'None'; Position = [int]1; ParameterSetName = [string]'__AllParameterSets'; Mandatory = [bool]$False; ValueFromPipeline = [bool]$False; ValueFromPipelineByPropertyName = [bool]$False; ValueFromRemainingArguments = [bool]$False; HelpMessage = $Null; HelpMessageBaseName = $Null; HelpMessageResourceId = $Null; DontShow = [bool]$False }'
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be '[Parameter]@{ ExperimentName = $Null; ExperimentAction = [ExperimentAction]'None'; Position = [int]1; ParameterSetName = [string]'__AllParameterSets'; Mandatory = [bool]$False; ValueFromPipeline = [bool]$False; ValueFromPipelineByPropertyName = [bool]$False; ValueFromRemainingArguments = [bool]$False; HelpMessage = $Null; HelpMessageBaseName = $Null; HelpMessageResourceId = $Null; DontShow = [bool]$False }'
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be '[Parameter]@{ ExperimentName = $Null; ExperimentAction = [ExperimentAction]'None'; Position = [int]1; ParameterSetName = [string]'__AllParameterSets'; Mandatory = [bool]$False; ValueFromPipeline = [bool]$False; ValueFromPipelineByPropertyName = [bool]$False; ValueFromRemainingArguments = [bool]$False; HelpMessage = $Null; HelpMessageBaseName = $Null; HelpMessageResourceId = $Null; DontShow = [bool]$False }'
-        # }
-
-        It 'PhysicalAddress' {
-            $Object = [PhysicalAddress]'0123'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[PhysicalAddress]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[PhysicalAddress]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[PhysicalAddress]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[PhysicalAddress]'0123'"
-        }
-
-        It 'PSDefaultValue' {
-            $Object = [PSDefaultValue]@{ Value = $Null; Help = [string]'' }
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be '@{ Value = $Null; Help = '''' }'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be '[PSDefaultValue]@{ Value = $Null; Help = '''' }'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be '[PSDefaultValue]@{ Value = $Null; Help = [string]'''' }'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be '[PSDefaultValue]@{ Value = $Null; Help = [string]'''' }'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be '[PSDefaultValue]@{ Value = $Null; Help = [string]'''' }'
-        }
-
-        It 'pslistmodifier' {
-            $Object = [pslistmodifier]''
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "''"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[pslistmodifier]''"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[pslistmodifier]''"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[pslistmodifier]''"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[pslistmodifier]''"
-        }
-
-        It 'PSTypeNameAttribute' {
-            $Object = [PSTypeNameAttribute]'0123'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[PSTypeNameAttribute]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[PSTypeNameAttribute]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[PSTypeNameAttribute]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[PSTypeNameAttribute]'0123'"
-        }
-
-        It 'regex' {
-            $Object = [regex]'0123'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[regex]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[regex]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[regex]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[regex]'0123'"
-        }
-
-        It 'sbyte' {
-            $Object = [sbyte]123
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[sbyte]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[sbyte]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[sbyte]123"
-        }
-
-        It 'semver' -Skip:(-not ('semver' -as [Type])) {
-            $Object = [semver]'1.2.0-a.1'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'1.2.0-a.1'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[semver]'1.2.0-a.1'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[semver]'1.2.0-a.1'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[semver]'1.2.0-a.1'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[semver]'1.2.0-a.1'"
-        }
-
-        It 'string' {
-            $Object = [string]'0123'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[string]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[string]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[string]'0123'"
-        }
-
-        It 'SupportsWildcards' {
-            $Object = [SupportsWildcards]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[SupportsWildcards]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[SupportsWildcards]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[SupportsWildcards]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[SupportsWildcards]::new()"
-        }
-
-        It 'timespan' {
-            $Object = [timespan]'1.02:03:04.0050000'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'1.02:03:04.0050000'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[timespan]'1.02:03:04.0050000'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[timespan]'1.02:03:04.0050000'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[timespan]'1.02:03:04.0050000'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[timespan]'1.02:03:04.0050000'"
-        }
-
-        It 'ushort' -Skip:(-not ('ushort' -as [Type])) {
-            $Object = [ushort]123
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ushort]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ushort]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ushort]123"
-        }
-
-        It 'uint' -Skip:(-not ('uint' -as [Type])) {
-            $Object = [uint]123
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[uint]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[uint]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[uint]123"
-        }
-
-        It 'ulong' -Skip:(-not ('ulong' -as [Type])) {
-            $Object = [ulong]123
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ulong]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ulong]123"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ulong]123"
-        }
-
-        It 'uri' {
-            $Object = [uri]'0123'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[uri]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[uri]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[uri]'0123'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[uri]'0123'"
-        }
-
-        # It 'ValidateDrive' {
-        #     $Object = [ValidateDrive]::new()
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{ ValidRootDrives = @() }"
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ValidateDrive]@{ ValidRootDrives = @() }"
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ValidateDrive]@{ ValidRootDrives = [string[]]@() }"
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ValidateDrive]@{ ValidRootDrives = [string[]]@() }"
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ValidateDrive]@{ ValidRootDrives = [string[]]@() }"
-        # }
-
-        It 'ValidateNotNull' {
-            $Object = [ValidateNotNull]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ValidateNotNull]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ValidateNotNull]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ValidateNotNull]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ValidateNotNull]::new()"
-        }
-
-        It 'ValidateNotNullOrEmpty' {
-            $Object = [ValidateNotNullOrEmpty]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ValidateNotNullOrEmpty]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ValidateNotNullOrEmpty]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ValidateNotNullOrEmpty]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ValidateNotNullOrEmpty]::new()"
-        }
-
-        It 'ValidateNotNullOrWhiteSpace' -Skip:(-not ('ValidateNotNullOrWhiteSpace' -as [Type])) {
-            $Object = [ValidateNotNullOrWhiteSpace]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ValidateNotNullOrWhiteSpace]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ValidateNotNullOrWhiteSpace]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ValidateNotNullOrWhiteSpace]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ValidateNotNullOrWhiteSpace]::new()"
-        }
-
-        It 'ValidatePattern' {
-            $Object = [ValidatePattern]'Pattern'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'Pattern'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ValidatePattern]'Pattern'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ValidatePattern]'Pattern'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ValidatePattern]'Pattern'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ValidatePattern]'Pattern'"
-        }
-
-        It 'ValidateScript' {
-            $Object = [ValidateScript]{'Validate'}
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "{'Validate'}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ValidateScript]{'Validate'}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ValidateScript]{'Validate'}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ValidateScript]{'Validate'}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ValidateScript]{'Validate'}"
-        }
-
-        It 'ValidateSet' {
-            $Object = [ValidateSet]::new('Value1', 'Value2')
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@('Value1', 'Value2')"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ValidateSet]::new('Value1', 'Value2')"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ValidateSet]::new('Value1', 'Value2')"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ValidateSet]::new('Value1', 'Value2')"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ValidateSet]::new('Value1', 'Value2')"
-        }
-
-        It 'ValidateTrustedData' {
-            $Object = [ValidateTrustedData]::new()
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{}"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ValidateTrustedData]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ValidateTrustedData]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ValidateTrustedData]::new()"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ValidateTrustedData]::new()"
-        }
-
-        # It 'ValidateUserDrive' {
-        #     $Object = [ValidateUserDrive]::new()
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "@{ ValidRootDrives = @('User') }"
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[ValidateUserDrive]@{ ValidRootDrives = @('User') }"
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[ValidateUserDrive]@{ ValidRootDrives = [string[]]@([string]'User') }"
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[ValidateUserDrive]@{ ValidRootDrives = [string[]]@([string]'User') }"
-        #     ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[ValidateUserDrive]@{ ValidRootDrives = [string[]]@([string]'User') }"
-        # }
-
-        It 'version' {
-            $Object = [version]'0.1.2.3'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'0.1.2.3'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[version]'0.1.2.3'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[version]'0.1.2.3'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[version]'0.1.2.3'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[version]'0.1.2.3'"
-        }
-
-        It 'WildcardPattern' {
-            $Object = [WildcardPattern]'_T?e%s*t'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'_T?e%s*t'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[WildcardPattern]'_T?e%s*t'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[WildcardPattern]'_T?e%s*t'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[WildcardPattern]'_T?e%s*t'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[WildcardPattern]'_T?e%s*t'"
-        }
-
-        It 'wmi' {
-            $Object = [wmi]''
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "''"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[wmi]''"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[wmi]''"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[wmi]''"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[wmi]''"
-        }
-
-        It 'wmiclass' {
-            $Object = [wmiclass]'\\LAP70223274\ROOT\Cimv2:Win32_BIOS'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'\\$($Env:ComputerName)\ROOT\Cimv2:Win32_BIOS'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[wmiclass]'\\$($Env:ComputerName)\ROOT\Cimv2:Win32_BIOS'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[wmiclass]'\\$($Env:ComputerName)\ROOT\Cimv2:Win32_BIOS'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[wmiclass]'\\$($Env:ComputerName)\ROOT\Cimv2:Win32_BIOS'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[wmiclass]'\\$($Env:ComputerName)\ROOT\Cimv2:Win32_BIOS'"
-        }
-
-        It 'wmisearcher' {
-            $Object = [wmisearcher]'QueryString'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'QueryString'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[wmisearcher]'QueryString'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[wmisearcher]'QueryString'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[wmisearcher]'QueryString'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[wmisearcher]'QueryString'"
-        }
-
-        It 'X500DistinguishedName' {
-            $Object = [X500DistinguishedName]'CN=123,OID.0.9.2342.19200300.100.1.1=321'
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 | Should -Be "'CN=123,OID.0.9.2342.19200300.100.1.1=321'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained | Should -Be "[X500DistinguishedName]'CN=123,OID.0.9.2342.19200300.100.1.1=321'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit | Should -Be "[X500DistinguishedName]'CN=123,OID.0.9.2342.19200300.100.1.1=321'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full | Should -Be "[X500DistinguishedName]'CN=123,OID.0.9.2342.19200300.100.1.1=321'"
-            ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit | Should -Be "[X500DistinguishedName]'CN=123,OID.0.9.2342.19200300.100.1.1=321'"
-        }
-
     }
 
-    Context 'Formatting' {
-        BeforeAll {
-            $Object = [PSCustomObject]@{
-                first_name = 'John'
-                last_name = 'Smith'
-                is_alive = $True
-                age = 27
-                address = [PSCustomObject]@{
-                    street_address = '21 2nd Street'
-                    city = 'New York'
-                    state = 'NY'
-                    postal_code = '10021-3100'
-                }
-                phone_numbers =[PSCustomObject] @(
-                    @{ number = '212 555-1234' },
-                    @{ number = '646 555-4567' }
-                )
-                children = @('Catherine')
-                spouse = $Null
+    Context 'Type (as type)' {
+
+        It 'Report' {
+            $True | Test-Object @{ '@Type' = [Bool] } | Should -BeNullOrEmpty
+            123   | Test-Object @{ '@Type' = [Bool] } -Elaborate | ForEach-Object {
+                $_.ObjectNode.Value | Should -Be 123
+                $_.Valid            | Should -Be $False
+                $_.Issue            | Should -Not -BeNullOrEmpty
             }
         }
 
-        It 'ConvertTo-Expression (Default)' {
-            $Expression = ConvertTo-Expression -InputObject $Object 
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = @{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{ number = '212 555-1234' },
-        @{ number = '646 555-4567' }
-    )
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = @{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{
-            number = '212 555-1234'
-        },
-        @{
-            number = '646 555-4567'
-        }
-    )
-    children = @(
-        'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = @{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{ number = '212 555-1234' },
-        @{ number = '646 555-4567' }
-    )
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandSingleton -ExpandDepth 2' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandSingleton -ExpandDepth 2
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = @{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{ number = '212 555-1234' },
-        @{ number = '646 555-4567' }
-    )
-    children = @(
-        'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = @{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }
-    phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' })
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandSingleton -ExpandDepth 1' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandSingleton -ExpandDepth 1
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = @{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }
-    phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' })
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-@{ first_name = 'John'; last_name = 'Smith'; is_alive = $True; age = 27; address = @{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }; phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' }); children = @('Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandSingleton -ExpandDepth 0' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandSingleton -ExpandDepth 0
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-@{ first_name = 'John'; last_name = 'Smith'; is_alive = $True; age = 27; address = @{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }; phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' }); children = @('Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandSingleton -ExpandDepth -1' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandSingleton -ExpandDepth -1
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Constrained' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [PSCustomObject]@{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{ number = '212 555-1234' },
-        @{ number = '646 555-4567' }
-    )
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Constrained -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{ number = '212 555-1234' },
-        @{ number = '646 555-4567' }
-    )
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Constrained -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [PSCustomObject]@{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{
-            number = '212 555-1234'
-        },
-        @{
-            number = '646 555-4567'
-        }
-    )
-    children = @(
-        'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Constrained -ExpandSingleton -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained -ExpandSingleton -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{
-            number = '212 555-1234'
-        },
-        @{
-            number = '646 555-4567'
-        }
-    )
-    children = @(
-        'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Constrained -ExpandDepth 2' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained -ExpandDepth 2
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [PSCustomObject]@{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{ number = '212 555-1234' },
-        @{ number = '646 555-4567' }
-    )
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2 -LanguageMode Constrained -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2 -LanguageMode Constrained -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{ number = '212 555-1234' },
-        @{ number = '646 555-4567' }
-    )
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2 -LanguageMode Constrained -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2 -LanguageMode Constrained -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [PSCustomObject]@{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{ number = '212 555-1234' },
-        @{ number = '646 555-4567' }
-    )
-    children = @(
-        'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2 -LanguageMode Constrained -ExpandSingleton -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2 -LanguageMode Constrained -ExpandSingleton -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = '21 2nd Street'
-        city = 'New York'
-        state = 'NY'
-        postal_code = '10021-3100'
-    }
-    phone_numbers = @(
-        @{ number = '212 555-1234' },
-        @{ number = '646 555-4567' }
-    )
-    children = @(
-        'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Constrained -ExpandDepth 1' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained -ExpandDepth 1
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [PSCustomObject]@{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }
-    phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' })
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1 -LanguageMode Constrained -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1 -LanguageMode Constrained -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [System.Management.Automation.PSObject]@{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }
-    phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' })
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1 -LanguageMode Constrained -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1 -LanguageMode Constrained -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [PSCustomObject]@{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }
-    phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' })
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1 -LanguageMode Constrained -ExpandSingleton -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1 -LanguageMode Constrained -ExpandSingleton -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = 'John'
-    last_name = 'Smith'
-    is_alive = $True
-    age = 27
-    address = [System.Management.Automation.PSObject]@{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }
-    phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' })
-    children = @('Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Constrained -ExpandDepth 0' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained -ExpandDepth 0
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{ first_name = 'John'; last_name = 'Smith'; is_alive = $True; age = 27; address = [PSCustomObject]@{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }; phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' }); children = @('Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0 -LanguageMode Constrained -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name = 'John'; last_name = 'Smith'; is_alive = $True; age = 27; address = [System.Management.Automation.PSObject]@{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }; phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' }); children = @('Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0 -LanguageMode Constrained -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{ first_name = 'John'; last_name = 'Smith'; is_alive = $True; age = 27; address = [PSCustomObject]@{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }; phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' }); children = @('Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0 -LanguageMode Constrained -ExpandSingleton -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -ExpandSingleton -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name = 'John'; last_name = 'Smith'; is_alive = $True; age = 27; address = [System.Management.Automation.PSObject]@{ street_address = '21 2nd Street'; city = 'New York'; state = 'NY'; postal_code = '10021-3100' }; phone_numbers = @(@{ number = '212 555-1234' }, @{ number = '646 555-4567' }); children = @('Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Constrained -ExpandDepth -1' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained -ExpandDepth -1
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=[PSCustomObject]@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Constrained -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Constrained -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=[System.Management.Automation.PSObject]@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=[PSCustomObject]@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{first_name='John';last_name='Smith';is_alive=$True;age=27;address=[System.Management.Automation.PSObject]@{street_address='21 2nd Street';city='New York';state='NY';postal_code='10021-3100'};phone_numbers=@(@{number='212 555-1234'}, @{number='646 555-4567'});children=@('Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Constrained -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{ number = [string]'212 555-1234' },
-        [hashtable]@{ number = [string]'646 555-4567' }
-    )
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -LanguageMode Constrained -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -LanguageMode Constrained -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' },
-        [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }
-    )
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Constrained -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Constrained -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{
-            number = [string]'212 555-1234'
-        },
-        [hashtable]@{
-            number = [string]'646 555-4567'
-        }
-    )
-    children = [array]@(
-        [string]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -LanguageMode Constrained -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -LanguageMode Constrained -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{
-            number = [System.String]'212 555-1234'
-        },
-        [System.Collections.Hashtable]@{
-            number = [System.String]'646 555-4567'
-        }
-    )
-    children = [System.Object[]]@(
-        [System.String]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2 -LanguageMode Constrained -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2 -LanguageMode Constrained -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{ number = [string]'212 555-1234' },
-        [hashtable]@{ number = [string]'646 555-4567' }
-    )
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 2 -LanguageMode Constrained -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 2 -LanguageMode Constrained -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' },
-        [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }
-    )
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2 -LanguageMode Constrained -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2 -LanguageMode Constrained -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{ number = [string]'212 555-1234' },
-        [hashtable]@{ number = [string]'646 555-4567' }
-    )
-    children = [array]@(
-        [string]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 2 -LanguageMode Constrained -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 2 -LanguageMode Constrained -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' },
-        [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }
-    )
-    children = [System.Object[]]@(
-        [System.String]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1 -LanguageMode Constrained -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1 -LanguageMode Constrained -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }
-    phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' })
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 1 -LanguageMode Constrained -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 1 -LanguageMode Constrained -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }
-    phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' })
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1 -LanguageMode Constrained -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1 -LanguageMode Constrained -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }
-    phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' })
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 1 -LanguageMode Constrained -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 1 -LanguageMode Constrained -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }
-    phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' })
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0 -LanguageMode Constrained -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{ first_name = [string]'John'; last_name = [string]'Smith'; is_alive = [bool]$True; age = [int]27; address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }; phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' }); children = [array]@([string]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 0 -LanguageMode Constrained -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 0 -LanguageMode Constrained -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name = [System.String]'John'; last_name = [System.String]'Smith'; is_alive = [System.Boolean]$True; age = [System.Int32]27; address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }; phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }); children = [System.Object[]]@([System.String]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0 -LanguageMode Constrained -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Constrained -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{ first_name = [string]'John'; last_name = [string]'Smith'; is_alive = [bool]$True; age = [int]27; address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }; phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' }); children = [array]@([string]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 0 -LanguageMode Constrained -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 0 -LanguageMode Constrained -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name = [System.String]'John'; last_name = [System.String]'Smith'; is_alive = [System.Boolean]$True; age = [System.Int32]27; address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }; phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }); children = [System.Object[]]@([System.String]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Constrained -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Constrained -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth -1 -LanguageMode Constrained -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth -1 -LanguageMode Constrained -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth -1 -LanguageMode Constrained -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Full' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{ number = [string]'212 555-1234' },
-        [hashtable]@{ number = [string]'646 555-4567' }
-    )
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Full -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' },
-        [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }
-    )
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Full -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{
-            number = [string]'212 555-1234'
-        },
-        [hashtable]@{
-            number = [string]'646 555-4567'
-        }
-    )
-    children = [array]@(
-        [string]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Full -ExpandSingleton -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full -ExpandSingleton -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{
-            number = [System.String]'212 555-1234'
-        },
-        [System.Collections.Hashtable]@{
-            number = [System.String]'646 555-4567'
-        }
-    )
-    children = [System.Object[]]@(
-        [System.String]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Full -ExpandDepth 2' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full -ExpandDepth 2
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{ number = [string]'212 555-1234' },
-        [hashtable]@{ number = [string]'646 555-4567' }
-    )
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2 -LanguageMode Full -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2 -LanguageMode Full -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' },
-        [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }
-    )
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2 -LanguageMode Full -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2 -LanguageMode Full -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{ number = [string]'212 555-1234' },
-        [hashtable]@{ number = [string]'646 555-4567' }
-    )
-    children = [array]@(
-        [string]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2 -LanguageMode Full -ExpandSingleton -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2 -LanguageMode Full -ExpandSingleton -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' },
-        [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }
-    )
-    children = [System.Object[]]@(
-        [System.String]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Full -ExpandDepth 1' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full -ExpandDepth 1
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }
-    phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' })
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1 -LanguageMode Full -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1 -LanguageMode Full -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }
-    phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' })
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1 -LanguageMode Full -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1 -LanguageMode Full -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }
-    phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' })
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1 -LanguageMode Full -ExpandSingleton -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1 -LanguageMode Full -ExpandSingleton -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }
-    phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' })
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Full -ExpandDepth 0' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full -ExpandDepth 0
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{ first_name = [string]'John'; last_name = [string]'Smith'; is_alive = [bool]$True; age = [int]27; address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }; phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' }); children = [array]@([string]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0 -LanguageMode Full -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name = [System.String]'John'; last_name = [System.String]'Smith'; is_alive = [System.Boolean]$True; age = [System.Int32]27; address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }; phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }); children = [System.Object[]]@([System.String]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0 -LanguageMode Full -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{ first_name = [string]'John'; last_name = [string]'Smith'; is_alive = [bool]$True; age = [int]27; address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }; phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' }); children = [array]@([string]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0 -LanguageMode Full -ExpandSingleton -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -ExpandSingleton -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name = [System.String]'John'; last_name = [System.String]'Smith'; is_alive = [System.Boolean]$True; age = [System.Int32]27; address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }; phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }); children = [System.Object[]]@([System.String]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Full -ExpandDepth -1' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full -ExpandDepth -1
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Full -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Full -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Full -ExpandSingleton' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Full -ExpandSingleton
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -FullTypeName' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -FullTypeName
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Full -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{ number = [string]'212 555-1234' },
-        [hashtable]@{ number = [string]'646 555-4567' }
-    )
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -LanguageMode Full -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -LanguageMode Full -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' },
-        [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }
-    )
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -LanguageMode Full -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -LanguageMode Full -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{
-            number = [string]'212 555-1234'
-        },
-        [hashtable]@{
-            number = [string]'646 555-4567'
-        }
-    )
-    children = [array]@(
-        [string]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -LanguageMode Full -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -LanguageMode Full -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{
-            number = [System.String]'212 555-1234'
-        },
-        [System.Collections.Hashtable]@{
-            number = [System.String]'646 555-4567'
-        }
-    )
-    children = [System.Object[]]@(
-        [System.String]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2 -LanguageMode Full -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2 -LanguageMode Full -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{ number = [string]'212 555-1234' },
-        [hashtable]@{ number = [string]'646 555-4567' }
-    )
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 2 -LanguageMode Full -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 2 -LanguageMode Full -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' },
-        [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }
-    )
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 2 -LanguageMode Full -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 2 -LanguageMode Full -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{
-        street_address = [string]'21 2nd Street'
-        city = [string]'New York'
-        state = [string]'NY'
-        postal_code = [string]'10021-3100'
-    }
-    phone_numbers = [array]@(
-        [hashtable]@{ number = [string]'212 555-1234' },
-        [hashtable]@{ number = [string]'646 555-4567' }
-    )
-    children = [array]@(
-        [string]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 2 -LanguageMode Full -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 2 -LanguageMode Full -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{
-        street_address = [System.String]'21 2nd Street'
-        city = [System.String]'New York'
-        state = [System.String]'NY'
-        postal_code = [System.String]'10021-3100'
-    }
-    phone_numbers = [System.Object[]]@(
-        [System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' },
-        [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }
-    )
-    children = [System.Object[]]@(
-        [System.String]'Catherine'
-    )
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1 -LanguageMode Full -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1 -LanguageMode Full -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }
-    phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' })
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 1 -LanguageMode Full -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 1 -LanguageMode Full -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }
-    phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' })
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 1 -LanguageMode Full -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 1 -LanguageMode Full -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{
-    first_name = [string]'John'
-    last_name = [string]'Smith'
-    is_alive = [bool]$True
-    age = [int]27
-    address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }
-    phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' })
-    children = [array]@([string]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 1 -LanguageMode Full -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 1 -LanguageMode Full -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{
-    first_name = [System.String]'John'
-    last_name = [System.String]'Smith'
-    is_alive = [System.Boolean]$True
-    age = [System.Int32]27
-    address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }
-    phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' })
-    children = [System.Object[]]@([System.String]'Catherine')
-    spouse = $Null
-}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0 -LanguageMode Full -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{ first_name = [string]'John'; last_name = [string]'Smith'; is_alive = [bool]$True; age = [int]27; address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }; phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' }); children = [array]@([string]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 0 -LanguageMode Full -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 0 -LanguageMode Full -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name = [System.String]'John'; last_name = [System.String]'Smith'; is_alive = [System.Boolean]$True; age = [System.Int32]27; address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }; phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }); children = [System.Object[]]@([System.String]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth 0 -LanguageMode Full -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth 0 -LanguageMode Full -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{ first_name = [string]'John'; last_name = [string]'Smith'; is_alive = [bool]$True; age = [int]27; address = [PSCustomObject]@{ street_address = [string]'21 2nd Street'; city = [string]'New York'; state = [string]'NY'; postal_code = [string]'10021-3100' }; phone_numbers = [array]@([hashtable]@{ number = [string]'212 555-1234' }, [hashtable]@{ number = [string]'646 555-4567' }); children = [array]@([string]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth 0 -LanguageMode Full -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth 0 -LanguageMode Full -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{ first_name = [System.String]'John'; last_name = [System.String]'Smith'; is_alive = [System.Boolean]$True; age = [System.Int32]27; address = [System.Management.Automation.PSObject]@{ street_address = [System.String]'21 2nd Street'; city = [System.String]'New York'; state = [System.String]'NY'; postal_code = [System.String]'10021-3100' }; phone_numbers = [System.Object[]]@([System.Collections.Hashtable]@{ number = [System.String]'212 555-1234' }, [System.Collections.Hashtable]@{ number = [System.String]'646 555-4567' }); children = [System.Object[]]@([System.String]'Catherine'); spouse = $Null }
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Full -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Full -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth -1 -LanguageMode Full -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth -1 -LanguageMode Full -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[PSCustomObject]@{first_name=[string]'John';last_name=[string]'Smith';is_alive=[bool]$True;age=[int]27;address=[PSCustomObject]@{street_address=[string]'21 2nd Street';city=[string]'New York';state=[string]'NY';postal_code=[string]'10021-3100'};phone_numbers=[array]@([hashtable]@{number=[string]'212 555-1234'}, [hashtable]@{number=[string]'646 555-4567'});children=[array]@([string]'Catherine');spouse=$Null}
-'@
-        }
-        It 'ConvertTo-Expression -FullTypeName -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -Explicit' {
-            $Expression = ConvertTo-Expression -InputObject $Object -FullTypeName -ExpandDepth -1 -LanguageMode Full -ExpandSingleton -Explicit
-            { Invoke-Expression $Expression } | Should -not -Throw
-            $Expression | Should -Be @'
-[System.Management.Automation.PSObject]@{first_name=[System.String]'John';last_name=[System.String]'Smith';is_alive=[System.Boolean]$True;age=[System.Int32]27;address=[System.Management.Automation.PSObject]@{street_address=[System.String]'21 2nd Street';city=[System.String]'New York';state=[System.String]'NY';postal_code=[System.String]'10021-3100'};phone_numbers=[System.Object[]]@([System.Collections.Hashtable]@{number=[System.String]'212 555-1234'}, [System.Collections.Hashtable]@{number=[System.String]'646 555-4567'});children=[System.Object[]]@([System.String]'Catherine');spouse=$Null}
-'@
+        It 'Bool' {
+            $True  | Test-Object @{ '@Type' = [Bool] }    -ValidateOnly | Should -BeTrue
+            'True' | Test-Object @{ '@Type' = [Bool] }    -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Int' {
+            123    | Test-Object @{ '@Type' = [Int] }     -ValidateOnly | Should -BeTrue
+            '123'  | Test-Object @{ '@Type' = [Int] }     -ValidateOnly | Should -BeFalse
+        }
+
+        It 'String' {
+            'True' | Test-Object @{ '@Type' = [String] } -ValidateOnly | Should -BeTrue
+            '123'  | Test-Object @{ '@Type' = [String] } -ValidateOnly | Should -BeTrue
+            123    | Test-Object @{ '@Type' = [String] } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Array' {
+            ,@(1,2)    | Test-Object @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@(1)      | Test-Object @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@()       | Test-Object @{ '@Type' = [Array] }                             -ValidateOnly | Should -BeTrue
+            'Test'     | Test-Object @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-Object @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'HashTable' {
+            @{ a = 1 } | Test-Object @{ '@Type' = [HashTable]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            @{}        | Test-Object @{ '@Type' = [HashTable] }                             -ValidateOnly | Should -BeTrue
+            'Test'     | Test-Object @{ '@Type' = [HashTable]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1, 2)   | Test-Object @{ '@Type' = [HashTable]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
     }
 
-    Context 'Issues' {
+    Context 'Not Type (as string)' {
 
-        It '#59 quoting bug' {
-            @{ Test = "foo'bar" } | ConvertTo-Expression | Should -Be "@{ Test = 'foo''bar' }"
+        It 'Bool' {
+            'True' | Test-Object @{ '@NotType' = 'Bool' }    -ValidateOnly | Should -BeTrue
+            $True  | Test-Object @{ '@NotType' = 'Bool' }    -ValidateOnly | Should -BeFalse
+        }
+    }
+
+    Context 'Not Type (as type)' {
+
+        It 'Not Bool' {
+            'True' | Test-Object @{ '@NotType' = [Bool] }    -ValidateOnly | Should -BeTrue
+            $True  | Test-Object @{ '@NotType' = [Bool] }    -ValidateOnly | Should -BeFalse
+        }
+    }
+
+
+    Context 'Multiple types' {
+
+        It 'Any of type' {
+            '123' | Test-Object @{ '@Type' = [Int], [String] } -ValidateOnly | Should -BeTrue
+            $true | Test-Object @{ '@Type' = [Int], [String] } -ValidateOnly | Should -BeFalse
         }
 
-        It '#87 ConvertTo-Expression: keys with special characters should be quoted' { # https://stackoverflow.com/questions/62754771/unquoted-key-rules-and-best-practices
-            @{ a = 1 }     | ConvertTo-Expression | Should -Be '@{ a = 1 }'
-            @{ '$a'  = 1 } | ConvertTo-Expression | Should -Be '@{ ''$a'' = 1 }' # --> @{ '$a' = 1 }
-            @{ 'a b' = 1 } | ConvertTo-Expression | Should -Be "@{ 'a b' = 1 }"
-            @{ 'a"b' = 1 } | ConvertTo-Expression | Should -Be "@{ 'a""b' = 1 }" # --> @{ 'a"b' = 1 }
-            @{ "a'b" = 1 } | ConvertTo-Expression | Should -Be "@{ 'a''b' = 1 }"
+        It 'None of type' {
+            '123' | Test-Object @{ '@NotType' = [Int], [String] } -ValidateOnly | Should -BeFalse
+            $true | Test-Object @{ '@NotType' = [Int], [String] } -ValidateOnly | Should -BeTrue
+        }
+    }
+
+    Context 'No type' {
+
+        It '$Null' {
+            @{ Test = '123' } | Test-Object @{ Test = @{ '@Type' = [Int], [String] } }         -ValidateOnly | Should -BeTrue
+            @{ Test = $Null } | Test-Object @{ Test = @{ '@Type' = [Int], [String] } }         -ValidateOnly | Should -BeFalse
+            @{ Test = $Null } | Test-Object @{ Test = @{ '@Type' = [Int], [String], [Void] } } -ValidateOnly | Should -BeTrue
+            @{ Test = $Null } | Test-Object @{ Test = @{ '@Type' = [Int], [String], 'Null' } } -ValidateOnly | Should -BeTrue
+            @{ Test = $Null } | Test-Object @{ Test = @{ '@Type' = [Int], [String], $Null } }  -ValidateOnly | Should -BeTrue
+            @{ Test = '123' } | Test-Object @{ Test = @{ '@Type' = [Int], [Void] } }           -ValidateOnly | Should -BeFalse
+        }
+    }
+
+    Context 'PSNode Type' {
+
+        It 'Value' {
+            'String' | Test-Object @{ '@Type' = 'PSNode' }           -ValidateOnly | Should -BeTrue
+            'String' | Test-Object @{ '@Type' = 'PSLeafNode' }       -ValidateOnly | Should -BeTrue
+            'String' | Test-Object @{ '@Type' = 'PSCollectionNode' } -ValidateOnly | Should -BeFalse
+            'String' | Test-Object @{ '@Type' = 'PSListNode' }       -ValidateOnly | Should -BeFalse
+            'String' | Test-Object @{ '@Type' = 'PSMapNode' }        -ValidateOnly | Should -BeFalse
+            'String' | Test-Object @{ '@Type' = 'PSObjectNode' }     -ValidateOnly | Should -BeFalse
         }
 
-        It '#92 ConvertTo-Expression -Expand -1 leaves space after map value' {
-            @{ a = 1 } | ConvertTo-Expression -ExpandDepth -1 | Should -Be '@{a=1}'
+        It 'Array' {
+            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSNode';           '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSLeafNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSCollectionNode'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSListNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSMapNode';        '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSObjectNode';     '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
 
-        It '#91 ConvertTo-Expression: better handle special type keys' {
-            @{ (Get-Date 1963-10-07) = 7 } | ConvertTo-Expression      | Should -Be "@{ '1963-10-07T00:00:00.0000000' = 7 }"
-            @{ @{ a = 1 } = 'Test' } | ConvertTo-Expression -Expand -1 | Should -Be "@{@{a=1}='Test'}"
+        It 'Dictionary' {
+            @{ a = 1 } | Test-Object @{ '@Type' = 'PSNode';           '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            @{ a = 1 } | Test-Object @{ '@Type' = 'PSLeafNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-Object @{ '@Type' = 'PSCollectionNode'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            @{ a = 1 } | Test-Object @{ '@Type' = 'PSListNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-Object @{ '@Type' = 'PSMapNode';        '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            @{ a = 1 } | Test-Object @{ '@Type' = 'PSObjectNode';     '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
+
+        It 'Object' {
+            $Person | Test-Object @{ '@Type' = 'PSNode';           '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            $Person | Test-Object @{ '@Type' = 'PSLeafNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            $Person | Test-Object @{ '@Type' = 'PSCollectionNode'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            $Person | Test-Object @{ '@Type' = 'PSListNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            $Person | Test-Object @{ '@Type' = 'PSMapNode';        '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            $Person | Test-Object @{ '@Type' = 'PSObjectNode';     '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+        }
+    }
+
+    Context 'Natural list ' {
+        BeforeAll {
+            $Schema = @{ Word = @{ '@Match' = '^\w+$' } }
+        }
+        it 'No list'         { @{}                           | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it '$Null'           { @{ Word = $null }             | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Test'            { @{ Word = 'Test' }            | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'Empty'           { @{ Word = @() }               | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'Single'          { @{ Word = @('a') }            | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'No match a b'    { @{ Word = @('a b') }          | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+    }
+
+    Context 'Compulsory list with unnamed items' {
+        BeforeAll {
+            $Schema = @{ Word = @(@{ '@Match' = '^\w+$' }) }
+        }
+        it 'No list'         { @{}                           | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it '$Null'           { @{ Word = $null }             | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Test'            { @{ Word = 'Test' }            | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Empty'           { @{ Word = @() }               | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'Single'          { @{ Word = @('a') }            | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'No match a b'    { @{ Word = @('a b') }          | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+    }
+
+    Context 'Compulsory list with named items' {
+        BeforeAll {
+            $Schema = @{ Word = @{ '@Type' = [PSListNode]; IsWord = @{ '@Match' = '^\w+$' } } }
+        }
+        it 'No list'         { @{}                           | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it '$Null'           { @{ Word = $null }             | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Test'            { @{ Word = 'Test' }            | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Empty'           { @{ Word = @() }               | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'Single'          { @{ Word = @('a') }            | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'No match a b'    { @{ Word = @('a b') }          | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+    }
+
+    Context 'Forced list with named items' {
+        BeforeAll {
+            $Schema = @{ Word = @{ '@Type' = [PSListNode]; '@Required' = $true; IsWord = @{ '@Match' = '^\w+$' } } }
+        }
+        it 'No list'         { @{}                           | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it '$Null'           { @{ Word = $null }             | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Test'            { @{ Word = 'Test' }            | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Empty'           { @{ Word = @() }               | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'Single'          { @{ Word = @('a') }            | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'No match a b'    { @{ Word = @('a b') }          | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+    }
+
+    Context 'Multiple integer Limits' {
+
+        It 'Maximum int' {
+            ,@(17, 18, 19) | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(40, 41, 42) | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(17, 42, 99) | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Exclusive maximum int' {
+            ,@(17, 18, 19) | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(40, 41, 42) | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
+            ,@(17, 42, 99) | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Minimum int' {
+            ,@(97, 98, 99) | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(42, 43, 44) | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(17, 42, 99) | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Exclusive minimum int' {
+            ,@(97, 98, 99) | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(42, 43, 44) | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
+            ,@(17, 42, 99) | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
+        }
+    }
+
+    Context 'String limits' {
+
+        It 'Maximum string' {
+            'Alpha' | Test-Object @{ '@Maximum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Beta'  | Test-Object @{ '@Maximum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Gamma' | Test-Object @{ '@Maximum' = 'Beta' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Exclusive maximum string' {
+            'Alpha' | Test-Object @{ '@ExclusiveMaximum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Beta'  | Test-Object @{ '@ExclusiveMaximum' = 'Beta' } -ValidateOnly | Should -BeFalse
+            'Gamma' | Test-Object @{ '@ExclusiveMaximum' = 'Beta' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Minimum string' {
+            'Gamma' | Test-Object @{ '@Minimum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Beta'  | Test-Object @{ '@Minimum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Alpha' | Test-Object @{ '@Minimum' = 'Beta' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Exclusive minimum string' {
+            'Gamma' | Test-Object @{ '@ExclusiveMinimum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Beta'  | Test-Object @{ '@ExclusiveMinimum' = 'Beta' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-Object @{ '@ExclusiveMinimum' = 'Beta' } -ValidateOnly | Should -BeFalse
+        }
+    }
+
+    Context 'Integer Limits' {
+
+        It 'Maximum int' {
+            17 | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
+            42 | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
+            99 | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Exclusive maximum int' {
+            17 | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeTrue
+            42 | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
+            99 | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Minimum int' {
+            99 | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
+            42 | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
+            17 | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Exclusive minimum int' {
+            99 | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeTrue
+            42 | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
+            17 | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
+        }
+    }
+
+
+    Context 'Case sensitive string limits' {
+
+        It 'Maximum string' {
+            'alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Maximum' = 'Alpha' } -ValidateOnly | Should -BeTrue
+            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Maximum' = 'Alpha' } -ValidateOnly | Should -BeTrue
+            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Maximum' = 'alpha' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Maximum exclusive string' {
+            'alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMaximum' = 'Alpha' } -ValidateOnly | Should -BeTrue
+            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMaximum' = 'Alpha' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMaximum' = 'alpha' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Minimum string' {
+            'alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Minimum' = 'Alpha' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Minimum' = 'Alpha' } -ValidateOnly | Should -BeTrue
+            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Minimum' = 'alpha' } -ValidateOnly | Should -BeTrue
+        }
+
+        It 'Minimum exclusive string' {
+            'alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMinimum' = 'Alpha' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMinimum' = 'Alpha' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMinimum' = 'alpha' } -ValidateOnly | Should -BeTrue
+        }
+    }
+
+    Context 'String length limits' {
+
+        It 'Minimum length' {
+            'abc'   | Test-Object @{ '@MinimumLength' = 4 } -ValidateOnly | Should -BeFalse
+            'abcd'  | Test-Object @{ '@MinimumLength' = 4 } -ValidateOnly | Should -BeTrue
+        }
+
+        It 'Length' {
+            'ab'    | Test-Object @{ '@Length' = 3 } -ValidateOnly | Should -BeFalse
+            'abc'   | Test-Object @{ '@Length' = 3 } -ValidateOnly | Should -BeTrue
+            'abcd'  | Test-Object @{ '@Length' = 3 } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Maximum length' {
+            'abc'   | Test-Object @{ '@MaximumLength' = 3 } -ValidateOnly | Should -BeTrue
+            'abcd'  | Test-Object @{ '@MaximumLength' = 3 } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Multiple values length' {
+            ,@('12', '345', '6789') | Test-Object @{ '@MinimumLength' = 2 } -ValidateOnly | Should -BeTrue
+            ,@('12', '345', '6789') | Test-Object @{ '@MinimumLength' = 3 } -ValidateOnly | Should -BeFalse
+            ,@('123', '456', '789') | Test-Object @{ '@Length' = 3 }        -ValidateOnly | Should -BeTrue
+            ,@('12', '345', '6789') | Test-Object @{ '@Length' = 3 }        -ValidateOnly | Should -BeFalse
+            ,@('12', '345', '6789') | Test-Object @{ '@MaximumLength' = 4 } -ValidateOnly | Should -BeTrue
+            ,@('12', '345', '6789') | Test-Object @{ '@MaximumLength' = 3 } -ValidateOnly | Should -BeFalse
+        }
+    }
+
+    Context 'Patterns' {
+
+        It 'Like' {
+            'test' | Test-Object @{ '@Like' = 'T*t' } -ValidateOnly | Should -BeTrue
+            'test' | Test-Object @{ '@Like' = 'T?t' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Not like' {
+            'test' | Test-Object @{ '@NotLike' = 'T*t' } -ValidateOnly | Should -BeFalse
+            'test' | Test-Object @{ '@NotLike' = 'T?t' } -ValidateOnly | Should -BeTrue
+        }
+
+
+        It 'Match' {
+            'test' | Test-Object @{ '@Match' = 'T.*t' } -ValidateOnly | Should -BeTrue
+            'test' | Test-Object @{ '@Match' = 'T.t' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Not match' {
+            'test' | Test-Object @{ '@NotMatch' = 'T.*t' } -ValidateOnly | Should -BeFalse
+            'test' | Test-Object @{ '@NotMatch' = 'T.t' }   -ValidateOnly | Should -BeTrue
+        }
+    }
+
+    Context 'Case sensitive patterns' {
+
+        It 'Like' {
+            'Test' | Test-Object @{ '@CaseSensitive' = $true; '@Like' = 'T*t' } -ValidateOnly | Should -BeTrue
+            'test' | Test-Object @{ '@CaseSensitive' = $true; '@Like' = 'T*t' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Not like' {
+            'Test' | Test-Object @{ '@CaseSensitive' = $true; '@notLike' = 'T*t' } -ValidateOnly | Should -BeFalse
+            'test' | Test-Object @{ '@CaseSensitive' = $true; '@notLike' = 'T*t' } -ValidateOnly | Should -BeTrue
+        }
+
+
+        It 'Match' {
+            'Test' | Test-Object @{ '@CaseSensitive' = $true; '@Match' = 'T..t' } -ValidateOnly | Should -BeTrue
+            'test' | Test-Object @{ '@CaseSensitive' = $true; '@Match' = 'T..t' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Not match' {
+            'Test' | Test-Object @{ '@CaseSensitive' = $true; '@notMatch' = 'T..t' } -ValidateOnly | Should -BeFalse
+            'test' | Test-Object @{ '@CaseSensitive' = $true; '@notMatch' = 'T..t' } -ValidateOnly | Should -BeTrue
+        }
+    }
+
+    Context 'Multiple patterns' {
+
+        It 'Like' {
+            'Two'  | Test-Object @{ '@Like' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
+            'Four' | Test-Object @{ '@Like' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Not like' {
+            'Two'  | Test-Object @{ '@NotLike' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
+            'Four' | Test-Object @{ '@NotLike' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
+        }
+
+
+        It 'Match' {
+            'Two'  | Test-Object @{ '@Match' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
+            'Four' | Test-Object @{ '@Match' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
+        }
+
+        It 'Not match' {
+            'Two'  | Test-Object @{ '@NotMatch' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
+            'Four' | Test-Object @{ '@NotMatch' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
+        }
+    }
+
+
+    Context 'No (child) Node' {
+
+        It "[V] Leaf node" {
+            'Test' | Test-Object @{} -ValidateOnly | Should -BeTrue
+            'Test' | Test-Object @{} | Should -BeNullOrEmpty
+        }
+
+        It "[V] Empty list node" {
+            ,@() | Test-Object @{} -ValidateOnly | Should -BeTrue
+            ,@() | Test-Object @{} | Should -BeNullOrEmpty
+        }
+
+        It "[X] Simple list node" {
+            ,@('Test') | Test-Object @{} -ValidateOnly | Should -BeFalse
+            $Result = ,@('Test') | Test-Object @{}
+            $Result                 | Should -BeOfType PSCustomObject
+            $Result.Valid           | Should -BeFalse
+            $Result.ObjectNode.Path | Should -BeNullOrEmpty
+            $Result.Issue           | Should -BeLike '*not accepted*0*'
+        }
+
+        It "[X] Simple list node" {
+            ,@('a', 'b') | Test-Object @{} -ValidateOnly | Should -BeFalse
+            ,@('a', 'b') | Test-Object @{}| Should -not -BeNullOrEmpty
+        }
+
+        It "[V] Empty map node" {
+            @{} | Test-Object @{} -ValidateOnly | Should -BeTrue
+            @{} | Test-Object @{} | Should -BeNullOrEmpty
+        }
+
+        It "[X] Simple map node" {
+            @{ a = 1 } | Test-Object @{} -ValidateOnly | Should -BeFalse
+            $Result = @{ a = 1 } | Test-Object @{}
+            $Result                 | Should -BeOfType PSCustomObject
+            $Result.Valid           | Should -BeFalse
+            $Result.ObjectNode.Path | Should -BeNullOrEmpty
+            $Result.Issue           | Should -BeLike "*not accepted*a*"
+        }
+
+        It "[X] Complex object" {
+            $Person | Test-Object @{} -ValidateOnly | Should -BeFalse
+            $Result = $Person | Test-Object @{}
+            $Result                 | Should -BeOfType PSCustomObject
+            $Result.Valid           | Should -BeFalse
+            $Result.ObjectNode.Path | Should -BeNullOrEmpty
+            $Result.Issue           | Should -BeLike "*not accepted*FirstName*LastName*"
+        }
+
+
+        It "[X] Complex map node" {
+            $Person | Test-Object @{ '@type' = [PSMapNode] } -ValidateOnly | Should -BeFalse
+            $Result = $Person | Test-Object @{ '@type' = [PSMapNode] }
+            $Result                 | Should -BeOfType PSCustomObject
+            $Result.Valid           | Should -BeFalse
+            $Result.ObjectNode.Path | Should -BeNullOrEmpty
+            $Result.Issue           | Should -BeLike "*not accepted*FirstName*LastName*"
+        }
+    }
+
+    Context 'Any (child) Node' {
+
+        It "[V] Leaf node" {
+            'Test' | Test-Object @() -ValidateOnly | Should -BeTrue
+            'Test' | Test-Object @() | Should -BeNullOrEmpty
+        }
+
+        It "[V] Empty list node" {
+            ,@() | Test-Object @() -ValidateOnly | Should -BeTrue
+            ,@() | Test-Object @() | Should -BeNullOrEmpty
+        }
+
+        It "[V] Simple list node" {
+            ,@('Test') | Test-Object @() -ValidateOnly | Should -BeTrue
+            ,@('Test') | Test-Object @() | Should -BeNullOrEmpty
+        }
+
+        It "[V] Simple list node" {
+            ,@('a', 'b') | Test-Object @() -ValidateOnly | Should -BeTrue
+            ,@('a', 'b') | Test-Object @() | Should -BeNullOrEmpty
+        }
+
+        It "[V] Empty map node" {
+            @{} | Test-Object @() -ValidateOnly | Should -BeTrue
+            @{} | Test-Object @() | Should -BeNullOrEmpty
+        }
+
+        It "[V] Simple map node" {
+            @{ a = 1 } | Test-Object @() -ValidateOnly | Should -BeTrue
+            @{ a = 1 } | Test-Object @() | Should -BeNullOrEmpty
+        }
+
+        It "[V] Complex object" {
+            $Person | Test-Object @() -ValidateOnly | Should -BeTrue
+            $Person | Test-Object @() | Should -BeNullOrEmpty
+        }
+
+
+        It "[V] Complex map node" {
+            $Person | Test-Object @{ '@type' = [PSMapNode]; '*' = @() } -ValidateOnly | Should -BeFalse
+            $Person | Test-Object @{ '@type' = [PSMapNode]; '@AllowExtraNodes' = $true } | Should -BeNullOrEmpty
+        }
+    }
+
+    Context 'Map nodes' {
+
+        It "[V] Single name" {
+            $Person | Test-Object @{ Age = @{ '@Type' = 'Int' }; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            $Person | Test-Object @{ Age = @{ '@Type' = 'Int' }; '@AllowExtraNodes' = $true } | Should -BeNullOrEmpty
+        }
+
+        It "[V] Multiple names" {
+            $Schema = @{
+                FirstName = @{ '@Type' = 'String' }
+                LastName  = @{ '@Type' = 'String' }
+                IsAlive   = @{ '@Type' = 'Bool' }
+                Birthday  = @{ '@Type' = 'DateTime' }
+                Age       = @{ '@Type' = 'Int' }
+                '@AllowExtraNodes' = $true
+            }
+            $Person | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Person | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[V] All (root) names defined" {
+            $Schema = @{
+                FirstName = @{ '@Type' = 'String' }
+                LastName  = @{ '@Type' = 'String' }
+                IsAlive   = @{ '@Type' = 'Bool' }
+                Birthday  = @{ '@Type' = 'DateTime' }
+                Age       = @{ '@Type' = 'Int' }
+                Address   = @{ '@Type' = 'PSMapNode',  $Null; '@AllowExtraNodes' = $true }
+                Phone     = @{ '@Type' = 'PSMapNode',  $Null; '@AllowExtraNodes' = $true }
+                Children  = @{ '@Type' = 'PSListNode', $Null; '@AllowExtraNodes' = $true }
+                Spouse    = @{ '@Type' = 'String',     $Null }
+            }
+            $Person | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Person | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+    }
+
+    Context 'List nodes' {
+
+        BeforeAll {
+
+            $Data = @{
+                fruits = @(
+                    'apple',
+                    'orange',
+                    'pear'
+                )
+                vegetables = @(
+                    @{
+                        veggieName = 'potato'
+                        veggieLike = $True
+                    },
+                    @{
+                        veggieName = 'broccoli'
+                        veggieLike = $False
+                    }
+                )
+            }
+
+            $Data2 = @{
+                fruits = @(
+                    'apple',
+                    'orange',
+                    'pear'
+                )
+                vegetables = @(
+                    @{
+                        veggieName = 'potato'
+                        veggieLike = $True
+                    },
+                    @{
+                        veggieName = 'broccoli'
+                        veggieLike = $False
+                    },
+                    @{ # Duplicate node
+                        veggieName = 'potato'
+                        veggieLike = $True
+                    }
+                )
+            }
+        }
+
+        It "[X] One specific node, not allowing extra nodes" {
+            $Schema = @{
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    veggie = @{
+                        '@Type' = [PSMapNode]
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            $Data | Test-Object $Schema | Should -not -BeNullOrEmpty
+        }
+
+        It "[V] One specific node and allowing extra nodes" {
+            $Schema = @{
+                '@AllowExtraNodes' = $true
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    veggie = @{
+                        '@Type' = [PSMapNode]
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[V] One specific node and allowing extra nodes" {
+            $Schema = @{
+                fruits = @{
+                    '@Type' = [PSListNode]
+                    fruit = @{ '@Type' = [String] }
+                }
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    '@AllowExtraNodes' = $true
+                    veggie = @{
+                        '@Type' = [PSMapNode]
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[V] Single node that match a test definition" {
+            $Schema = @{
+                fruits = @{
+                    '@Type' = [PSListNode]
+                    fruit = @{ '@Type' = [String] }
+                }
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    veggie = @{
+                        '@Type' = [PSMapNode]
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[X] Multiple nodes that match at least one single test definition" {
+            $Schema = @{
+                fruits = @{
+                    '@Type' = [PSListNode]
+                    fruit = @{ '@Type' = [String] }
+                }
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    veggie = @{
+                        '@Type' = [PSMapNode]
+                        '@AllowExtraNodes' = $true
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[V] Multiple nodes that match a single test definition" {
+            $Schema = @{
+                fruits = @{
+                    '@Type' = [PSListNode]
+                    fruit = @{ '@Type' = [String] }
+                }
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    veggie = @{
+                        '@Type' = [PSMapNode]
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[V] Multiple nodes that match a single test definition" {
+            $Schema = @{
+                fruits = @{
+                    '@Type' = [PSListNode]
+                    fruit = @{ '@Type' = [String] }
+                }
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    veggie1 = @{
+                        '@Type' = [PSMapNode]
+                        '@Unique' = $true
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                    veggie2 = @{
+                        '@Type' = [PSMapNode]
+                        '@Unique' = $true
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[V] Multiple nodes that match a single test definition" {
+            $Schema = @{
+                fruits = @{
+                    '@Type' = [PSListNode]
+                    fruit = @{ '@Type' = [String] }
+                }
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    veggie = @{
+                        '@Type' = [PSMapNode]
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data2 | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data2 | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[V] Match at least one node in a single test definition" {
+            $Schema = @{
+                fruits = @{
+                    '@Type' = [PSListNode]
+                    fruit = @{ '@Type' = [String] }
+                }
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    veggie = @{
+                        '@Type' = [PSMapNode]
+                        '@AllowExtraNodes' = $true
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data2 | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data2 | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[V] Duplicate nodes that match a single test definition" {
+            $Schema = @{
+                fruits = @{
+                    '@Type' = [PSListNode]
+                    fruit = @{ '@Type' = [String] }
+                }
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    '@AllowExtraNodes' = $true
+                    veggie = @{
+                        '@Type' = [PSMapNode]
+                        '@Unique' = $true
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data2 | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data2 | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[X] Duplicate nodes that match a single test definition" {
+            $Schema = @{
+                fruits = @{
+                    '@Type' = [PSListNode]
+                    fruit = @{ '@Type' = [String] }
+                }
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    veggie = @{
+                        '@Type' = [PSMapNode]
+                        '@Unique' = $true
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data2 | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            $Data2 | Test-Object $Schema | Should -not -BeNullOrEmpty
+        }
+
+        It "[V] Multiple nodes that match equal test definitions" {
+            $Schema = @{
+                fruits = @{
+                    '@Type' = [PSListNode]
+                    fruit = @{ '@Type' = [String] }
+                }
+                vegetables = @{
+                    '@Type' = [PSListNode]
+                    veggie1 = @{
+                        '@Type' = [PSMapNode]
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                    veggie2 = @{
+                        '@Type' = [PSMapNode]
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                    veggie3 = @{
+                        '@Type' = [PSMapNode]
+                        veggieName = @{ '@Type' = [String] }
+                        veggieLike = @{ '@Type' = [Bool] }
+                    }
+                }
+            }
+            $Data2 | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data2 | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        It "[V] Full assert test" {
+            $Schema = @{
+                FirstName = @{ '@Type' = 'String' }
+                LastName  = @{ '@Type' = 'String' }
+                IsAlive   = @{ '@Type' = 'Bool' }
+                Birthday  = @{ '@Type' = 'DateTime' }
+                Age       = @{
+                    '@Type' = 'Int'
+                    '@Minimum' = 0
+                    '@Maximum' = 99
+                }
+                Address = @{
+                    '@Type' = 'PSMapNode'
+                    Street     = @{ '@Type' = 'String' }
+                    City       = @{ '@Type' = 'String' }
+                    State      = @{ '@Type' = 'String' }
+                    PostalCode = @{ '@Type' = 'String' }
+                }
+                Phone = @{
+                    '@Type' = 'PSMapNode',  $Null
+                    Home    = @{ '@Match' = '^\d{3} \d{3}-\d{4}$' }
+                    Mobile  = @{ '@Match' = '^\d{3} \d{3}-\d{4}$' }
+                    Work    = @{ '@Match' = '^\d{3} \d{3}-\d{4}$' }
+                }
+                Children  = @(@{ '@Type' = 'String', $Null })
+                Spouse    = @{ '@Type' = 'String', $Null }
+            }
+            $Person | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Person | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+    }
+
+    Context 'Required node' {
+
+        $Schema = @{
+            Id = @{ '@Type' = 'Int'; '@Required' = $true }
+            Data = @{ '@Type' = 'String' }
+        }
+
+        @{ Id = 42 }                | Test-Object $Schema -ValidateOnly | Should -BeTrue
+        @{ Id = 42; Data = 'Test' } | Test-Object $Schema -ValidateOnly | Should -BeTrue
+        @{ Data = 'Test' }          | Test-Object $Schema -ValidateOnly | Should -BeFalse
+        @{ Id = 42; Test = 'Test' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
+    }
+
+    Context 'Required nodes formula' {
+
+        it 'Not' {
+            $Schema = @{
+                a = @{ '@Type' = 'Int' }
+                '@RequiredNodes' = 'not a'
+            }
+            @{ a = 1 }   | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1 }   | Test-Object $Schema | Should -not -BeNullOrEmpty
+            @{ a = '1' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            @{ a = '1' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+        }
+
+        it 'And' {
+            $Schema = @{
+                a = @{ '@Type' = 'Int' }
+                b = @{ '@Type' = 'Int' }
+                '@RequiredNodes' = 'a and b'
+            }
+            @{ a = 1 }          | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1 }          | Test-Object $Schema | Should -not -BeNullOrEmpty
+            @{ b = 2 }          | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            @{ b = 2 }          | Test-Object $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1; b = 2 }   | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            @{ a = 1; b = 2 }   | Test-Object $Schema | Should -BeNullOrEmpty
+            @{ a = 1; b = '2' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = '2' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+        }
+
+        it 'Or' {
+            $Schema = @{
+                a = @{ '@Type' = 'Int' }
+                b = @{ '@Type' = 'Int' }
+                '@RequiredNodes' = 'a or b'
+            }
+            @{ a = 1 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            @{ a = 1 }          | Test-Object $Schema | Should -BeNullOrEmpty
+            @{ b = 2 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            @{ b = 2 }          | Test-Object $Schema | Should -BeNullOrEmpty
+            @{ a = 1; b = 2 }   | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            @{ a = 1; b = 2 }   | Test-Object $Schema | Should -BeNullOrEmpty
+            @{ a = 1; b = '2' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = '2' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+        }
+
+        it 'Xor' {
+            $Schema = @{
+                a = @{ '@Type' = 'Int' }
+                b = @{ '@Type' = 'Int' }
+                '@RequiredNodes' = 'a xor b'
+            }
+            @{ a = 1 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            @{ a = 1 }          | Test-Object $Schema | Should -BeNullOrEmpty
+            @{ b = 2 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            @{ b = 2 }          | Test-Object $Schema | Should -BeNullOrEmpty
+            @{ a = 1; b = 2 }   | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = 2 }   | Test-Object $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1; b = '2' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = '2' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+        }
+
+        it 'Rambling Xor' {
+            $Schema = @{
+                a = @{ '@Type' = 'Int' }
+                b = @{ '@Type' = 'Int' }
+                '@RequiredNodes' = '(a and not b) or (not a and b)'
+            }
+            @{ a = 1 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            @{ a = 1 }          | Test-Object $Schema | Should -BeNullOrEmpty
+            @{ b = 2 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            @{ b = 2 }          | Test-Object $Schema | Should -BeNullOrEmpty
+            @{ a = 1; b = 2 }   | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = 2 }   | Test-Object $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1; b = '2' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = '2' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+        }
+    }
+
+    Context 'Unique child nodes' {
+
+        it 'Unique' {
+            $Schema = @{
+                '@Type' = [PSListNode]
+                Children = @{'@Type' = [String]; '@Unique' = $true }
+            }
+            ,@('a', 'b', 'c') | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            ,@('a', 'b', 'c') | Test-Object $Schema | Should -BeNullOrEmpty
+            ,@('a', 'b', 'a') | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            ,@('a', 'b', 'a') | Test-Object $Schema | Should -not -BeNullOrEmpty
+        }
+
+        it 'Unique collection' {
+            $Schema = @{
+                EnabledServers  = @(@{'@Type' = 'String'; '@Unique' = 'Server' })
+                DisabledServers = @(@{'@Type' = 'String'; '@Unique' = 'Server' })
+            }
+            $Servers = @{
+                EnabledServers  = 'NL1234', 'NL1235', 'NL1236'
+                DisabledServers = 'NL1237', 'NL1238', 'NL1239'
+            }
+            $Servers | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Servers = @{
+                EnabledServers  = 'NL1234', 'NL1235', 'NL1236'
+                DisabledServers = 'NL1237', 'NL1235', 'NL1239'
+            }
+            $Servers | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            $Results = $Servers | Test-ObjectGraph $Schema
+            $Results[0].Issue | Should -BeLike '*equal to the node*'
+        }
+
+        it 'Unique decedents' {
+            $Schema = @{
+                BookStore = @(
+                    @{
+                        Book = @{
+                            Title = @{ '@Type' = 'String'; '@Unique' = 'Title' }
+                            Price = @{ '@Type' = 'Double' }
+                        }
+                    }
+                )
+            }
+            $Books = @{
+                BookStore = @(
+                    @{
+                        Book = @{
+                            Title = 'Harry Potter'
+                            Price = 29.99
+                        }
+                    },
+                    @{
+                        Book = @{
+                            Title = 'Learning PowerShell'
+                            Price = 39.95
+                        }
+                    }
+                )
+            }
+            $Books | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Books = @{
+                BookStore = @(
+                    @{
+                        Book = @{
+                            Title = 'Harry Potter'
+                            Price = 29.99
+                        }
+                    },
+                    @{
+                        Book = @{
+                            Title = 'Learning PowerShell'
+                            Price = 39.95
+                        }
+                    },
+                    @{
+                        Book = @{
+                            Title = 'Harry Potter'
+                            Price = 24.99
+                        }
+                    }
+                )
+            }
+            $Books | Test-Object $Schema -ValidateOnly | Should -BeFalse
+        }
+    }
+
+    Context 'References' {
+
+        BeforeAll {
+
+            $Schema = @{
+                '@Type' = [PSMapNode]
+                '@References' = @{
+                    Name = @{ '@Type' = 'String'; '@Match' = '\w{3,16}' }
+                    Address = @{
+                        '@Type' = [PSMapNode]
+                        Street     = @{ '@Type' = 'String' }
+                        City       = @{ '@Type' = 'String' }
+                        State      = @{ '@Type' = 'String' }
+                        PostalCode = @{ '@Type' = 'String' }
+                    }
+                }
+                Buyer = @{
+                    '@Type' = [PSMapNode]
+                    FirstName = 'Name'
+                    LastName  = 'Name'
+                    ShippingAddress = 'Address'
+                    BillingAddress  = 'Address'
+                }
+            }
+
+            $RecurseSchema = @{
+                '@References' = @{
+                    Item = @{
+                        '@AllowExtraNodes' = $true
+                        Id = @{ '@Match' = '^ID\d{6}$'; '@Required' = $true }
+                        Data = 'Item'
+                    }
+                }
+                Test = 'Item'
+            }
+        }
+
+        it '[V] Buyer' {
+
+            $Data =
+                @{
+                    Buyer = @{
+                        FirstName = 'John'
+                        LastName  = 'Doe'
+                        ShippingAddress = @{
+                            Street     = '123 Main St'
+                            City       = 'AnyTown'
+                            State      = 'CA'
+                            PostalCode = '12345'
+                        }
+                        BillingAddress  = @{
+                            Street     = '456 Elm St'
+                            City       = 'OtherTown'
+                            State      = 'CA'
+                            PostalCode = '67890'
+                        }
+                    }
+                }
+            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
+        it '[X] Buyer - incorrect LastName' {
+
+            $Data =
+                @{
+                    Buyer = @{
+                        FirstName = 'John'
+                        LastName  = 'Do'  # Required 3-16 chars
+                        ShippingAddress = @{
+                            Street     = '123 Main St'
+                            City       = 'AnyTown'
+                            State      = 'CA'
+                            PostalCode = '12345'
+                        }
+                        BillingAddress  = @{
+                            Street     = '456 Elm St'
+                            City       = 'OtherTown'
+                            State      = 'CA'
+                            PostalCode = '67890'
+                        }
+                    }
+                }
+            $Data | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            $Result = $Data | Test-Object $Schema
+            $Result | Should -not -BeNullOrEmpty
+            $Result.ObjectNode.Path  | Should -Contain 'Buyer.LastName'
+            $Result.ObjectNode.Value | Should -Contain 'Do'
+        }
+
+        it '[V] Recursive reference' {
+            $Data = @{
+                Test = @{
+                    Id = 'ID000001'
+                    Data = @{
+                        Id = 'ID000002'
+                        Data = @{
+                            Id = 'ID000003'
+                        }
+                    }
+                }
+            }
+
+           $Data | Test-Object $RecurseSchema -ValidateOnly | Should -be $true
+        }
+
+        it '[V] Recursive object' -Skip:$($PSVersionTable.PSVersion -lt '6.0') {
+            $Schema = @{
+                '@References' = @{
+                    RecursePSDrive = @{
+                        '@AllowExtraNodes' = $true
+                        Name     = @{ '@Type' = [String] }
+                        Root     = @{ '@Type' = [String] }
+                        Used     = @{ '@Type' = [Long] }
+                        Provider = @{
+                            '@AllowExtraNodes' = $true
+                            Drives = @{
+                                '@Type' = [PSListNode]
+                                '@AllowExtraNodes' = $true
+                                Drive = 'RecursePSDrive'
+                            }
+                        }
+                    }
+                }
+                '@AllowExtraNodes' = $true
+                Mode               = @{ '@Like' = '?????' }
+                LastWriteTime      = @{ '@Type' = [DateTime] }
+                Exists             = @{ '@Type' = [Bool] }
+                Name               = @{ '@Type' = [String] }
+                PSDrive            = 'RecursePSDrive'
+            }
+
+            Get-Item / | Test-Object $Schema -Depth 5 -ValidateOnly -WarningAction SilentlyContinue | Should -BeTrue
+            $Result = Get-Item / | Test-Object $Schema -Depth 5 -Elaborate -WarningAction SilentlyContinue
+            $Result.ObjectNode.Path | Should -Contain 'PSDrive.Provider.Drives[0].Name'
+        }
+    }
+
+    Context 'Different Assert Test Prefix' {
+
+        It "[V] AssertTestPrefix = '^'" {
+            $Schema = @{
+                AssertTestPrefix = '^'
+                FirstName = @{ '^Type' = 'String' }
+                LastName  = @{ '^Type' = 'String' }
+                IsAlive   = @{ '^Type' = 'Bool' }
+                Birthday  = @{ '^Type' = 'DateTime' }
+                Age       = @{
+                    '^Type' = 'Int'
+                    '^Minimum' = 0
+                    '^Maximum' = 99
+                }
+                Address = @{
+                    '^Type' = 'PSMapNode'
+                    Street     = @{ '^Type' = 'String' }
+                    City       = @{ '^Type' = 'String' }
+                    State      = @{ '^Type' = 'String' }
+                    PostalCode = @{ '^Type' = 'String' }
+                }
+                Phone = @{
+                    '^Type' = 'PSMapNode',  $Null
+                    Home    = @{ '^Type' = 'String', 'PSListNode'; '^Match' = '^\d{3} \d{3}-\d{4}$'; '^AllowExtraNodes' = $true }
+                    Mobile  = @{ '^Type' = 'String', 'PSListNode'; '^Match' = '^\d{3} \d{3}-\d{4}$'; '^AllowExtraNodes' = $true }
+                    Work    = @{ '^Type' = 'String', 'PSListNode'; '^Match' = '^\d{3} \d{3}-\d{4}$'; '^AllowExtraNodes' = $true }
+                }
+                Children  = @(@{ '^Type' = 'String', $Null })
+                Spouse    = @{ '^Type' = 'String', $Null }
+            }
+            $Person | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Person | Test-Object $Schema | Should -BeNullOrEmpty
+        }
+
     }
 }

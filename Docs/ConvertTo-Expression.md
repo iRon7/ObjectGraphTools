@@ -156,7 +156,7 @@ properties is shown, yet any constrained or full object type will likely fail to
 due to constructor limitations such as readonly property.
 
 > [!Note]
-> Objects properties of type `[Reflection.MemberInfo]` are always excluded.
+> The Object property `TypeId = [<ParentType>]` is always excluded.
 
 <table>
 <tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>

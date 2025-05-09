@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+    <ViewDefinitions>
+        <View>
+            <Name>TestResult</Name>
+            <ViewSelectedBy>
+                <TypeName>TestResult</TypeName>
+            </ViewSelectedBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader><Label>Path</Label></TableColumnHeader>
+                    <TableColumnHeader><Label>Value</Label><Width>20</Width></TableColumnHeader>
+                    <TableColumnHeader><Label>Valid</Label><Alignment>Center</Alignment></TableColumnHeader>
+                    <TableColumnHeader><Label>Issue</Label></TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <Wrap />
+                        <TableColumnItems>
+                            <TableColumnItem><ScriptBlock>$_.ObjectNode.Path</ScriptBlock></TableColumnItem>
+                            <TableColumnItem><ScriptBlock>$_.ObjectNode</ScriptBlock></TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock><![CDATA[
+                                    if ($_.Valid) { "$([VariableColor][InverseColor]'[V]')" }
+                                    else { "$([ErrorColor][InverseColor]'[X]')" }
+                                ]]></ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if ($_.Valid) { "$([VariableColor]$($_.Issue))" }
+                                    else { "$([ErrorColor]$($_.Issue))" }
+                                </ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+    </ViewDefinitions>
+</Configuration>

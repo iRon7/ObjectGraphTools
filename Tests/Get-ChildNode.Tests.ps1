@@ -69,7 +69,7 @@ Describe 'Get-ChildNode' {
 
         it 'All list child nodes' {
             $Nodes = $Object | Get-ChildNode -ListChild
-            $Nodes.Name | Sort-Object | Should -Be 0, 1, 2
+            $Nodes | Should -BeNullOrEmpty
         }
 
         it 'All decedent list child nodes' {
@@ -153,6 +153,42 @@ Describe 'Get-ChildNode' {
             $Nodes.Name | Sort-Object -Unique | Should -Be 'Data', 'Index'
         }
     }
+
+    Context 'ValueOnly' {
+
+        It 'Leaf node by name' {
+
+            $Object | Get-ChildNode -Recurse -Value -Include Name | Should -be 'One', 'Two', 'Three'
+        }
+    }
+
+    Context 'Depth limit' {
+        BeforeAll {
+            $Cycle = @{ Name = 'Test' }
+            $Cycle.Parent = $Cycle
+        }
+
+        It 'Default MaxDepth' {
+            $CycleNode = $Cycle | Get-Node
+            $Output = $CycleNode | Get-ChildNode -recurse -leaf 3>&1
+            $Output.where{$_ -is [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  "*maximum depth of $([PSNode]::DefaultMaxDepth)*"
+        }
+
+        It '-MaxDepth 5' {
+            $CycleNode = $Cycle | Get-Node -MaxDepth 5
+            $Output = $CycleNode | Get-ChildNode -recurse -leaf 3>&1
+            $Output.where{$_ -is [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*maximum depth of 5*'
+            ($CycleNode | Get-ChildNode -recurse -leaf).Count | Should -BeLessThan ([PSNode]::DefaultMaxDepth)
+        }
+
+        It '-MaxDepth 25' {
+            $CycleNode = $Cycle | Get-Node -MaxDepth 25
+            $Output = $CycleNode | Get-ChildNode -recurse -leaf 3>&1
+            $Output.where{$_ -is [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*maximum depth of 25*'
+            ($CycleNode | Get-ChildNode -recurse -leaf).Count | Should -BeGreaterThan ([PSNode]::DefaultMaxDepth)
+        }
+    }
+
 
     Context 'Warnings' {
 

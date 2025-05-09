@@ -407,5 +407,10 @@ Describe 'Compare-ObjectGraph' {
             }
             $Object | Compare-ObjectGraph $Reference | Should -BeNullOrEmpty
         }
+
+        It "#111 Compare-ObjectGraph fails with certain object graphs, presumably due to cyclical references" {
+            $Result = ,(Get-Item /) | Compare-ObjectGraph  -Reference (Get-Item /) -Depth 5 -WarningAction SilentlyContinue
+            @($Result).Count | Should -BeLessThan 3
+        }
     }
 }

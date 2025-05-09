@@ -3,7 +3,7 @@
     RootModule = 'ObjectGraphTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.2.1'
+    ModuleVersion = '0.3.1'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -48,7 +48,7 @@
     # RequiredAssemblies = @()
 
     # Script files (.ps1) that are run in the caller's environment prior to importing this module.
-    ScriptsToProcess = @('.\Source\Classes\ObjectParser.ps1')
+    # ScriptsToProcess = @()
 
     # Type files (.ps1xml) to be loaded when importing this module
     # TypesToProcess = @()
@@ -60,28 +60,16 @@
     # NestedModules = @()
 
     # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-    FunctionsToExport = @(
-        'ConvertFrom-Expression',
-        'ConvertTo-Expression',
-        'Compare-ObjectGraph',
-        'Import-ObjectGraph',
-        'Export-ObjectGraph',
-        'Copy-ObjectGraph',
-        'Get-ChildNode',
-        'Get-Node',
-        'Merge-ObjectGraph',
-        'Test-ObjectGraph',
-        'ConvertTo-SortedObjectGraph'
-    )
+    # FunctionsToExport = @()
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
-    CmdletsToExport = @()
+    # CmdletsToExport = @()
 
     # Variables to export from this module
-    VariablesToExport = '*'
+    # VariablesToExport = '*'
 
     # Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
-    AliasesToExport = @('Sort-ObjectGraph')
+    # AliasesToExport = @()
 
     # DSC resources to export from this module
     # DscResourcesToExport = @()
@@ -97,8 +85,10 @@
 
         PSData = @{
 
+            Prerelease = 'Preview'
+
             # Tags applied to this module. These help with module discovery in online galleries.
-            Tags = 'Object', 'Graph', 'Complex', 'Dictionary', 'List', 'HashTable', 'Array', 'Merge', 'Sort'
+            Tags = 'Object', 'Graph', 'Complex', 'Dictionary', 'List', 'HashTable', 'Array', 'Merge', 'Sort', 'Test'
 
             # A URL to the license for this module.
             LicenseUri = 'https://github.com/iRon7/ObjectGraphTools/LICENSE'
