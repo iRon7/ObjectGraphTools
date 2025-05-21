@@ -45,7 +45,8 @@ enum XdnType {
     Index      = 2
     Child      = 3
     Descendant = 4
-    Equals     = 5
+    Offspring  = 5
+    Equals     = 9
     Error      = 99
 }
 enum XdnColorName {
@@ -159,6 +160,50 @@ Class PSNode : IComparable {
     [PSNode]$RootNode = $this
     hidden [Dictionary[String,Object]]$Cache = [Dictionary[String,Object]]::new()
     hidden [DateTime]$MaxDepthWarningTime            # Warn ones per item branch
+
+    static ExportTypes() { # https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_classes#exporting-classes-with-type-accelerators
+        # Define the types to export with type accelerators.
+        $ExportableTypes =@(
+            [PSNode]
+            [PSCollectionNode]
+            [PSListNode]
+            [PSMapNode]
+            [PSDictionaryNode]
+            [PSObjectNode]
+        )
+        # Get the internal TypeAccelerators class to use its static methods.
+        $TypeAcceleratorsClass = [psobject].Assembly.GetType(
+            'System.Management.Automation.TypeAccelerators'
+        )
+        # Ensure none of the types would clobber an existing type accelerator.
+        # If a type accelerator with the same name exists, throw an exception.
+        $ExistingTypeAccelerators = $TypeAcceleratorsClass::Get
+        foreach ($Type in $ExportableTypes) {
+            if ($Type.FullName -in $ExistingTypeAccelerators.Keys) {
+                $Message = @(
+                    "Unable to register type accelerator '$($Type.FullName)'"
+                    'Accelerator already exists.'
+                ) -join ' - '
+
+                throw [System.Management.Automation.ErrorRecord]::new(
+                    [System.InvalidOperationException]::new($Message),
+                    'TypeAcceleratorAlreadyExists',
+                    [System.Management.Automation.ErrorCategory]::InvalidOperation,
+                    $Type.FullName
+                )
+            }
+        }
+        # Add type accelerators for every exportable type.
+        foreach ($Type in $ExportableTypes) {
+            $TypeAcceleratorsClass::Add($Type.FullName, $Type)
+        }
+        # Remove type accelerators when the module is removed.
+        $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
+            foreach($Type in $ExportableTypes) {
+                $TypeAcceleratorsClass::Remove($Type.FullName)
+            }
+        }.GetNewClosure()
+    }
 
     static [PSNode] ParseInput($Object, $MaxDepth) {
         $Node =
@@ -315,28 +360,16 @@ Class PSNode : IComparable {
                 }
                 elseif ($this -is [PSMapNode]) {
                     $Found = $False
-                    foreach ($Value in $Entry.Value) {
-                        $Name = $Value._Value
-                        if ($Value.ContainsWildcard()) {
-                            foreach ($Node in $this.ChildNodes) {
-                                if ($Node.Name -like $Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
-                                    $Found = $True
-                                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                                    else { $NodeTable[$Node.getPathName()] = $Node }
-                                }
-                            }
-                        }
-                        elseif ($this.Contains($Name)) {
-                            $Node = $this.GetChildNode($Name)
-                            if (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value)) {
-                                $Found = $True
-                                if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                                else { $NodeTable[$Node.getPathName()] = $Node }
-                            }
+                    $ChildNodes = $this.get_ChildNodes()
+                    foreach ($Node in $ChildNodes) {
+                        if ($Entry.Value -eq $Node.Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
+                            $Found = $True
+                            if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
+                            else { $NodeTable[$Node.getPathName()] = $Node }
                         }
                     }
                     if (-not $Found -and $Entry.Key -eq 'Descendant') {
-                        foreach ($Node in $this.ChildNodes) {
+                        foreach ($Node in $ChildNodes) {
                             $Node.CollectNodes($NodeTable, $Path, $PathIndex)
                         }
                     }
@@ -679,7 +712,9 @@ Class PSDeserialize {
         $ArrayType     = $Null,
         $HashTableType = $Null
     ) {
-        if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
+        if ($this.LanguageMode -eq 'NoLanguage') { # No language mode is internally used for displaying
+            Throw 'The language mode "NoLanguage" is not supported.'
+        }
         $this.Expression    = $Expression
         $this.LanguageMode  = $LanguageMode
         if ($Null -ne $ArrayType)     { $this.ArrayType     = $ArrayType }
@@ -1333,7 +1368,7 @@ class XdnPath {
     Add ($EntryType, $Value) {
         if ($EntryType -eq '/') {
             if ($this._Entries.Count -eq 0) { $this.AddError($Value) }
-            elseif ($this._Entries[-1].Key -NotIn 'Child', 'Descendant', 'Equals') { $this.AddError($Value) }
+            elseif ($this._Entries[-1].Key -NotIn 'Child', 'Descendant', 'Offspring', 'Equals') { $this.AddError($Value) }
             else {
                 $EntryValue = $this._Entries[-1].Value
                 if ($EntryValue -IsNot [IList]) { $EntryValue = [List[Object]]$EntryValue }
@@ -1342,7 +1377,13 @@ class XdnPath {
             }
         }
         else {
-            $XdnType = Switch ($EntryType) { '.' { 'Child' } '~' { 'Descendant' } '=' { 'Equals' } default { $EntryType } }
+            $XdnType = Switch ($EntryType) {
+                '.'     { 'Child' }
+                '~'     { 'Descendant' }
+                '~~'    { 'Offspring' }
+                '='     { 'Equals' }
+                default { $EntryType }
+            }
             if ($XdnType -in [XdnType].GetEnumNames()) {
                 $this._Entries.Add([KeyValuePair[XdnType, Object]]::new($XdnType, $Value))
             } else { $this.AddError($Value) }
@@ -1378,7 +1419,7 @@ class XdnPath {
             }
             else {
                 $Match = if ($Literal) { [regex]::Match($Path, '[\.\[]') } else { [regex]::Match($Path, '(?<=([^`]|^)(``)*)[\.\[\~\=\/]') }
-                $Match = [regex]::Match($Path, '(?<=([^`]|^)(``)*)[\.\[\~\=\/]')
+                $Match = [regex]::Match($Path, '(?<=([^`]|^)(``)*)\~\~?|[\.\[\=\/]')
                 if ($Match.Success -and $Match.Index -eq 0) { # Operator
                     $IndexEnd  = if ($Match.Value -eq '[') { $Path.IndexOf(']') }
                     $Ancestors = if ($Match.Value -eq '.' -and $Path -Match '^\.\.+') { $Matches[0].Length - 1 }
@@ -1395,9 +1436,9 @@ class XdnPath {
                         $Path = $Path.Substring($Ancestors + 1)
                         $XdnOperator = 'Child'
                     }
-                    elseif ($Match.Value -in '.', '~', '=', '/' -and $Match.Value -ne $XdnOperator) {
+                    elseif ($Match.Value -in '.', '~', '~~', '=', '/' -and $Match.Value -ne $XdnOperator) {
                         $XdnOperator = $Match.Value
-                        $Path = $Path.Substring(1)
+                        $Path = $Path.Substring($Match.Value.Length)
                     }
                     else {
                         $XdnOperator = 'Error'
@@ -1440,9 +1481,10 @@ class XdnPath {
                                 if ([int]::TryParse($Value, [Ref]$Null)) { "$Dot$RegularColor[$Value]" }
                                 else { "$ErrorColor[$Value]" }
                             }
-                Child       { "$RegularColor.$(@($Value).foreach{ $_.ToString($Colored) }  -Join ""$OperatorColor/"")" }
-                Descendant  { "$OperatorColor~$(@($Value).foreach{ $_.ToString($Colored) } -Join ""$OperatorColor/"")" }
-                Equals      { "$OperatorColor=$(@($Value).foreach{ $_.ToString($Colored) } -Join ""$OperatorColor/"")" }
+                Child       { "$RegularColor.$(@($Value).foreach{ $_.ToString($Colored) }   -Join ""$OperatorColor/"")" }
+                Descendant  { "$OperatorColor~$(@($Value).foreach{ $_.ToString($Colored) }  -Join ""$OperatorColor/"")" }
+                Offspring   { "$OperatorColor~~$(@($Value).foreach{ $_.ToString($Colored) } -Join ""$OperatorColor/"")" }
+                Equals      { "$OperatorColor=$(@($Value).foreach{ $_.ToString($Colored) }  -Join ""$OperatorColor/"")" }
                 Default     { "$ErrorColor$($Value)" }
             }
             $Path.Append($Append)
@@ -2637,7 +2679,7 @@ function ConvertTo-Expression {
     due to constructor limitations such as readonly property.
 
     > [!Note]
-    > Objects properties of type `[Reflection.MemberInfo]` are always excluded.
+    > The Object property `TypeId = [<ParentType>]` is always excluded.
 
 .PARAMETER ExpandSingleton
     (List or map) collections nodes that contain a single item will not be expanded unless this
@@ -4561,9 +4603,95 @@ if (-not (Get-FormatData 'XdnPath' -ErrorAction Ignore)) {
 #Region Export
 
 $ModuleMembers = @{
-    Function = 'Compare-ObjectGraph', 'ConvertFrom-Expression', 'ConvertTo-Expression', 'Copy-ObjectGraph', 'Export-ObjectGraph', 'Get-ChildNode', 'Get-Node', 'Get-SortObjectGraph', 'Import-ObjectGraph', 'Merge-ObjectGraph', 'Test-ObjectGraph'
     Alias = 'cfe', 'cto', 'Copy-Object', 'cpo', 'Export-Object', 'epo', 'gcn', 'gn', 'Sort-ObjectGraph', 'sro', 'Import-Object', 'imo', 'Merge-Object', 'mgo', 'Test-Object', 'tso'
+    Function = 'Compare-ObjectGraph', 'ConvertFrom-Expression', 'ConvertTo-Expression', 'Copy-ObjectGraph', 'Export-ObjectGraph', 'Get-ChildNode', 'Get-Node', 'Get-SortObjectGraph', 'Import-ObjectGraph', 'Merge-ObjectGraph', 'Test-ObjectGraph'
 }
 Export-ModuleMember @ModuleMembers
+# https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_classes#exporting-classes-with-type-accelerators
+# Define the types to export with type accelerators.
+$ExportableTypes = @(
+    [LogicalOperatorEnum]
+    [PSNodeStructure]
+    [PSNodeOrigin]
+    [ObjectCompareMode]
+    [ObjectComparison]
+    [XdnType]
+    [XdnColorName]
+    [Abbreviate]
+    [LogicalTerm]
+    [LogicalOperator]
+    [LogicalVariable]
+    [LogicalFormula]
+    [PSNodePath]
+    [PSNode]
+    [PSLeafNode]
+    [PSCollectionNode]
+    [PSListNode]
+    [PSMapNode]
+    [PSDictionaryNode]
+    [PSObjectNode]
+    [ObjectComparer]
+    [PSListNodeComparer]
+    [PSMapNodeComparer]
+    [PSDeserialize]
+    [PSInstance]
+    [PSKeyExpression]
+    [PSLanguageType]
+    [PSSerialize]
+    [ANSI]
+    [TextStyle]
+    [TextColor]
+    [CommandColor]
+    [CommentColor]
+    [ContinuationPromptColor]
+    [DefaultTokenColor]
+    [EmphasisColor]
+    [ErrorColor]
+    [KeywordColor]
+    [MemberColor]
+    [NumberColor]
+    [OperatorColor]
+    [ParameterColor]
+    [SelectionColor]
+    [StringColor]
+    [TypeColor]
+    [VariableColor]
+    [InverseColor]
+    [XdnName]
+    [XdnPath]
+)
+
+# Get the internal TypeAccelerators class to use its static methods.
+$TypeAcceleratorsClass = [PSObject].Assembly.GetType(
+    'System.Management.Automation.TypeAccelerators'
+)
+# Ensure none of the types would clobber an existing type accelerator.
+# If a type accelerator with the same name exists, throw an exception.
+$ExistingTypeAccelerators = $TypeAcceleratorsClass::Get
+foreach ($Type in $ExportableTypes) {
+    if ($Type.FullName -in $ExistingTypeAccelerators.Keys) {
+        $Message = @(
+            "Unable to register type accelerator '$($Type.FullName)'"
+            'Accelerator already exists.'
+        ) -join ' - '
+
+        throw [System.Management.Automation.ErrorRecord]::new(
+            [System.InvalidOperationException]::new($Message),
+            'TypeAcceleratorAlreadyExists',
+            [System.Management.Automation.ErrorCategory]::InvalidOperation,
+            $Type.FullName
+        )
+    }
+}
+# Add type accelerators for every exportable type.
+foreach ($Type in $ExportableTypes) {
+    $TypeAcceleratorsClass::Add($Type.FullName, $Type)
+}
+# Remove type accelerators when the module is removed.
+$MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
+    foreach($Type in $ExportableTypes) {
+        $TypeAcceleratorsClass::Remove($Type.FullName)
+    }
+}.GetNewClosure()
 
 #EndRegion Export

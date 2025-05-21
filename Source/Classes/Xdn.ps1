@@ -1,6 +1,8 @@
 using module .\..\..\..\ObjectGraphTools
 
-enum XdnType { Root; Ancestor; Index; Child; Descendant; Equals; Error = 99 }
+using namespace System.Collections
+using namespace System.Collections.Generic
+enum XdnType { Root; Ancestor; Index; Child; Descendant; Offspring; Equals = 9; Error = 99 }
 
 enum XdnColorName { Reset; Regular; Literal; WildCard; Operator; Error = 99 }
 
@@ -90,7 +92,7 @@ class XdnPath {
     Add ($EntryType, $Value) {
         if ($EntryType -eq '/') {
             if ($this._Entries.Count -eq 0) { $this.AddError($Value) }
-            elseif ($this._Entries[-1].Key -NotIn 'Child', 'Descendant', 'Equals') { $this.AddError($Value) }
+            elseif ($this._Entries[-1].Key -NotIn 'Child', 'Descendant', 'Offspring', 'Equals') { $this.AddError($Value) }
             else {
                 $EntryValue = $this._Entries[-1].Value
                 if ($EntryValue -IsNot [IList]) { $EntryValue = [List[Object]]$EntryValue }
@@ -99,7 +101,13 @@ class XdnPath {
             }
         }
         else {
-            $XdnType = Switch ($EntryType) { '.' { 'Child' } '~' { 'Descendant' } '=' { 'Equals' } default { $EntryType } }
+            $XdnType = Switch ($EntryType) {
+                '.'     { 'Child' }
+                '~'     { 'Descendant' }
+                '~~'    { 'Offspring' }
+                '='     { 'Equals' }
+                default { $EntryType }
+            }
             if ($XdnType -in [XdnType].GetEnumNames()) {
                 $this._Entries.Add([KeyValuePair[XdnType, Object]]::new($XdnType, $Value))
             } else { $this.AddError($Value) }
@@ -135,7 +143,7 @@ class XdnPath {
             }
             else {
                 $Match = if ($Literal) { [regex]::Match($Path, '[\.\[]') } else { [regex]::Match($Path, '(?<=([^`]|^)(``)*)[\.\[\~\=\/]') }
-                $Match = [regex]::Match($Path, '(?<=([^`]|^)(``)*)[\.\[\~\=\/]')
+                $Match = [regex]::Match($Path, '(?<=([^`]|^)(``)*)\~\~?|[\.\[\=\/]')
                 if ($Match.Success -and $Match.Index -eq 0) { # Operator
                     $IndexEnd  = if ($Match.Value -eq '[') { $Path.IndexOf(']') }
                     $Ancestors = if ($Match.Value -eq '.' -and $Path -Match '^\.\.+') { $Matches[0].Length - 1 }
@@ -152,9 +160,9 @@ class XdnPath {
                         $Path = $Path.Substring($Ancestors + 1)
                         $XdnOperator = 'Child'
                     }
-                    elseif ($Match.Value -in '.', '~', '=', '/' -and $Match.Value -ne $XdnOperator) {
+                    elseif ($Match.Value -in '.', '~', '~~', '=', '/' -and $Match.Value -ne $XdnOperator) {
                         $XdnOperator = $Match.Value
-                        $Path = $Path.Substring(1)
+                        $Path = $Path.Substring($Match.Value.Length)
                     }
                     else {
                         $XdnOperator = 'Error'
@@ -197,9 +205,10 @@ class XdnPath {
                                 if ([int]::TryParse($Value, [Ref]$Null)) { "$Dot$RegularColor[$Value]" }
                                 else { "$ErrorColor[$Value]" }
                             }
-                Child       { "$RegularColor.$(@($Value).foreach{ $_.ToString($Colored) }  -Join ""$OperatorColor/"")" }
-                Descendant  { "$OperatorColor~$(@($Value).foreach{ $_.ToString($Colored) } -Join ""$OperatorColor/"")" }
-                Equals      { "$OperatorColor=$(@($Value).foreach{ $_.ToString($Colored) } -Join ""$OperatorColor/"")" }
+                Child       { "$RegularColor.$(@($Value).foreach{ $_.ToString($Colored) }   -Join ""$OperatorColor/"")" }
+                Descendant  { "$OperatorColor~$(@($Value).foreach{ $_.ToString($Colored) }  -Join ""$OperatorColor/"")" }
+                Offspring   { "$OperatorColor~~$(@($Value).foreach{ $_.ToString($Colored) } -Join ""$OperatorColor/"")" }
+                Equals      { "$OperatorColor=$(@($Value).foreach{ $_.ToString($Colored) }  -Join ""$OperatorColor/"")" }
                 Default     { "$ErrorColor$($Value)" }
             }
             $Path.Append($Append)

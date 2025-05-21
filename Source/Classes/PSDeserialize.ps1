@@ -20,7 +20,9 @@ Class PSDeserialize {
         $ArrayType     = $Null,
         $HashTableType = $Null
     ) {
-        if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
+        if ($this.LanguageMode -eq 'NoLanguage') { # No language mode is internally used for displaying
+            Throw 'The language mode "NoLanguage" is not supported.'
+        }
         $this.Expression    = $Expression
         $this.LanguageMode  = $LanguageMode
         if ($Null -ne $ArrayType)     { $this.ArrayType     = $ArrayType }
