@@ -436,15 +436,45 @@ Begin {
                 if ($Member.Count) { $Export[$Name] + ' = ' + ($Member.Keys.foreach{ "'$_'" } -join ', ') }
             }
 
-            if ($ModuleMembers.Count) {
-                $Statements = $(
+            $ExportTypes = $(
+                if ($this.Sections.Contains('Enum'))  { $this.Sections.Enum.get_Keys() }
+                if ($this.Sections.Contains('Class')) { $this.Sections.Class.get_Keys() }
+            )
+
+            $Statements = $(
+                if ($ModuleMembers.Count) {
                     '$ModuleMembers = @{'
                     $ModuleMembers.foreach{ "$([ModuleBuilder]::Tab)$_" }
                     '}'
                     'Export-ModuleMember @ModuleMembers'
-                )
-                $this.AppendRegion('Export', $Statements)
-            }
+                }
+
+                if ($ExportTypes) {
+
+                    '# https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_classes#exporting-classes-with-type-accelerators'
+                    '# Define the types to export with type accelerators.'
+                    '$ExportableTypes = @('
+                    $ExportTypes.foreach{ "$([ModuleBuilder]::Tab)[$_]" }
+                    ')'
+
+                    {
+$TypeAcceleratorsClass = [PSObject].Assembly.GetType('System.Management.Automation.TypeAccelerators')
+
+foreach ($Type in $ExportableTypes) {
+    if ($Type.FullName -notin $ExistingTypeAccelerators.Keys) {
+        $TypeAcceleratorsClass::Add($Type.FullName, $Type)
+    }
+}
+
+$MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
+    foreach($Type in $ExportableTypes) {
+        $TypeAcceleratorsClass::Remove($Type.FullName)
+    }
+}.GetNewClosure()}.ToString()
+                }
+            )
+
+            if ($Statements) { $this.AppendRegion('Export', $Statements) }
 
             Write-Verbose "Saving module content to '$($this.Path)'"
             Set-Content -LiteralPath $this.Path -Value $this.Content -NoNewline

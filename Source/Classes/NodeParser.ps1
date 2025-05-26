@@ -88,6 +88,50 @@ Class PSNode : IComparable {
     hidden [Dictionary[String,Object]]$Cache = [Dictionary[String,Object]]::new()
     hidden [DateTime]$MaxDepthWarningTime            # Warn ones per item branch
 
+    static ExportTypes() { # https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_classes#exporting-classes-with-type-accelerators
+        # Define the types to export with type accelerators.
+        $ExportableTypes =@(
+            [PSNode]
+            [PSCollectionNode]
+            [PSListNode]
+            [PSMapNode]
+            [PSDictionaryNode]
+            [PSObjectNode]
+        )
+        # Get the internal TypeAccelerators class to use its static methods.
+        $TypeAcceleratorsClass = [psobject].Assembly.GetType(
+            'System.Management.Automation.TypeAccelerators'
+        )
+        # Ensure none of the types would clobber an existing type accelerator.
+        # If a type accelerator with the same name exists, throw an exception.
+        $ExistingTypeAccelerators = $TypeAcceleratorsClass::Get
+        foreach ($Type in $ExportableTypes) {
+            if ($Type.FullName -in $ExistingTypeAccelerators.Keys) {
+                $Message = @(
+                    "Unable to register type accelerator '$($Type.FullName)'"
+                    'Accelerator already exists.'
+                ) -join ' - '
+
+                throw [System.Management.Automation.ErrorRecord]::new(
+                    [System.InvalidOperationException]::new($Message),
+                    'TypeAcceleratorAlreadyExists',
+                    [System.Management.Automation.ErrorCategory]::InvalidOperation,
+                    $Type.FullName
+                )
+            }
+        }
+        # Add type accelerators for every exportable type.
+        foreach ($Type in $ExportableTypes) {
+            $TypeAcceleratorsClass::Add($Type.FullName, $Type)
+        }
+        # Remove type accelerators when the module is removed.
+        $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
+            foreach($Type in $ExportableTypes) {
+                $TypeAcceleratorsClass::Remove($Type.FullName)
+            }
+        }.GetNewClosure()
+    }
+
     static [PSNode] ParseInput($Object, $MaxDepth) {
         $Node =
             if ($Object -is [PSNode]) { $Object }
@@ -243,28 +287,16 @@ Class PSNode : IComparable {
                 }
                 elseif ($this -is [PSMapNode]) {
                     $Found = $False
-                    foreach ($Value in $Entry.Value) {
-                        $Name = $Value._Value
-                        if ($Value.ContainsWildcard()) {
-                            foreach ($Node in $this.ChildNodes) {
-                                if ($Node.Name -like $Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
-                                    $Found = $True
-                                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                                    else { $NodeTable[$Node.getPathName()] = $Node }
-                                }
-                            }
-                        }
-                        elseif ($this.Contains($Name)) {
-                            $Node = $this.GetChildNode($Name)
-                            if (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value)) {
-                                $Found = $True
-                                if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                                else { $NodeTable[$Node.getPathName()] = $Node }
-                            }
+                    $ChildNodes = $this.get_ChildNodes()
+                    foreach ($Node in $ChildNodes) {
+                        if ($Entry.Value -eq $Node.Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
+                            $Found = $True
+                            if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
+                            else { $NodeTable[$Node.getPathName()] = $Node }
                         }
                     }
                     if (-not $Found -and $Entry.Key -eq 'Descendant') {
-                        foreach ($Node in $this.ChildNodes) {
+                        foreach ($Node in $ChildNodes) {
                             $Node.CollectNodes($NodeTable, $Path, $PathIndex)
                         }
                     }
