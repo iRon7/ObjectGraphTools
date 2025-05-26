@@ -423,7 +423,7 @@ class ObjectComparer {
         $MatchCase = $Comparison -band 'MatchCase'
         $EqualType = $true
 
-        if ($Mode -ne 'Compare') { # $Mode -ne 'Compare'
+        if ($Mode -ne 'Compare') {
             if ($MatchCase -and $Node1.ValueType -ne $Node2.ValueType) {
                 if ($Mode -eq 'Equals') { return $false } else { # if ($Mode -eq 'Report')
                     $this.Differences.Add([PSCustomObject]@{
@@ -489,35 +489,36 @@ class ObjectComparer {
                         foreach ($Key in $this.PrimaryKey) {
                             foreach($Index2 in @($Maps2)) {
                                 $Item2 = $Items2[$Index2]
-                                foreach ($Index1 in $Maps1) {
+                                foreach ($Index1 in @($Maps1)) {
                                     $Item1 = $Items1[$Index1]
                                     if ($Item1.GetValue($Key) -eq $Item2.GetValue($Key)) {
-                                        if ($this.CompareRecurse($Item1, $Item2, 'Equals')) {
-                                            $null = $Maps2.Remove($Index2)
-                                            $Null = $Maps1.Remove($Index1)
-                                            $null = $Indices2.Remove($Index2)
-                                            $Null = $Indices1.Remove($Index1)
-                                            break # Only match the first primary key
+                                        $Compare = $this.CompareRecurse($Item1, $Item2, $Mode)
+                                        Switch ($Mode) {
+                                            Equals  { if (-not $Compare) { return $Compare } }
+                                            Compare { if ($Compare)      { return $Compare } }
                                         }
+                                        $Null = $Indices1.Remove($Index1)
+                                        $null = $Indices2.Remove($Index2)
+                                        $Null = $Maps1.Remove($Index1)
+                                        $null = $Maps2.Remove($Index2)
+                                        break # Only match the first primary key
                                     }
                                 }
                             }
                         }
                         # in case of any single maps leftover without primary keys
-                        if($Maps2.Count -eq 1 -and $Maps1.Count -eq 1) {
-                            $Item2 = $Items2[$Maps2[0]]
+                        if($Maps2.Count -eq 1 -and $Maps1.Count -eq 1) { Write-Host
                             $Item1 = $Items1[$Maps1[0]]
+                            $Item2 = $Items2[$Maps2[0]]
                             $Compare = $this.CompareRecurse($Item1, $Item2, $Mode)
                             Switch ($Mode) {
                                 Equals  { if (-not $Compare) { return $Compare } }
                                 Compare { if ($Compare)      { return $Compare } }
-                                Default {
-                                    $Maps2.Clear()
-                                    $Maps1.Clear()
-                                    $null = $Indices2.Remove($Maps2[0])
-                                    $Null = $Indices1.Remove($Maps1[0])
-                                }
                             }
+                            $null = $Indices2.Remove($Maps2[0])
+                            $Null = $Indices1.Remove($Maps1[0])
+                            $Maps2.Clear()
+                            $Maps1.Clear()
                         }
                     }
                 }
@@ -4603,8 +4604,8 @@ if (-not (Get-FormatData 'XdnPath' -ErrorAction Ignore)) {
 #Region Export
 
 $ModuleMembers = @{
-    Alias = 'cfe', 'cto', 'Copy-Object', 'cpo', 'Export-Object', 'epo', 'gcn', 'gn', 'Sort-ObjectGraph', 'sro', 'Import-Object', 'imo', 'Merge-Object', 'mgo', 'Test-Object', 'tso'
     Function = 'Compare-ObjectGraph', 'ConvertFrom-Expression', 'ConvertTo-Expression', 'Copy-ObjectGraph', 'Export-ObjectGraph', 'Get-ChildNode', 'Get-Node', 'Get-SortObjectGraph', 'Import-ObjectGraph', 'Merge-ObjectGraph', 'Test-ObjectGraph'
+    Alias = 'cfe', 'cto', 'Copy-Object', 'cpo', 'Export-Object', 'epo', 'gcn', 'gn', 'Sort-ObjectGraph', 'sro', 'Import-Object', 'imo', 'Merge-Object', 'mgo', 'Test-Object', 'tso'
 }
 Export-ModuleMember @ModuleMembers
 # https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_classes#exporting-classes-with-type-accelerators
@@ -4661,33 +4662,14 @@ $ExportableTypes = @(
     [XdnPath]
 )
 
-# Get the internal TypeAccelerators class to use its static methods.
-$TypeAcceleratorsClass = [PSObject].Assembly.GetType(
-    'System.Management.Automation.TypeAccelerators'
-)
-# Ensure none of the types would clobber an existing type accelerator.
-# If a type accelerator with the same name exists, throw an exception.
-$ExistingTypeAccelerators = $TypeAcceleratorsClass::Get
-foreach ($Type in $ExportableTypes) {
-    if ($Type.FullName -in $ExistingTypeAccelerators.Keys) {
-        $Message = @(
-            "Unable to register type accelerator '$($Type.FullName)'"
-            'Accelerator already exists.'
-        ) -join ' - '
+$TypeAcceleratorsClass = [PSObject].Assembly.GetType('System.Management.Automation.TypeAccelerators')
 
-        throw [System.Management.Automation.ErrorRecord]::new(
-            [System.InvalidOperationException]::new($Message),
-            'TypeAcceleratorAlreadyExists',
-            [System.Management.Automation.ErrorCategory]::InvalidOperation,
-            $Type.FullName
-        )
+foreach ($Type in $ExportableTypes) {
+    if ($Type.FullName -notin $ExistingTypeAccelerators.Keys) {
+        $TypeAcceleratorsClass::Add($Type.FullName, $Type)
     }
 }
-# Add type accelerators for every exportable type.
-foreach ($Type in $ExportableTypes) {
-    $TypeAcceleratorsClass::Add($Type.FullName, $Type)
-}
-# Remove type accelerators when the module is removed.
+
 $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
     foreach($Type in $ExportableTypes) {
         $TypeAcceleratorsClass::Remove($Type.FullName)
