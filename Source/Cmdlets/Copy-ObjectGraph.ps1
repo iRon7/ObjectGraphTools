@@ -1,46 +1,44 @@
-using module .\..\..\..\ObjectGraphTools
-
 <#
 .SYNOPSIS
-    Copy object graph
+Copy object graph
 
 .DESCRIPTION
-    Recursively ("deep") copies a object graph.
+Recursively ("deep") copies a object graph.
 
 .EXAMPLE
-    # Deep copy a complete object graph into a new object graph
+# Deep copy a complete object graph into a new object graph
 
-        $NewObjectGraph = Copy-ObjectGraph $ObjectGraph
-
-.EXAMPLE
-    # Copy (convert) an object graph using common PowerShell arrays and PSCustomObjects
-
-        $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObject
+    $NewObjectGraph = Copy-ObjectGraph $ObjectGraph
 
 .EXAMPLE
-    # Convert a Json string to an object graph with (case insensitive) ordered dictionaries
+# Copy (convert) an object graph using common PowerShell arrays and PSCustomObjects
 
-        $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
+    $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObject
+
+.EXAMPLE
+# Convert a Json string to an object graph with (case insensitive) ordered dictionaries
+
+    $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
 
 .PARAMETER InputObject
-    The input object that will be recursively copied.
+The input object that will be recursively copied.
 
 .PARAMETER ListAs
-    If supplied, lists will be converted to the given type (or type of the supplied object example).
+If supplied, lists will be converted to the given type (or type of the supplied object example).
 
 .PARAMETER DictionaryAs
-    If supplied, dictionaries will be converted to the given type (or type of the supplied object example).
-    This parameter also accepts the [`PSCustomObject`][1] types
-    By default (if the [-DictionaryAs] parameters is omitted),
-    [`Component`][2] objects will be converted to a [`PSCustomObject`][1] type.
+If supplied, dictionaries will be converted to the given type (or type of the supplied object example).
+This parameter also accepts the [`PSCustomObject`][1] types
+By default (if the [-DictionaryAs] parameters is omitted),
+[`Component`][2] objects will be converted to a [`PSCustomObject`][1] type.
 
 .PARAMETER ExcludeLeafs
-    If supplied, only the structure (lists, dictionaries, [`PSCustomObject`][1] types and [`Component`][2] types will be copied.
-    If omitted, each leaf will be shallow copied
+If supplied, only the structure (lists, dictionaries, [`PSCustomObject`][1] types and [`Component`][2] types will be copied.
+If omitted, each leaf will be shallow copied
 
 .LINK
-    [1]: https://learn.microsoft.com/dotnet/api/system.management.automation.pscustomobject "PSCustomObject Class"
-    [2]: https://learn.microsoft.com/dotnet/api/system.componentmodel.component "Component Class"
+[1]: https://learn.microsoft.com/dotnet/api/system.management.automation.pscustomobject "PSCustomObject Class"
+[2]: https://learn.microsoft.com/dotnet/api/system.componentmodel.component "Component Class"
 #>
 [Alias('Copy-Object', 'cpo')]
 [OutputType([Object[]])]

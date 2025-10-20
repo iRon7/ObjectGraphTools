@@ -7,6 +7,7 @@ Gets the child nodes of an object-graph
 
 ```PowerShell
 Get-ChildNode
+    [-ListChild]
     -InputObject <Object>
     [-Recurse]
     [-AtDepth <Int32[]>]
@@ -19,15 +20,16 @@ Get-ChildNode
 
 ```PowerShell
 Get-ChildNode
-    [-ListChild]
-    [<CommonParameters>]
-```
-
-```PowerShell
-Get-ChildNode
     [-Include <String[]>]
     [-Exclude <String[]>]
     [-Literal]
+    -InputObject <Object>
+    [-Recurse]
+    [-AtDepth <Int32[]>]
+    [-Leaf]
+    [-IncludeSelf]
+    [-ValueOnly]
+    [-MaxDepth <Int32>]
     [<CommonParameters>]
 ```
 
@@ -38,7 +40,7 @@ The returned nodes are unique even if the provide list of input parent nodes hav
 
 ## Examples
 
-### Example 1: Select all leaf nodes in a object graph
+### <a id="example-1"><a id="example-select-all-leaf-nodes-in-a-object-graph">Example 1: Select all leaf nodes in a object graph</a></a>
 
 
 Given the following object graph:
@@ -85,7 +87,7 @@ Path             Name    Depth Value
 .Comment         Comment     1 Sample ObjectGraph
 ```
 
-### Example 2: update a property
+### <a id="example-2"><a id="example-update-a-property">Example 2: update a property</a></a>
 
 
 The following example selects all child nodes named `Comment` at a depth of `3`.
@@ -124,20 +126,23 @@ See the [PowerShell Object Parser][1] For details on the `[PSNode]` properties a
 
 ## Parameters
 
-### <a id="-inputobject">**`-InputObject <Object>`**</a>
+### <a id="-inputobject">`-InputObject` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">&lt;Object&gt;</a></a>
 
 The concerned object graph or node.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
-<tr><td>Mandatory:</td><td>True</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -InputObject
+Aliases:                    # None
+Type:                       [Object]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  True
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-recurse">**`-Recurse`**</a>
+### <a id="-recurse">`-Recurse`</a>
 
 Recursively iterates through all embedded property objects (nodes) to get the selected nodes.
 The maximum depth of of a specific node that might be retrieved is define by the `MaxDepth`
@@ -153,135 +158,162 @@ Get-Node <InputObject> -Depth 20 | Get-ChildNode ...
 > If the [AtDepth](#atdepth) parameter is supplied, the object graph is recursively searched anyways
 > for the selected nodes up till the deepest given `AtDepth` value.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Recurse
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-atdepth">**`-AtDepth <Int32[]>`**</a>
+### <a id="-atdepth">`-AtDepth` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32[]">&lt;Int32[]&gt;</a></a>
 
 When defined, only returns nodes at the given depth(s).
 
 > [!NOTE]
 > The nodes below the `MaxDepth` can not be retrieved.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32[]">Int32[]</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -AtDepth
+Aliases:                    # None
+Type:                       [Int32[]]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-listchild">**`-ListChild`**</a>
+### <a id="-listchild">`-ListChild`</a>
 
 Returns the closest nodes derived from a **list node**.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -ListChild
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             ListChild
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-include">**`-Include <String[]>`**</a>
+### <a id="-include">`-Include` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.String[]">&lt;String[]&gt;</a></a>
 
 Returns only nodes derived from a **map node** including only the ones specified by one or more
 string patterns defined by this parameter. Wildcard characters are permitted.
 
 > [!NOTE]
-> The [-Include](#-include) and [-Exclude](#-exclude) parameters can be used together. However, the exclusions are applied
+> The [`-Include`](#-include) and [`-Exclude`](#-exclude) parameters can be used together. However, the exclusions are applied
 > after the inclusions, which can affect the final output.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.String[]">String[]</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Include
+Aliases:                    # None
+Type:                       [String[]]
+Value (default):            # Undefined
+Parameter sets:             MapChild
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-exclude">**`-Exclude <String[]>`**</a>
+### <a id="-exclude">`-Exclude` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.String[]">&lt;String[]&gt;</a></a>
 
 Returns only nodes derived from a **map node** excluding the ones specified by one or more
 string patterns defined by this parameter. Wildcard characters are permitted.
 
 > [!NOTE]
-> The [-Include](#-include) and [-Exclude](#-exclude) parameters can be used together. However, the exclusions are applied
+> The [`-Include`](#-include) and [`-Exclude`](#-exclude) parameters can be used together. However, the exclusions are applied
 > after the inclusions, which can affect the final output.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.String[]">String[]</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Exclude
+Aliases:                    # None
+Type:                       [String[]]
+Value (default):            # Undefined
+Parameter sets:             MapChild
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-literal">**`-Literal`**</a>
+### <a id="-literal">`-Literal`</a>
 
-The values of the [-Include](#-include) - and [-Exclude](#-exclude) parameters are used exactly as it is typed.
+The values of the [`-Include`](#-include) - and [`-Exclude`](#-exclude) parameters are used exactly as it is typed.
 No characters are interpreted as wildcards.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Literal
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             MapChild
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-leaf">**`-Leaf`**</a>
+### <a id="-leaf">`-Leaf`</a>
 
 Only return leaf nodes. Leaf nodes are nodes at the end of a branch and do not have any child nodes.
-You can use the [-Recurse](#-recurse) parameter with the [-Leaf](#-leaf) parameter.
+You can use the [`-Recurse`](#-recurse) parameter with the [`-Leaf`](#-leaf) parameter.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Leaf
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-includeself">**`-IncludeSelf`**</a>
+### <a id="-includeself">`-IncludeSelf`</a>
 
 Includes the current node with the returned child nodes.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -IncludeSelf
+Aliases:                    -Self
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-valueonly">**`-ValueOnly`**</a>
+### <a id="-valueonly">`-ValueOnly`</a>
 
 returns the value of the node instead of the node itself.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -ValueOnly
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-maxdepth">**`-MaxDepth <Int32>`**</a>
+### <a id="-maxdepth">`-MaxDepth` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">&lt;Int32&gt;</a></a>
 
 Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
 The failsafe will prevent infinitive loops for circular references as e.g. in:
@@ -297,19 +329,24 @@ The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 > The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
 > at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -MaxDepth
+Aliases:                    # None
+Type:                       [Int32]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
 ## Related Links
 
-* 1: [PowerShell Object Parser][1]
-* 2: [Get-Node][2]
+* [PowerShell Object Parser](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md)
+* [Get-Node](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md)
+<!-- -->
+
 
 [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
 [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md "Get-Node"

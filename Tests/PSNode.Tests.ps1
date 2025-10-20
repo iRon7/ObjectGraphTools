@@ -558,4 +558,12 @@ Describe 'PSNode' {
             ($HashTable | Get-Node).CaseMatters | Should -BeTrue
         }
     }
+
+    # Context 'Github issues' {
+
+    #     it '#96 .Get_Value() return more than just the Value' { # See: https://stackoverflow.com/a/38212718/1701026
+    #         $a = @{ a = 'a', 'b' } | Get-Node
+    #         $a.GetChildNode('a').Get_Value() | ConvertTo-Json -Compress | Should -be '["a","b"]'
+    #     }
+    # }
 }

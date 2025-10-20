@@ -1,10 +1,8 @@
-$Get = $Null
-
-function Test ($Out) {
-    $Out.PSTypeNames
-    if ($Out) { $out.Value = 4 }
+function Test ($Issues) {
+    if ($Issues -is [Ref]) { $Issues.Value = $true }
 }
 
-$Param = @{ Out = [ref]$Get }
+$Issues = [ref]$Null
+$Param = @{ Issues = $Issues}
 Test @Param
-Write-Host 'Get' $Get
+Write-Host 'Issues' $Issues.Value

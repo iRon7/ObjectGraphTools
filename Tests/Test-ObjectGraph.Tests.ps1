@@ -3,14 +3,19 @@
 using module ..\..\ObjectGraphTools
 
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'False positive')]
+param([alias("Path")]$PrototypePath)
 
-param()
-
-Describe 'Test-Object' {
+Describe 'Test-ObjectGraph' {
 
     BeforeAll {
 
         Set-StrictMode -Version Latest
+
+        if ($PrototypePath) {
+            $Content = Get-Content -Raw -LiteralPath $PrototypePath
+            $CommandName = [io.path]::GetFileNameWithoutExtension($PSCommandPath) -replace '\.Tests$'
+            Mock $CommandName ([ScriptBlock]::Create($Content))
+        }
 
         $Person = [PSCustomObject]@{
             FirstName = 'John'
@@ -36,15 +41,15 @@ Describe 'Test-Object' {
 
     Context 'Existence Check' {
 
-        It 'Help' {
-            Test-Object -? | Out-String -Stream | Should -Contain SYNOPSIS
+        It 'Help' -Skip:$($null -ne $PrototypePath) {
+            Test-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
         }
     }
 
     Context 'Type (as string)' {
 
         It 'Report' {
-            $True | Test-Object @{ '@Type' = 'Bool' } | Should -BeNullOrEmpty
+            $True | Test-ObjectGraph @{ '@Type' = 'Bool' } | Should -BeNullOrEmpty
             $Report = 123 | Test-ObjectGraph @{ '@Type' = 'Bool' } -Elaborate
             $Report.ObjectNode.Value | Should -Be 123
             $Report.Valid            | Should -Be $False
@@ -52,42 +57,42 @@ Describe 'Test-Object' {
         }
 
         It 'Bool' {
-            $True  | Test-Object @{ '@Type' = 'Bool' } -ValidateOnly | Should -BeTrue
-            'True' | Test-Object @{ '@Type' = 'Bool' } -ValidateOnly | Should -BeFalse
+            $True  | Test-ObjectGraph @{ '@Type' = 'Bool' } -ValidateOnly | Should -BeTrue
+            'True' | Test-ObjectGraph @{ '@Type' = 'Bool' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Int' {
-            123    | Test-Object @{ '@Type' = 'Int' } -ValidateOnly | Should -BeTrue
-            '123'  | Test-Object @{ '@Type' = 'Int' } -ValidateOnly | Should -BeFalse
+            123    | Test-ObjectGraph @{ '@Type' = 'Int' } -ValidateOnly | Should -BeTrue
+            '123'  | Test-ObjectGraph @{ '@Type' = 'Int' } -ValidateOnly | Should -BeFalse
         }
 
         It 'String' {
-            'True' | Test-Object @{ '@Type' = 'String' } -ValidateOnly | Should -BeTrue
-            '123'  | Test-Object @{ '@Type' = 'String' } -ValidateOnly | Should -BeTrue
-            123    | Test-Object @{ '@Type' = 'String' } -ValidateOnly | Should -BeFalse
+            'True' | Test-ObjectGraph @{ '@Type' = 'String' } -ValidateOnly | Should -BeTrue
+            '123'  | Test-ObjectGraph @{ '@Type' = 'String' } -ValidateOnly | Should -BeTrue
+            123    | Test-ObjectGraph @{ '@Type' = 'String' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Array' {
-            ,@(1,2)    | Test-Object @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            ,@(1)      | Test-Object @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            ,@()       | Test-Object @{ '@Type' = 'Array' }                             -ValidateOnly | Should -BeTrue
-            'Test'     | Test-Object @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
-            @{ a = 1 } | Test-Object @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1,2)    | Test-ObjectGraph @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@(1)      | Test-ObjectGraph @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@()       | Test-ObjectGraph @{ '@Type' = 'Array' }                             -ValidateOnly | Should -BeTrue
+            'Test'     | Test-ObjectGraph @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-ObjectGraph @{ '@Type' = 'Array'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
 
         It 'HashTable' {
-            @{ a = 1 } | Test-Object @{ '@Type' = 'HashTable'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            @{}        | Test-Object @{ '@Type' = 'HashTable' }                             -ValidateOnly | Should -BeTrue
-            'Test'     | Test-Object @{ '@Type' = 'HashTable'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
-            ,@(1, 2)   | Test-Object @{ '@Type' = 'HashTable'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-ObjectGraph @{ '@Type' = 'HashTable'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            @{}        | Test-ObjectGraph @{ '@Type' = 'HashTable' }                             -ValidateOnly | Should -BeTrue
+            'Test'     | Test-ObjectGraph @{ '@Type' = 'HashTable'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1, 2)   | Test-ObjectGraph @{ '@Type' = 'HashTable'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
     }
 
     Context 'Type (as type)' {
 
         It 'Report' {
-            $True | Test-Object @{ '@Type' = [Bool] } | Should -BeNullOrEmpty
-            123   | Test-Object @{ '@Type' = [Bool] } -Elaborate | ForEach-Object {
+            $True | Test-ObjectGraph @{ '@Type' = [Bool] } | Should -BeNullOrEmpty
+            123   | Test-ObjectGraph @{ '@Type' = [Bool] } -Elaborate | ForEach-Object {
                 $_.ObjectNode.Value | Should -Be 123
                 $_.Valid            | Should -Be $False
                 $_.Issue            | Should -Not -BeNullOrEmpty
@@ -95,50 +100,50 @@ Describe 'Test-Object' {
         }
 
         It 'Bool' {
-            $True  | Test-Object @{ '@Type' = [Bool] }    -ValidateOnly | Should -BeTrue
-            'True' | Test-Object @{ '@Type' = [Bool] }    -ValidateOnly | Should -BeFalse
+            $True  | Test-ObjectGraph @{ '@Type' = [Bool] }    -ValidateOnly | Should -BeTrue
+            'True' | Test-ObjectGraph @{ '@Type' = [Bool] }    -ValidateOnly | Should -BeFalse
         }
 
         It 'Int' {
-            123    | Test-Object @{ '@Type' = [Int] }     -ValidateOnly | Should -BeTrue
-            '123'  | Test-Object @{ '@Type' = [Int] }     -ValidateOnly | Should -BeFalse
+            123    | Test-ObjectGraph @{ '@Type' = [Int] }     -ValidateOnly | Should -BeTrue
+            '123'  | Test-ObjectGraph @{ '@Type' = [Int] }     -ValidateOnly | Should -BeFalse
         }
 
         It 'String' {
-            'True' | Test-Object @{ '@Type' = [String] } -ValidateOnly | Should -BeTrue
-            '123'  | Test-Object @{ '@Type' = [String] } -ValidateOnly | Should -BeTrue
-            123    | Test-Object @{ '@Type' = [String] } -ValidateOnly | Should -BeFalse
+            'True' | Test-ObjectGraph @{ '@Type' = [String] } -ValidateOnly | Should -BeTrue
+            '123'  | Test-ObjectGraph @{ '@Type' = [String] } -ValidateOnly | Should -BeTrue
+            123    | Test-ObjectGraph @{ '@Type' = [String] } -ValidateOnly | Should -BeFalse
         }
 
         It 'Array' {
-            ,@(1,2)    | Test-Object @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            ,@(1)      | Test-Object @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            ,@()       | Test-Object @{ '@Type' = [Array] }                             -ValidateOnly | Should -BeTrue
-            'Test'     | Test-Object @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
-            @{ a = 1 } | Test-Object @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1,2)    | Test-ObjectGraph @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@(1)      | Test-ObjectGraph @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@()       | Test-ObjectGraph @{ '@Type' = [Array] }                             -ValidateOnly | Should -BeTrue
+            'Test'     | Test-ObjectGraph @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-ObjectGraph @{ '@Type' = [Array]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
 
         It 'HashTable' {
-            @{ a = 1 } | Test-Object @{ '@Type' = [HashTable]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            @{}        | Test-Object @{ '@Type' = [HashTable] }                             -ValidateOnly | Should -BeTrue
-            'Test'     | Test-Object @{ '@Type' = [HashTable]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
-            ,@(1, 2)   | Test-Object @{ '@Type' = [HashTable]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-ObjectGraph @{ '@Type' = [HashTable]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            @{}        | Test-ObjectGraph @{ '@Type' = [HashTable] }                             -ValidateOnly | Should -BeTrue
+            'Test'     | Test-ObjectGraph @{ '@Type' = [HashTable]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1, 2)   | Test-ObjectGraph @{ '@Type' = [HashTable]; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
     }
 
     Context 'Not Type (as string)' {
 
         It 'Bool' {
-            'True' | Test-Object @{ '@NotType' = 'Bool' }    -ValidateOnly | Should -BeTrue
-            $True  | Test-Object @{ '@NotType' = 'Bool' }    -ValidateOnly | Should -BeFalse
+            'True' | Test-ObjectGraph @{ '@NotType' = 'Bool' }    -ValidateOnly | Should -BeTrue
+            $True  | Test-ObjectGraph @{ '@NotType' = 'Bool' }    -ValidateOnly | Should -BeFalse
         }
     }
 
     Context 'Not Type (as type)' {
 
         It 'Not Bool' {
-            'True' | Test-Object @{ '@NotType' = [Bool] }    -ValidateOnly | Should -BeTrue
-            $True  | Test-Object @{ '@NotType' = [Bool] }    -ValidateOnly | Should -BeFalse
+            'True' | Test-ObjectGraph @{ '@NotType' = [Bool] }    -ValidateOnly | Should -BeTrue
+            $True  | Test-ObjectGraph @{ '@NotType' = [Bool] }    -ValidateOnly | Should -BeFalse
         }
     }
 
@@ -146,64 +151,64 @@ Describe 'Test-Object' {
     Context 'Multiple types' {
 
         It 'Any of type' {
-            '123' | Test-Object @{ '@Type' = [Int], [String] } -ValidateOnly | Should -BeTrue
-            $true | Test-Object @{ '@Type' = [Int], [String] } -ValidateOnly | Should -BeFalse
+            '123' | Test-ObjectGraph @{ '@Type' = [Int], [String] } -ValidateOnly | Should -BeTrue
+            $true | Test-ObjectGraph @{ '@Type' = [Int], [String] } -ValidateOnly | Should -BeFalse
         }
 
         It 'None of type' {
-            '123' | Test-Object @{ '@NotType' = [Int], [String] } -ValidateOnly | Should -BeFalse
-            $true | Test-Object @{ '@NotType' = [Int], [String] } -ValidateOnly | Should -BeTrue
+            '123' | Test-ObjectGraph @{ '@NotType' = [Int], [String] } -ValidateOnly | Should -BeFalse
+            $true | Test-ObjectGraph @{ '@NotType' = [Int], [String] } -ValidateOnly | Should -BeTrue
         }
     }
 
     Context 'No type' {
 
         It '$Null' {
-            @{ Test = '123' } | Test-Object @{ Test = @{ '@Type' = [Int], [String] } }         -ValidateOnly | Should -BeTrue
-            @{ Test = $Null } | Test-Object @{ Test = @{ '@Type' = [Int], [String] } }         -ValidateOnly | Should -BeFalse
-            @{ Test = $Null } | Test-Object @{ Test = @{ '@Type' = [Int], [String], [Void] } } -ValidateOnly | Should -BeTrue
-            @{ Test = $Null } | Test-Object @{ Test = @{ '@Type' = [Int], [String], 'Null' } } -ValidateOnly | Should -BeTrue
-            @{ Test = $Null } | Test-Object @{ Test = @{ '@Type' = [Int], [String], $Null } }  -ValidateOnly | Should -BeTrue
-            @{ Test = '123' } | Test-Object @{ Test = @{ '@Type' = [Int], [Void] } }           -ValidateOnly | Should -BeFalse
+            @{ Test = '123' } | Test-ObjectGraph @{ Test = @{ '@Type' = [Int], [String] } }         -ValidateOnly | Should -BeTrue
+            @{ Test = $Null } | Test-ObjectGraph @{ Test = @{ '@Type' = [Int], [String] } }         -ValidateOnly | Should -BeFalse
+            @{ Test = $Null } | Test-ObjectGraph @{ Test = @{ '@Type' = [Int], [String], [Void] } } -ValidateOnly | Should -BeTrue
+            @{ Test = $Null } | Test-ObjectGraph @{ Test = @{ '@Type' = [Int], [String], 'Null' } } -ValidateOnly | Should -BeTrue
+            @{ Test = $Null } | Test-ObjectGraph @{ Test = @{ '@Type' = [Int], [String], $Null } }  -ValidateOnly | Should -BeTrue
+            @{ Test = '123' } | Test-ObjectGraph @{ Test = @{ '@Type' = [Int], [Void] } }           -ValidateOnly | Should -BeFalse
         }
     }
 
     Context 'PSNode Type' {
 
         It 'Value' {
-            'String' | Test-Object @{ '@Type' = 'PSNode' }           -ValidateOnly | Should -BeTrue
-            'String' | Test-Object @{ '@Type' = 'PSLeafNode' }       -ValidateOnly | Should -BeTrue
-            'String' | Test-Object @{ '@Type' = 'PSCollectionNode' } -ValidateOnly | Should -BeFalse
-            'String' | Test-Object @{ '@Type' = 'PSListNode' }       -ValidateOnly | Should -BeFalse
-            'String' | Test-Object @{ '@Type' = 'PSMapNode' }        -ValidateOnly | Should -BeFalse
-            'String' | Test-Object @{ '@Type' = 'PSObjectNode' }     -ValidateOnly | Should -BeFalse
+            'String' | Test-ObjectGraph @{ '@Type' = 'PSNode' }           -ValidateOnly | Should -BeTrue
+            'String' | Test-ObjectGraph @{ '@Type' = 'PSLeafNode' }       -ValidateOnly | Should -BeTrue
+            'String' | Test-ObjectGraph @{ '@Type' = 'PSCollectionNode' } -ValidateOnly | Should -BeFalse
+            'String' | Test-ObjectGraph @{ '@Type' = 'PSListNode' }       -ValidateOnly | Should -BeFalse
+            'String' | Test-ObjectGraph @{ '@Type' = 'PSMapNode' }        -ValidateOnly | Should -BeFalse
+            'String' | Test-ObjectGraph @{ '@Type' = 'PSObjectNode' }     -ValidateOnly | Should -BeFalse
         }
 
         It 'Array' {
-            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSNode';           '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSLeafNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
-            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSCollectionNode'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSListNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSMapNode';        '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
-            ,@(1,2,3) | Test-Object @{ '@Type' = 'PSObjectNode';     '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1,2,3) | Test-ObjectGraph @{ '@Type' = 'PSNode';           '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@(1,2,3) | Test-ObjectGraph @{ '@Type' = 'PSLeafNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1,2,3) | Test-ObjectGraph @{ '@Type' = 'PSCollectionNode'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@(1,2,3) | Test-ObjectGraph @{ '@Type' = 'PSListNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            ,@(1,2,3) | Test-ObjectGraph @{ '@Type' = 'PSMapNode';        '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            ,@(1,2,3) | Test-ObjectGraph @{ '@Type' = 'PSObjectNode';     '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
 
         It 'Dictionary' {
-            @{ a = 1 } | Test-Object @{ '@Type' = 'PSNode';           '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            @{ a = 1 } | Test-Object @{ '@Type' = 'PSLeafNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
-            @{ a = 1 } | Test-Object @{ '@Type' = 'PSCollectionNode'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            @{ a = 1 } | Test-Object @{ '@Type' = 'PSListNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
-            @{ a = 1 } | Test-Object @{ '@Type' = 'PSMapNode';        '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            @{ a = 1 } | Test-Object @{ '@Type' = 'PSObjectNode';     '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-ObjectGraph @{ '@Type' = 'PSNode';           '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            @{ a = 1 } | Test-ObjectGraph @{ '@Type' = 'PSLeafNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-ObjectGraph @{ '@Type' = 'PSCollectionNode'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            @{ a = 1 } | Test-ObjectGraph @{ '@Type' = 'PSListNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            @{ a = 1 } | Test-ObjectGraph @{ '@Type' = 'PSMapNode';        '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            @{ a = 1 } | Test-ObjectGraph @{ '@Type' = 'PSObjectNode';     '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
         }
 
         It 'Object' {
-            $Person | Test-Object @{ '@Type' = 'PSNode';           '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            $Person | Test-Object @{ '@Type' = 'PSLeafNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
-            $Person | Test-Object @{ '@Type' = 'PSCollectionNode'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            $Person | Test-Object @{ '@Type' = 'PSListNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
-            $Person | Test-Object @{ '@Type' = 'PSMapNode';        '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            $Person | Test-Object @{ '@Type' = 'PSObjectNode';     '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            $Person | Test-ObjectGraph @{ '@Type' = 'PSNode';           '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            $Person | Test-ObjectGraph @{ '@Type' = 'PSLeafNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            $Person | Test-ObjectGraph @{ '@Type' = 'PSCollectionNode'; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            $Person | Test-ObjectGraph @{ '@Type' = 'PSListNode';       '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeFalse
+            $Person | Test-ObjectGraph @{ '@Type' = 'PSMapNode';        '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            $Person | Test-ObjectGraph @{ '@Type' = 'PSObjectNode';     '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
         }
     }
 
@@ -211,148 +216,148 @@ Describe 'Test-Object' {
         BeforeAll {
             $Schema = @{ Word = @{ '@Match' = '^\w+$' } }
         }
-        it 'No list'         { @{}                           | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it '$Null'           { @{ Word = $null }             | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Test'            { @{ Word = 'Test' }            | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'Empty'           { @{ Word = @() }               | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'Single'          { @{ Word = @('a') }            | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'No match a b'    { @{ Word = @('a b') }          | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-Object $Schema -ValidateOnly | Should -BeTrue }
+        it 'No list'         { @{}                           | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it '$Null'           { @{ Word = $null }             | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Test'            { @{ Word = 'Test' }            | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'Empty'           { @{ Word = @() }               | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'Single'          { @{ Word = @('a') }            | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'No match a b'    { @{ Word = @('a b') }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
     }
 
     Context 'Compulsory list with unnamed items' {
         BeforeAll {
             $Schema = @{ Word = @(@{ '@Match' = '^\w+$' }) }
         }
-        it 'No list'         { @{}                           | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it '$Null'           { @{ Word = $null }             | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Test'            { @{ Word = 'Test' }            | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Empty'           { @{ Word = @() }               | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'Single'          { @{ Word = @('a') }            | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'No match a b'    { @{ Word = @('a b') }          | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No list'         { @{}                           | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it '$Null'           { @{ Word = $null }             | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Test'            { @{ Word = 'Test' }            | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Empty'           { @{ Word = @() }               | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'Single'          { @{ Word = @('a') }            | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'No match a b'    { @{ Word = @('a b') }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
     }
 
     Context 'Compulsory list with named items' {
         BeforeAll {
             $Schema = @{ Word = @{ '@Type' = [PSListNode]; IsWord = @{ '@Match' = '^\w+$' } } }
         }
-        it 'No list'         { @{}                           | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it '$Null'           { @{ Word = $null }             | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Test'            { @{ Word = 'Test' }            | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Empty'           { @{ Word = @() }               | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'Single'          { @{ Word = @('a') }            | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'No match a b'    { @{ Word = @('a b') }          | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No list'         { @{}                           | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it '$Null'           { @{ Word = $null }             | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Test'            { @{ Word = 'Test' }            | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Empty'           { @{ Word = @() }               | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'Single'          { @{ Word = @('a') }            | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'No match a b'    { @{ Word = @('a b') }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
     }
 
     Context 'Forced list with named items' {
         BeforeAll {
             $Schema = @{ Word = @{ '@Type' = [PSListNode]; '@Required' = $true; IsWord = @{ '@Match' = '^\w+$' } } }
         }
-        it 'No list'         { @{}                           | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it '$Null'           { @{ Word = $null }             | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Test'            { @{ Word = 'Test' }            | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Empty'           { @{ Word = @() }               | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'Single'          { @{ Word = @('a') }            | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-Object $Schema -ValidateOnly | Should -BeTrue }
-        it 'No match a b'    { @{ Word = @('a b') }          | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-Object $Schema -ValidateOnly | Should -BeFalse }
-        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-Object $Schema -ValidateOnly | Should -BeFalse }
+        it 'No list'         { @{}                           | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it '$Null'           { @{ Word = $null }             | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Test'            { @{ Word = 'Test' }            | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Empty'           { @{ Word = @() }               | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'Single'          { @{ Word = @('a') }            | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'Multiple'        { @{ Word = @('a', 'b') }       | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue }
+        it 'No match a b'    { @{ Word = @('a b') }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a, b c' { @{ Word = @('a', 'b c') }     | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'No match a b, c' { @{ Word = @('a b', 'c') }     | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'Dictionary'      { @{ Word = @{ a = 'b' } }      | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
+        it 'IsWord item'     { @{ Word = @{ IsWord = 'b' } } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse }
     }
 
     Context 'Multiple integer Limits' {
 
         It 'Maximum int' {
-            ,@(17, 18, 19) | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
-            ,@(40, 41, 42) | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
-            ,@(17, 42, 99) | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeFalse
+            ,@(17, 18, 19) | Test-ObjectGraph @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(40, 41, 42) | Test-ObjectGraph @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(17, 42, 99) | Test-ObjectGraph @{ '@Maximum' = 42 } -ValidateOnly | Should -BeFalse
         }
 
         It 'Exclusive maximum int' {
-            ,@(17, 18, 19) | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeTrue
-            ,@(40, 41, 42) | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
-            ,@(17, 42, 99) | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
+            ,@(17, 18, 19) | Test-ObjectGraph @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(40, 41, 42) | Test-ObjectGraph @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
+            ,@(17, 42, 99) | Test-ObjectGraph @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
         }
 
         It 'Minimum int' {
-            ,@(97, 98, 99) | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
-            ,@(42, 43, 44) | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
-            ,@(17, 42, 99) | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeFalse
+            ,@(97, 98, 99) | Test-ObjectGraph @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(42, 43, 44) | Test-ObjectGraph @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(17, 42, 99) | Test-ObjectGraph @{ '@Minimum' = 42 } -ValidateOnly | Should -BeFalse
         }
 
         It 'Exclusive minimum int' {
-            ,@(97, 98, 99) | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeTrue
-            ,@(42, 43, 44) | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
-            ,@(17, 42, 99) | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
+            ,@(97, 98, 99) | Test-ObjectGraph @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeTrue
+            ,@(42, 43, 44) | Test-ObjectGraph @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
+            ,@(17, 42, 99) | Test-ObjectGraph @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
         }
     }
 
     Context 'String limits' {
 
         It 'Maximum string' {
-            'Alpha' | Test-Object @{ '@Maximum' = 'Beta' } -ValidateOnly | Should -BeTrue
-            'Beta'  | Test-Object @{ '@Maximum' = 'Beta' } -ValidateOnly | Should -BeTrue
-            'Gamma' | Test-Object @{ '@Maximum' = 'Beta' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-ObjectGraph @{ '@Maximum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Beta'  | Test-ObjectGraph @{ '@Maximum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Gamma' | Test-ObjectGraph @{ '@Maximum' = 'Beta' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Exclusive maximum string' {
-            'Alpha' | Test-Object @{ '@ExclusiveMaximum' = 'Beta' } -ValidateOnly | Should -BeTrue
-            'Beta'  | Test-Object @{ '@ExclusiveMaximum' = 'Beta' } -ValidateOnly | Should -BeFalse
-            'Gamma' | Test-Object @{ '@ExclusiveMaximum' = 'Beta' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-ObjectGraph @{ '@ExclusiveMaximum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Beta'  | Test-ObjectGraph @{ '@ExclusiveMaximum' = 'Beta' } -ValidateOnly | Should -BeFalse
+            'Gamma' | Test-ObjectGraph @{ '@ExclusiveMaximum' = 'Beta' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Minimum string' {
-            'Gamma' | Test-Object @{ '@Minimum' = 'Beta' } -ValidateOnly | Should -BeTrue
-            'Beta'  | Test-Object @{ '@Minimum' = 'Beta' } -ValidateOnly | Should -BeTrue
-            'Alpha' | Test-Object @{ '@Minimum' = 'Beta' } -ValidateOnly | Should -BeFalse
+            'Gamma' | Test-ObjectGraph @{ '@Minimum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Beta'  | Test-ObjectGraph @{ '@Minimum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Alpha' | Test-ObjectGraph @{ '@Minimum' = 'Beta' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Exclusive minimum string' {
-            'Gamma' | Test-Object @{ '@ExclusiveMinimum' = 'Beta' } -ValidateOnly | Should -BeTrue
-            'Beta'  | Test-Object @{ '@ExclusiveMinimum' = 'Beta' } -ValidateOnly | Should -BeFalse
-            'Alpha' | Test-Object @{ '@ExclusiveMinimum' = 'Beta' } -ValidateOnly | Should -BeFalse
+            'Gamma' | Test-ObjectGraph @{ '@ExclusiveMinimum' = 'Beta' } -ValidateOnly | Should -BeTrue
+            'Beta'  | Test-ObjectGraph @{ '@ExclusiveMinimum' = 'Beta' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-ObjectGraph @{ '@ExclusiveMinimum' = 'Beta' } -ValidateOnly | Should -BeFalse
         }
     }
 
     Context 'Integer Limits' {
 
         It 'Maximum int' {
-            17 | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
-            42 | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
-            99 | Test-Object @{ '@Maximum' = 42 } -ValidateOnly | Should -BeFalse
+            17 | Test-ObjectGraph @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
+            42 | Test-ObjectGraph @{ '@Maximum' = 42 } -ValidateOnly | Should -BeTrue
+            99 | Test-ObjectGraph @{ '@Maximum' = 42 } -ValidateOnly | Should -BeFalse
         }
 
         It 'Exclusive maximum int' {
-            17 | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeTrue
-            42 | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
-            99 | Test-Object @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
+            17 | Test-ObjectGraph @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeTrue
+            42 | Test-ObjectGraph @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
+            99 | Test-ObjectGraph @{ '@ExclusiveMaximum' = 42 } -ValidateOnly | Should -BeFalse
         }
 
         It 'Minimum int' {
-            99 | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
-            42 | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
-            17 | Test-Object @{ '@Minimum' = 42 } -ValidateOnly | Should -BeFalse
+            99 | Test-ObjectGraph @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
+            42 | Test-ObjectGraph @{ '@Minimum' = 42 } -ValidateOnly | Should -BeTrue
+            17 | Test-ObjectGraph @{ '@Minimum' = 42 } -ValidateOnly | Should -BeFalse
         }
 
         It 'Exclusive minimum int' {
-            99 | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeTrue
-            42 | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
-            17 | Test-Object @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
+            99 | Test-ObjectGraph @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeTrue
+            42 | Test-ObjectGraph @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
+            17 | Test-ObjectGraph @{ '@ExclusiveMinimum' = 42 } -ValidateOnly | Should -BeFalse
         }
     }
 
@@ -360,127 +365,127 @@ Describe 'Test-Object' {
     Context 'Case sensitive string limits' {
 
         It 'Maximum string' {
-            'alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Maximum' = 'Alpha' } -ValidateOnly | Should -BeTrue
-            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Maximum' = 'Alpha' } -ValidateOnly | Should -BeTrue
-            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Maximum' = 'alpha' } -ValidateOnly | Should -BeFalse
+            'alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@Maximum' = 'Alpha' } -ValidateOnly | Should -BeTrue
+            'Alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@Maximum' = 'Alpha' } -ValidateOnly | Should -BeTrue
+            'Alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@Maximum' = 'alpha' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Maximum exclusive string' {
-            'alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMaximum' = 'Alpha' } -ValidateOnly | Should -BeTrue
-            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMaximum' = 'Alpha' } -ValidateOnly | Should -BeFalse
-            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMaximum' = 'alpha' } -ValidateOnly | Should -BeFalse
+            'alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@ExclusiveMaximum' = 'Alpha' } -ValidateOnly | Should -BeTrue
+            'Alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@ExclusiveMaximum' = 'Alpha' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@ExclusiveMaximum' = 'alpha' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Minimum string' {
-            'alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Minimum' = 'Alpha' } -ValidateOnly | Should -BeFalse
-            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Minimum' = 'Alpha' } -ValidateOnly | Should -BeTrue
-            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@Minimum' = 'alpha' } -ValidateOnly | Should -BeTrue
+            'alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@Minimum' = 'Alpha' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@Minimum' = 'Alpha' } -ValidateOnly | Should -BeTrue
+            'Alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@Minimum' = 'alpha' } -ValidateOnly | Should -BeTrue
         }
 
         It 'Minimum exclusive string' {
-            'alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMinimum' = 'Alpha' } -ValidateOnly | Should -BeFalse
-            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMinimum' = 'Alpha' } -ValidateOnly | Should -BeFalse
-            'Alpha' | Test-Object @{ '@CaseSensitive' = $true; '@ExclusiveMinimum' = 'alpha' } -ValidateOnly | Should -BeTrue
+            'alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@ExclusiveMinimum' = 'Alpha' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@ExclusiveMinimum' = 'Alpha' } -ValidateOnly | Should -BeFalse
+            'Alpha' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@ExclusiveMinimum' = 'alpha' } -ValidateOnly | Should -BeTrue
         }
     }
 
     Context 'String length limits' {
 
         It 'Minimum length' {
-            'abc'   | Test-Object @{ '@MinimumLength' = 4 } -ValidateOnly | Should -BeFalse
-            'abcd'  | Test-Object @{ '@MinimumLength' = 4 } -ValidateOnly | Should -BeTrue
+            'abc'   | Test-ObjectGraph @{ '@MinimumLength' = 4 } -ValidateOnly | Should -BeFalse
+            'abcd'  | Test-ObjectGraph @{ '@MinimumLength' = 4 } -ValidateOnly | Should -BeTrue
         }
 
         It 'Length' {
-            'ab'    | Test-Object @{ '@Length' = 3 } -ValidateOnly | Should -BeFalse
-            'abc'   | Test-Object @{ '@Length' = 3 } -ValidateOnly | Should -BeTrue
-            'abcd'  | Test-Object @{ '@Length' = 3 } -ValidateOnly | Should -BeFalse
+            'ab'    | Test-ObjectGraph @{ '@Length' = 3 } -ValidateOnly | Should -BeFalse
+            'abc'   | Test-ObjectGraph @{ '@Length' = 3 } -ValidateOnly | Should -BeTrue
+            'abcd'  | Test-ObjectGraph @{ '@Length' = 3 } -ValidateOnly | Should -BeFalse
         }
 
         It 'Maximum length' {
-            'abc'   | Test-Object @{ '@MaximumLength' = 3 } -ValidateOnly | Should -BeTrue
-            'abcd'  | Test-Object @{ '@MaximumLength' = 3 } -ValidateOnly | Should -BeFalse
+            'abc'   | Test-ObjectGraph @{ '@MaximumLength' = 3 } -ValidateOnly | Should -BeTrue
+            'abcd'  | Test-ObjectGraph @{ '@MaximumLength' = 3 } -ValidateOnly | Should -BeFalse
         }
 
         It 'Multiple values length' {
-            ,@('12', '345', '6789') | Test-Object @{ '@MinimumLength' = 2 } -ValidateOnly | Should -BeTrue
-            ,@('12', '345', '6789') | Test-Object @{ '@MinimumLength' = 3 } -ValidateOnly | Should -BeFalse
-            ,@('123', '456', '789') | Test-Object @{ '@Length' = 3 }        -ValidateOnly | Should -BeTrue
-            ,@('12', '345', '6789') | Test-Object @{ '@Length' = 3 }        -ValidateOnly | Should -BeFalse
-            ,@('12', '345', '6789') | Test-Object @{ '@MaximumLength' = 4 } -ValidateOnly | Should -BeTrue
-            ,@('12', '345', '6789') | Test-Object @{ '@MaximumLength' = 3 } -ValidateOnly | Should -BeFalse
+            ,@('12', '345', '6789') | Test-ObjectGraph @{ '@MinimumLength' = 2 } -ValidateOnly | Should -BeTrue
+            ,@('12', '345', '6789') | Test-ObjectGraph @{ '@MinimumLength' = 3 } -ValidateOnly | Should -BeFalse
+            ,@('123', '456', '789') | Test-ObjectGraph @{ '@Length' = 3 }        -ValidateOnly | Should -BeTrue
+            ,@('12', '345', '6789') | Test-ObjectGraph @{ '@Length' = 3 }        -ValidateOnly | Should -BeFalse
+            ,@('12', '345', '6789') | Test-ObjectGraph @{ '@MaximumLength' = 4 } -ValidateOnly | Should -BeTrue
+            ,@('12', '345', '6789') | Test-ObjectGraph @{ '@MaximumLength' = 3 } -ValidateOnly | Should -BeFalse
         }
     }
 
     Context 'Patterns' {
 
         It 'Like' {
-            'test' | Test-Object @{ '@Like' = 'T*t' } -ValidateOnly | Should -BeTrue
-            'test' | Test-Object @{ '@Like' = 'T?t' } -ValidateOnly | Should -BeFalse
+            'test' | Test-ObjectGraph @{ '@Like' = 'T*t' } -ValidateOnly | Should -BeTrue
+            'test' | Test-ObjectGraph @{ '@Like' = 'T?t' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Not like' {
-            'test' | Test-Object @{ '@NotLike' = 'T*t' } -ValidateOnly | Should -BeFalse
-            'test' | Test-Object @{ '@NotLike' = 'T?t' } -ValidateOnly | Should -BeTrue
+            'test' | Test-ObjectGraph @{ '@NotLike' = 'T*t' } -ValidateOnly | Should -BeFalse
+            'test' | Test-ObjectGraph @{ '@NotLike' = 'T?t' } -ValidateOnly | Should -BeTrue
         }
 
 
         It 'Match' {
-            'test' | Test-Object @{ '@Match' = 'T.*t' } -ValidateOnly | Should -BeTrue
-            'test' | Test-Object @{ '@Match' = 'T.t' } -ValidateOnly | Should -BeFalse
+            'test' | Test-ObjectGraph @{ '@Match' = 'T.*t' } -ValidateOnly | Should -BeTrue
+            'test' | Test-ObjectGraph @{ '@Match' = 'T.t' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Not match' {
-            'test' | Test-Object @{ '@NotMatch' = 'T.*t' } -ValidateOnly | Should -BeFalse
-            'test' | Test-Object @{ '@NotMatch' = 'T.t' }   -ValidateOnly | Should -BeTrue
+            'test' | Test-ObjectGraph @{ '@NotMatch' = 'T.*t' } -ValidateOnly | Should -BeFalse
+            'test' | Test-ObjectGraph @{ '@NotMatch' = 'T.t' }   -ValidateOnly | Should -BeTrue
         }
     }
 
     Context 'Case sensitive patterns' {
 
         It 'Like' {
-            'Test' | Test-Object @{ '@CaseSensitive' = $true; '@Like' = 'T*t' } -ValidateOnly | Should -BeTrue
-            'test' | Test-Object @{ '@CaseSensitive' = $true; '@Like' = 'T*t' } -ValidateOnly | Should -BeFalse
+            'Test' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@Like' = 'T*t' } -ValidateOnly | Should -BeTrue
+            'test' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@Like' = 'T*t' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Not like' {
-            'Test' | Test-Object @{ '@CaseSensitive' = $true; '@notLike' = 'T*t' } -ValidateOnly | Should -BeFalse
-            'test' | Test-Object @{ '@CaseSensitive' = $true; '@notLike' = 'T*t' } -ValidateOnly | Should -BeTrue
+            'Test' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@notLike' = 'T*t' } -ValidateOnly | Should -BeFalse
+            'test' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@notLike' = 'T*t' } -ValidateOnly | Should -BeTrue
         }
 
 
         It 'Match' {
-            'Test' | Test-Object @{ '@CaseSensitive' = $true; '@Match' = 'T..t' } -ValidateOnly | Should -BeTrue
-            'test' | Test-Object @{ '@CaseSensitive' = $true; '@Match' = 'T..t' } -ValidateOnly | Should -BeFalse
+            'Test' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@Match' = 'T..t' } -ValidateOnly | Should -BeTrue
+            'test' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@Match' = 'T..t' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Not match' {
-            'Test' | Test-Object @{ '@CaseSensitive' = $true; '@notMatch' = 'T..t' } -ValidateOnly | Should -BeFalse
-            'test' | Test-Object @{ '@CaseSensitive' = $true; '@notMatch' = 'T..t' } -ValidateOnly | Should -BeTrue
+            'Test' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@notMatch' = 'T..t' } -ValidateOnly | Should -BeFalse
+            'test' | Test-ObjectGraph @{ '@CaseSensitive' = $true; '@notMatch' = 'T..t' } -ValidateOnly | Should -BeTrue
         }
     }
 
     Context 'Multiple patterns' {
 
         It 'Like' {
-            'Two'  | Test-Object @{ '@Like' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
-            'Four' | Test-Object @{ '@Like' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
+            'Two'  | Test-ObjectGraph @{ '@Like' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
+            'Four' | Test-ObjectGraph @{ '@Like' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Not like' {
-            'Two'  | Test-Object @{ '@NotLike' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
-            'Four' | Test-Object @{ '@NotLike' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
+            'Two'  | Test-ObjectGraph @{ '@NotLike' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
+            'Four' | Test-ObjectGraph @{ '@NotLike' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
         }
 
 
         It 'Match' {
-            'Two'  | Test-Object @{ '@Match' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
-            'Four' | Test-Object @{ '@Match' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
+            'Two'  | Test-ObjectGraph @{ '@Match' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
+            'Four' | Test-ObjectGraph @{ '@Match' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
         }
 
         It 'Not match' {
-            'Two'  | Test-Object @{ '@NotMatch' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
-            'Four' | Test-Object @{ '@NotMatch' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
+            'Two'  | Test-ObjectGraph @{ '@NotMatch' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeFalse
+            'Four' | Test-ObjectGraph @{ '@NotMatch' = 'One', 'Two', 'Three' } -ValidateOnly | Should -BeTrue
         }
     }
 
@@ -488,18 +493,18 @@ Describe 'Test-Object' {
     Context 'No (child) Node' {
 
         It "[V] Leaf node" {
-            'Test' | Test-Object @{} -ValidateOnly | Should -BeTrue
-            'Test' | Test-Object @{} | Should -BeNullOrEmpty
+            'Test' | Test-ObjectGraph @{} -ValidateOnly | Should -BeTrue
+            'Test' | Test-ObjectGraph @{} | Should -BeNullOrEmpty
         }
 
         It "[V] Empty list node" {
-            ,@() | Test-Object @{} -ValidateOnly | Should -BeTrue
-            ,@() | Test-Object @{} | Should -BeNullOrEmpty
+            ,@() | Test-ObjectGraph @{} -ValidateOnly | Should -BeTrue
+            ,@() | Test-ObjectGraph @{} | Should -BeNullOrEmpty
         }
 
         It "[X] Simple list node" {
-            ,@('Test') | Test-Object @{} -ValidateOnly | Should -BeFalse
-            $Result = ,@('Test') | Test-Object @{}
+            ,@('Test') | Test-ObjectGraph @{} -ValidateOnly | Should -BeFalse
+            $Result = ,@('Test') | Test-ObjectGraph @{}
             $Result                 | Should -BeOfType PSCustomObject
             $Result.Valid           | Should -BeFalse
             $Result.ObjectNode.Path | Should -BeNullOrEmpty
@@ -507,18 +512,18 @@ Describe 'Test-Object' {
         }
 
         It "[X] Simple list node" {
-            ,@('a', 'b') | Test-Object @{} -ValidateOnly | Should -BeFalse
-            ,@('a', 'b') | Test-Object @{}| Should -not -BeNullOrEmpty
+            ,@('a', 'b') | Test-ObjectGraph @{} -ValidateOnly | Should -BeFalse
+            ,@('a', 'b') | Test-ObjectGraph @{}| Should -not -BeNullOrEmpty
         }
 
         It "[V] Empty map node" {
-            @{} | Test-Object @{} -ValidateOnly | Should -BeTrue
-            @{} | Test-Object @{} | Should -BeNullOrEmpty
+            @{} | Test-ObjectGraph @{} -ValidateOnly | Should -BeTrue
+            @{} | Test-ObjectGraph @{} | Should -BeNullOrEmpty
         }
 
         It "[X] Simple map node" {
-            @{ a = 1 } | Test-Object @{} -ValidateOnly | Should -BeFalse
-            $Result = @{ a = 1 } | Test-Object @{}
+            @{ a = 1 } | Test-ObjectGraph @{} -ValidateOnly | Should -BeFalse
+            $Result = @{ a = 1 } | Test-ObjectGraph @{}
             $Result                 | Should -BeOfType PSCustomObject
             $Result.Valid           | Should -BeFalse
             $Result.ObjectNode.Path | Should -BeNullOrEmpty
@@ -526,8 +531,8 @@ Describe 'Test-Object' {
         }
 
         It "[X] Complex object" {
-            $Person | Test-Object @{} -ValidateOnly | Should -BeFalse
-            $Result = $Person | Test-Object @{}
+            $Person | Test-ObjectGraph @{} -ValidateOnly | Should -BeFalse
+            $Result = $Person | Test-ObjectGraph @{}
             $Result                 | Should -BeOfType PSCustomObject
             $Result.Valid           | Should -BeFalse
             $Result.ObjectNode.Path | Should -BeNullOrEmpty
@@ -536,8 +541,8 @@ Describe 'Test-Object' {
 
 
         It "[X] Complex map node" {
-            $Person | Test-Object @{ '@type' = [PSMapNode] } -ValidateOnly | Should -BeFalse
-            $Result = $Person | Test-Object @{ '@type' = [PSMapNode] }
+            $Person | Test-ObjectGraph @{ '@type' = [PSMapNode] } -ValidateOnly | Should -BeFalse
+            $Result = $Person | Test-ObjectGraph @{ '@type' = [PSMapNode] }
             $Result                 | Should -BeOfType PSCustomObject
             $Result.Valid           | Should -BeFalse
             $Result.ObjectNode.Path | Should -BeNullOrEmpty
@@ -548,52 +553,52 @@ Describe 'Test-Object' {
     Context 'Any (child) Node' {
 
         It "[V] Leaf node" {
-            'Test' | Test-Object @() -ValidateOnly | Should -BeTrue
-            'Test' | Test-Object @() | Should -BeNullOrEmpty
+            'Test' | Test-ObjectGraph @() -ValidateOnly | Should -BeTrue
+            'Test' | Test-ObjectGraph @() | Should -BeNullOrEmpty
         }
 
         It "[V] Empty list node" {
-            ,@() | Test-Object @() -ValidateOnly | Should -BeTrue
-            ,@() | Test-Object @() | Should -BeNullOrEmpty
+            ,@() | Test-ObjectGraph @() -ValidateOnly | Should -BeTrue
+            ,@() | Test-ObjectGraph @() | Should -BeNullOrEmpty
         }
 
         It "[V] Simple list node" {
-            ,@('Test') | Test-Object @() -ValidateOnly | Should -BeTrue
-            ,@('Test') | Test-Object @() | Should -BeNullOrEmpty
+            ,@('Test') | Test-ObjectGraph @() -ValidateOnly | Should -BeTrue
+            ,@('Test') | Test-ObjectGraph @() | Should -BeNullOrEmpty
         }
 
         It "[V] Simple list node" {
-            ,@('a', 'b') | Test-Object @() -ValidateOnly | Should -BeTrue
-            ,@('a', 'b') | Test-Object @() | Should -BeNullOrEmpty
+            ,@('a', 'b') | Test-ObjectGraph @() -ValidateOnly | Should -BeTrue
+            ,@('a', 'b') | Test-ObjectGraph @() | Should -BeNullOrEmpty
         }
 
         It "[V] Empty map node" {
-            @{} | Test-Object @() -ValidateOnly | Should -BeTrue
-            @{} | Test-Object @() | Should -BeNullOrEmpty
+            @{} | Test-ObjectGraph @() -ValidateOnly | Should -BeTrue
+            @{} | Test-ObjectGraph @() | Should -BeNullOrEmpty
         }
 
         It "[V] Simple map node" {
-            @{ a = 1 } | Test-Object @() -ValidateOnly | Should -BeTrue
-            @{ a = 1 } | Test-Object @() | Should -BeNullOrEmpty
+            @{ a = 1 } | Test-ObjectGraph @() -ValidateOnly | Should -BeTrue
+            @{ a = 1 } | Test-ObjectGraph @() | Should -BeNullOrEmpty
         }
 
         It "[V] Complex object" {
-            $Person | Test-Object @() -ValidateOnly | Should -BeTrue
-            $Person | Test-Object @() | Should -BeNullOrEmpty
+            $Person | Test-ObjectGraph @() -ValidateOnly | Should -BeTrue
+            $Person | Test-ObjectGraph @() | Should -BeNullOrEmpty
         }
 
 
         It "[V] Complex map node" {
-            $Person | Test-Object @{ '@type' = [PSMapNode]; '*' = @() } -ValidateOnly | Should -BeFalse
-            $Person | Test-Object @{ '@type' = [PSMapNode]; '@AllowExtraNodes' = $true } | Should -BeNullOrEmpty
+            $Person | Test-ObjectGraph @{ '@type' = [PSMapNode]; '*' = @() } -ValidateOnly | Should -BeFalse
+            $Person | Test-ObjectGraph @{ '@type' = [PSMapNode]; '@AllowExtraNodes' = $true } | Should -BeNullOrEmpty
         }
     }
 
     Context 'Map nodes' {
 
         It "[V] Single name" {
-            $Person | Test-Object @{ Age = @{ '@Type' = 'Int' }; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
-            $Person | Test-Object @{ Age = @{ '@Type' = 'Int' }; '@AllowExtraNodes' = $true } | Should -BeNullOrEmpty
+            $Person | Test-ObjectGraph @{ Age = @{ '@Type' = 'Int' }; '@AllowExtraNodes' = $true } -ValidateOnly | Should -BeTrue
+            $Person | Test-ObjectGraph @{ Age = @{ '@Type' = 'Int' }; '@AllowExtraNodes' = $true } | Should -BeNullOrEmpty
         }
 
         It "[V] Multiple names" {
@@ -605,8 +610,8 @@ Describe 'Test-Object' {
                 Age       = @{ '@Type' = 'Int' }
                 '@AllowExtraNodes' = $true
             }
-            $Person | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Person | Test-Object $Schema | Should -BeNullOrEmpty
+            $Person | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Person | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[V] All (root) names defined" {
@@ -621,8 +626,8 @@ Describe 'Test-Object' {
                 Children  = @{ '@Type' = 'PSListNode', $Null; '@AllowExtraNodes' = $true }
                 Spouse    = @{ '@Type' = 'String',     $Null }
             }
-            $Person | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Person | Test-Object $Schema | Should -BeNullOrEmpty
+            $Person | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Person | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
     }
 
@@ -682,8 +687,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            $Data | Test-Object $Schema | Should -not -BeNullOrEmpty
+            $Data | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            $Data | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
         }
 
         It "[V] One specific node and allowing extra nodes" {
@@ -698,8 +703,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[V] One specific node and allowing extra nodes" {
@@ -718,8 +723,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[V] Single node that match a test definition" {
@@ -737,8 +742,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[X] Multiple nodes that match at least one single test definition" {
@@ -757,8 +762,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[V] Multiple nodes that match a single test definition" {
@@ -776,8 +781,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[V] Multiple nodes that match a single test definition" {
@@ -802,8 +807,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[V] Multiple nodes that match a single test definition" {
@@ -821,8 +826,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data2 | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data2 | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data2 | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data2 | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[V] Match at least one node in a single test definition" {
@@ -841,8 +846,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data2 | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data2 | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data2 | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data2 | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[V] Duplicate nodes that match a single test definition" {
@@ -862,8 +867,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data2 | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data2 | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data2 | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data2 | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[X] Duplicate nodes that match a single test definition" {
@@ -882,8 +887,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data2 | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            $Data2 | Test-Object $Schema | Should -not -BeNullOrEmpty
+            $Data2 | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            $Data2 | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
         }
 
         It "[V] Multiple nodes that match equal test definitions" {
@@ -911,8 +916,8 @@ Describe 'Test-Object' {
                     }
                 }
             }
-            $Data2 | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data2 | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data2 | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data2 | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         It "[V] Full assert test" {
@@ -942,8 +947,8 @@ Describe 'Test-Object' {
                 Children  = @(@{ '@Type' = 'String', $Null })
                 Spouse    = @{ '@Type' = 'String', $Null }
             }
-            $Person | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Person | Test-Object $Schema | Should -BeNullOrEmpty
+            $Person | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Person | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
     }
 
@@ -954,10 +959,10 @@ Describe 'Test-Object' {
             Data = @{ '@Type' = 'String' }
         }
 
-        @{ Id = 42 }                | Test-Object $Schema -ValidateOnly | Should -BeTrue
-        @{ Id = 42; Data = 'Test' } | Test-Object $Schema -ValidateOnly | Should -BeTrue
-        @{ Data = 'Test' }          | Test-Object $Schema -ValidateOnly | Should -BeFalse
-        @{ Id = 42; Test = 'Test' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
+        @{ Id = 42 }                | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+        @{ Id = 42; Data = 'Test' } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+        @{ Data = 'Test' }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+        @{ Id = 42; Test = 'Test' } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
     }
 
     Context 'Required nodes formula' {
@@ -967,10 +972,10 @@ Describe 'Test-Object' {
                 a = @{ '@Type' = 'Int' }
                 '@RequiredNodes' = 'not a'
             }
-            @{ a = 1 }   | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            @{ a = 1 }   | Test-Object $Schema | Should -not -BeNullOrEmpty
-            @{ a = '1' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            @{ a = '1' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1 }   | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1 }   | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
+            @{ a = '1' } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            @{ a = '1' } | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
         }
 
         it 'And' {
@@ -979,14 +984,14 @@ Describe 'Test-Object' {
                 b = @{ '@Type' = 'Int' }
                 '@RequiredNodes' = 'a and b'
             }
-            @{ a = 1 }          | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            @{ a = 1 }          | Test-Object $Schema | Should -not -BeNullOrEmpty
-            @{ b = 2 }          | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            @{ b = 2 }          | Test-Object $Schema | Should -not -BeNullOrEmpty
-            @{ a = 1; b = 2 }   | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            @{ a = 1; b = 2 }   | Test-Object $Schema | Should -BeNullOrEmpty
-            @{ a = 1; b = '2' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            @{ a = 1; b = '2' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1 }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1 }          | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
+            @{ b = 2 }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            @{ b = 2 }          | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1; b = 2 }   | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            @{ a = 1; b = 2 }   | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
+            @{ a = 1; b = '2' } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = '2' } | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
         }
 
         it 'Or' {
@@ -995,14 +1000,14 @@ Describe 'Test-Object' {
                 b = @{ '@Type' = 'Int' }
                 '@RequiredNodes' = 'a or b'
             }
-            @{ a = 1 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            @{ a = 1 }          | Test-Object $Schema | Should -BeNullOrEmpty
-            @{ b = 2 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            @{ b = 2 }          | Test-Object $Schema | Should -BeNullOrEmpty
-            @{ a = 1; b = 2 }   | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            @{ a = 1; b = 2 }   | Test-Object $Schema | Should -BeNullOrEmpty
-            @{ a = 1; b = '2' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            @{ a = 1; b = '2' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1 }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            @{ a = 1 }          | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
+            @{ b = 2 }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            @{ b = 2 }          | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
+            @{ a = 1; b = 2 }   | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            @{ a = 1; b = 2 }   | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
+            @{ a = 1; b = '2' } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = '2' } | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
         }
 
         it 'Xor' {
@@ -1011,14 +1016,14 @@ Describe 'Test-Object' {
                 b = @{ '@Type' = 'Int' }
                 '@RequiredNodes' = 'a xor b'
             }
-            @{ a = 1 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            @{ a = 1 }          | Test-Object $Schema | Should -BeNullOrEmpty
-            @{ b = 2 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            @{ b = 2 }          | Test-Object $Schema | Should -BeNullOrEmpty
-            @{ a = 1; b = 2 }   | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            @{ a = 1; b = 2 }   | Test-Object $Schema | Should -not -BeNullOrEmpty
-            @{ a = 1; b = '2' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            @{ a = 1; b = '2' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1 }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            @{ a = 1 }          | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
+            @{ b = 2 }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            @{ b = 2 }          | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
+            @{ a = 1; b = 2 }   | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = 2 }   | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1; b = '2' } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = '2' } | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
         }
 
         it 'Rambling Xor' {
@@ -1027,14 +1032,14 @@ Describe 'Test-Object' {
                 b = @{ '@Type' = 'Int' }
                 '@RequiredNodes' = '(a and not b) or (not a and b)'
             }
-            @{ a = 1 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            @{ a = 1 }          | Test-Object $Schema | Should -BeNullOrEmpty
-            @{ b = 2 }          | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            @{ b = 2 }          | Test-Object $Schema | Should -BeNullOrEmpty
-            @{ a = 1; b = 2 }   | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            @{ a = 1; b = 2 }   | Test-Object $Schema | Should -not -BeNullOrEmpty
-            @{ a = 1; b = '2' } | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            @{ a = 1; b = '2' } | Test-Object $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1 }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            @{ a = 1 }          | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
+            @{ b = 2 }          | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            @{ b = 2 }          | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
+            @{ a = 1; b = 2 }   | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = 2 }   | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
+            @{ a = 1; b = '2' } | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            @{ a = 1; b = '2' } | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
         }
     }
 
@@ -1045,10 +1050,10 @@ Describe 'Test-Object' {
                 '@Type' = [PSListNode]
                 Children = @{'@Type' = [String]; '@Unique' = $true }
             }
-            ,@('a', 'b', 'c') | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            ,@('a', 'b', 'c') | Test-Object $Schema | Should -BeNullOrEmpty
-            ,@('a', 'b', 'a') | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            ,@('a', 'b', 'a') | Test-Object $Schema | Should -not -BeNullOrEmpty
+            ,@('a', 'b', 'c') | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            ,@('a', 'b', 'c') | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
+            ,@('a', 'b', 'a') | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            ,@('a', 'b', 'a') | Test-ObjectGraph $Schema | Should -not -BeNullOrEmpty
         }
 
         it 'Unique collection' {
@@ -1060,12 +1065,12 @@ Describe 'Test-Object' {
                 EnabledServers  = 'NL1234', 'NL1235', 'NL1236'
                 DisabledServers = 'NL1237', 'NL1238', 'NL1239'
             }
-            $Servers | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Servers | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
             $Servers = @{
                 EnabledServers  = 'NL1234', 'NL1235', 'NL1236'
                 DisabledServers = 'NL1237', 'NL1235', 'NL1239'
             }
-            $Servers | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            $Servers | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
             $Results = $Servers | Test-ObjectGraph $Schema
             $Results[0].Issue | Should -BeLike '*equal to the node*'
         }
@@ -1097,7 +1102,7 @@ Describe 'Test-Object' {
                     }
                 )
             }
-            $Books | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            $Books | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
             $Books = @{
                 BookStore = @(
                     @{
@@ -1120,7 +1125,7 @@ Describe 'Test-Object' {
                     }
                 )
             }
-            $Books | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            $Books | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
         }
     }
 
@@ -1182,8 +1187,8 @@ Describe 'Test-Object' {
                         }
                     }
                 }
-            $Data | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Data | Test-Object $Schema | Should -BeNullOrEmpty
+            $Data | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Data | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
         it '[X] Buyer - incorrect LastName' {
@@ -1207,8 +1212,8 @@ Describe 'Test-Object' {
                         }
                     }
                 }
-            $Data | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            $Result = $Data | Test-Object $Schema
+            $Data | Test-ObjectGraph $Schema -ValidateOnly | Should -BeFalse
+            $Result = $Data | Test-ObjectGraph $Schema
             $Result | Should -not -BeNullOrEmpty
             $Result.ObjectNode.Path  | Should -Contain 'Buyer.LastName'
             $Result.ObjectNode.Value | Should -Contain 'Do'
@@ -1227,7 +1232,7 @@ Describe 'Test-Object' {
                 }
             }
 
-           $Data | Test-Object $RecurseSchema -ValidateOnly | Should -be $true
+           $Data | Test-ObjectGraph $RecurseSchema -ValidateOnly | Should -be $true
         }
 
         it '[V] Recursive object' -Skip:$($PSVersionTable.PSVersion -lt '6.0') {
@@ -1256,9 +1261,12 @@ Describe 'Test-Object' {
                 PSDrive            = 'RecursePSDrive'
             }
 
-            Get-Item / | Test-Object $Schema -Depth 5 -ValidateOnly -WarningAction SilentlyContinue | Should -BeTrue
-            $Result = Get-Item / | Test-Object $Schema -Depth 5 -Elaborate -WarningAction SilentlyContinue
-            $Result.ObjectNode.Path | Should -Contain 'PSDrive.Provider.Drives[0].Name'
+            $Warning = & { Get-Item / | Test-ObjectGraph $Schema -Depth 5 -ValidateOnly | Should -BeTrue } 3>&1
+            $Warning | Should -BeLike '*reached the maximum depth of 5*'
+            $Ref = @{ Result = $null }
+            $Warning = & { $Ref.Result = Get-Item / | Test-ObjectGraph $Schema -Depth 5 -Elaborate } 3>&1
+            $Warning | Should -BeLike '*reached the maximum depth of 5*'
+            $Ref.Result.ObjectNode.Path | Should -Contain 'PSDrive.Provider.Drives[0].Name'
         }
     }
 
@@ -1292,9 +1300,229 @@ Describe 'Test-Object' {
                 Children  = @(@{ '^Type' = 'String', $Null })
                 Spouse    = @{ '^Type' = 'String', $Null }
             }
-            $Person | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            $Person | Test-Object $Schema | Should -BeNullOrEmpty
+            $Person | Test-ObjectGraph $Schema -ValidateOnly | Should -BeTrue
+            $Person | Test-ObjectGraph $Schema | Should -BeNullOrEmpty
         }
 
     }
+
+    #Region Github issues
+
+    Context '#126 [Test-ObjectGraph] Parents of failing item are also included in the output' {
+
+        It 'IncorrectParameterName' {
+            $data = @{
+                NonNodeData = @{
+                    AzureAD = @{
+                        IncorrectParameterName = @(
+                            @{
+                                Param1 = 8
+                            }
+                        )
+                    }
+                }
+            }
+
+            $schema = @{
+                NonNodeData = @{
+                    '@Type' = 'PSMapNode'
+                    AzureAD = @{
+                        '@Type' = 'PSMapNode'
+                    }
+                }
+            }
+
+            $data | Test-Object $schema -ValidateOnly | Should -BeFalse
+            $Result = $data | Test-Object $schema
+            $Result | Should -HaveCount 1
+        }
+    }
+
+    Context '#129 [Test-ObjectGraph] When the schema specifies that a parameter is required and another parameter is not correct, that other parameter is not listed as failed.' {
+
+        BeforeAll {
+
+        }
+
+        It 'DefaultLength = [string]' {
+            $data = @{
+                NonNodeData = @{
+                    AzureAD = @{
+                        AuthenticationMethodPolicy = @(
+                            @{
+                                DefaultLength = 'string'
+                                DoesNotExist = 'string'
+                                DefaultLifetimeInMinutes = 10
+                            }
+                        )
+                    }
+                }
+            }
+
+            $schema = @{
+                NonNodeData = @{
+                    '@Type' = 'PSMapNode'
+                    AzureAD = @{
+                        '@Type' = 'PSMapNode'
+                        AuthenticationMethodPolicy = @(
+                            @{
+                                '@Type' = 'PSMapNode'
+                                DefaultLength = @{ '@Type' = 'Int' }
+                                DefaultLifetimeInMinutes = @{ '@Type' = 'Int' }
+                                Ensure = @{ '@Type' = 'String' }
+                                Id = @{ '@Type' = 'String'; '@Required' = $true }
+                                IncludeTargets = @(
+                                    @{
+                                        '@Type' = 'PSMapNode'
+                                        Id = @{ '@Type' = 'String' }
+                                        TargetType = @{ '@Type' = 'String' }
+                                    }
+                                )
+                                IsUsableOnce = @{ '@Type' = 'Bool' }
+                                MaximumLifetimeInMinutes = @{ '@Type' = 'Int' }
+                                MinimumLifetimeInMinutes = @{ '@Type' = 'Int' }
+                                State = @{ '@Type' = 'String' }
+                            }
+                        )
+                    }
+                }
+            }
+
+            $data | Test-Object $schema -ValidateOnly | Should -BeFalse
+            $Result = $data | Test-Object $schema
+            $Result.Count | Should -Be 9
+            $Issues = $Result.Issue -Replace '\x1b\[[0-9;]*m' -Replace '[^ \w]'
+            $Issues | Should -Contain 'The node Id does not exist'
+            $Issues | Should -Contain 'The node IncludeTargets does not exist'
+            $Issues | Should -Contain 'The node MaximumLifetimeInMinutes does not exist'
+            $Issues | Should -Contain 'The node State does not exist'
+            $Issues | Should -Contain 'The node MinimumLifetimeInMinutes does not exist'
+            $Issues | Should -Contain 'The node IsUsableOnce does not exist'
+            $Issues | Should -Contain 'The node string is not of type Int'
+            $Issues | Should -Contain 'The node Ensure does not exist'
+            $Issues | Should -Contain 'The following nodes are not accepted DoesNotExist DefaultLength'
+        }
+
+        It '#129 [V] A FMO application' {
+
+            $Schema = @{
+                Company = @{
+                    '@Type' = 'Array'
+                    '@AllowExtraNodes' = $true
+                    FMO = @{
+                        Env = @{ '@Type' = 'String'; '@Like' = 'FMO' }
+                        Id  = @{ '@Type' = 'Int'; '@Minimum' = 2000 }
+                    }
+                }
+            }
+
+            $Data = @{
+                Company = @(
+                    @{ Env = 'CMO'; Id = 1234 },
+                    @{ Env = 'FMO'; Id = 1235 },
+                    @{ Env = 'FMO'; Id = 2345 }
+                )
+            }
+
+            $data | Test-Object $schema -ValidateOnly | Should -BeTrue
+            $data | Test-Object $schema | Should -BeNullOrEmpty
+        }
+
+        It '#129 [X] A FMO application' {
+
+            $Schema = @{
+                Company = @{
+                    '@Type' = 'Array'
+                    '@AllowExtraNodes' = $true
+                    FMO = @{
+                        Env = @{ '@Type' = 'String'; '@Like' = 'FMO' }
+                        Id  = @{ '@Type' = 'Int'; '@Minimum' = 2000 }
+                    }
+                }
+            }
+
+            $Data = @{
+                Company = @(
+                    @{ Env = 'CMO'; Id = 1234 },
+                    @{ Env = 'FMO'; Id = 1235 },
+                    @{ Env = 'XMO'; Id = 2345 } # Env name typo
+                )
+            }
+
+            $data | Test-Object $schema -ValidateOnly | Should -BeFalse
+            $Result = $data | Test-Object $schema
+            $Result.Count | Should -Be 5
+            $Issues = $Result.Issue -Replace '\x1b\[[0-9;]*m' -Replace '[^ \w]'
+            $Issues | Should -Contain 'The value CMO is not like FMO'
+            $Issues | Should -Contain 'The value 1234 is less or equal than 2000'
+            $Issues | Should -Contain 'The value 1235 is less or equal than 2000'
+            $Issues | Should -Contain 'The value XMO is not like FMO'
+            $Issues | Should -Contain 'When extra nodes are allowed the FMO test should pass'
+        }
+
+        It '#129 [V] A Company wide application' {
+
+            $Schema = @{
+                Company = @{
+                    '@Type' = 'Array'
+                    '@RequiredNodes' = 'CMO or FMO'
+                    CMO = @{
+                        Env = @{ '@Type' = 'String'; '@Like' = 'CMO' }
+                        Id  = @{ '@Type' = 'Int'; '@Maximum' = 1999 }
+                    }
+                    FMO = @{
+                        Env = @{ '@Type' = 'String'; '@Like' = 'FMO' }
+                        Id  = @{ '@Type' = 'Int'; '@Minimum' = 2000 }
+                    }
+                }
+            }
+
+            $Data = @{
+                Company = @(
+                    @{ Env = 'CMO'; Id = 1234 },
+                    @{ Env = 'FMO'; Id = 2345 },
+                    @{ Env = 'FMO'; Id = 3456 }
+                )
+            }
+
+            $data | Test-Object $schema -ValidateOnly | Should -BeTrue
+            $Result = $data | Test-Object $schema | Should -BeNullOrEmpty
+        }
+
+        It '#129 [X] A Company wide application' {
+
+            $Schema = @{
+                Company = @{
+                    '@Type' = 'Array'
+                    '@RequiredNodes' = 'CMO or FMO'
+                    CMO = @{
+                        Env = @{ '@Type' = 'String'; '@Like' = 'CMO' }
+                        Id  = @{ '@Type' = 'Int'; '@Maximum' = 1999 }
+                    }
+                    FMO = @{
+                        Env = @{ '@Type' = 'String'; '@Like' = 'FMO' }
+                        Id  = @{ '@Type' = 'Int'; '@Minimum' = 2000 }
+                    }
+                }
+            }
+
+            $Data = @{
+                Company = @(
+                    @{ Env = 'CMO'; Id = 1234 },
+                    @{ Env = 'FMO'; Id = 1235 }, # Id should be >= 2000
+                    @{ Env = 'FMO'; Id = 2345 }
+                )
+            }
+
+            $data | Test-Object $schema -ValidateOnly | Should -BeFalse
+            $Result = $data | Test-Object $schema
+            $Result.Count | Should -Be 1
+            $Issues = $Result.Issue -Replace '\x1b\[[0-9;]*m' -Replace '[^ \w]'
+            $Issues | Should -Contain 'The following nodes are not accepted 1'
+        }
+
+    }
+
+    #EndRegion Github issues
+
 }

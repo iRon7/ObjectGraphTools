@@ -3,7 +3,7 @@
     RootModule = 'ObjectGraphTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.3.2'
+    ModuleVersion = '0.3.3'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -85,7 +85,7 @@
 
         PSData = @{
 
-            Prerelease = 'Preview-3'
+            Prerelease = 'Preview-1'
 
             # Tags applied to this module. These help with module discovery in online galleries.
             Tags = 'Object', 'Graph', 'Complex', 'Dictionary', 'List', 'HashTable', 'Array', 'Merge', 'Sort', 'Test'

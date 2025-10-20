@@ -226,7 +226,7 @@ Class PSNode : IComparable {
         return $Node
     }
 
-    static [PSNode] ParseInput($Object) { return [PSNode]::parseInput($Object, 0) }
+    static [PSNode] ParseInput($Object) { return [PSNode]::ParseInput($Object, 0) }
 
     static [int] Compare($Left, $Right) {
         return [ObjectComparer]::new().Compare($Left, $Right)
@@ -324,59 +324,66 @@ Class PSNode : IComparable {
     }
 
     hidden CollectNodes($NodeTable, [XdnPath]$Path, [Int]$PathIndex) {
-        $Entry = $Path.Entries[$PathIndex]
-        $NextIndex = if ($PathIndex -lt $Path.Entries.Count -1) { $PathIndex + 1 }
-        $NextEntry = if ($NextIndex) { $Path.Entries[$NextIndex] }
-        $Equals    = if ($NextEntry -and $NextEntry.Key -eq 'Equals') {
-            $NextEntry.Value
-            $NextIndex = if ($NextIndex -lt $Path.Entries.Count -1) { $NextIndex + 1 }
+        if ($PathIndex -ge $Path.Entries.Count) {
+            $NodeTable[$this.getPathName()] = $this
+            return
         }
-        switch ($Entry.Key) {
-            Root {
-                $Node = $this.RootNode
-                if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                else { $NodeTable[$Node.getPathName()] = $Node }
+        $Entry = $Path.Entries[$PathIndex]
+        if ($Entry.Key -eq 'Root') {
+            $this.RootNode.CollectNodes($NodeTable, $Path, ($PathIndex + 1))
+        }
+        elseif ($Entry.Key -eq 'Ancestor') {
+            $Node = $this
+            for($i = $Entry.Value; $i -gt 0 -and $Node.ParentNode; $i--) { $Node = $Node.ParentNode }
+            if ($i -eq 0) { $Node.CollectNodes($NodeTable, $Path, ($PathIndex + 1)) }
+        }
+        elseif ($Entry.Key -eq 'Index') {
+            if ($this -is [PSListNode] -and [Int]::TryParse($Entry.Value, [Ref]$Null)) {
+                $this.GetChildNode([Int]$Entry.Value).CollectNodes($NodeTable, $Path, ($PathIndex + 1))
             }
-            Ancestor {
-                $Node = $this
-                for($i = $Entry.Value; $i -gt 0 -and $Node.ParentNode; $i--) { $Node = $Node.ParentNode }
-                if ($i -eq 0) { # else: reached root boundary
-                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                    else { $NodeTable[$Node.getPathName()] = $Node }
-                }
-            }
-            Index {
-                if ($this -is [PSListNode] -and [Int]::TryParse($Entry.Value, [Ref]$Null)) {
-                    $Node = $this.GetChildNode([Int]$Entry.Value)
-                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                    else { $NodeTable[$Node.getPathName()] = $Node }
-                }
-            }
-            Default { # Child, Descendant
-                if ($this -is [PSListNode]) { # Member access enumeration
-                    foreach ($Node in $this.get_ChildNodes()) {
-                        $Node.CollectNodes($NodeTable, $Path, $PathIndex)
+        }
+        elseif ($Entry.Key -eq 'Equals') {
+            if ($this -is [PSLeafNode]) {
+                foreach ($Value in $Entry.Value) {
+                    if ($this._Value -like $Value) {
+                        $this.CollectNodes($NodeTable, $Path, ($PathIndex + 1))
+                        break
                     }
                 }
-                elseif ($this -is [PSMapNode]) {
-                    $Found = $False
-                    $ChildNodes = $this.get_ChildNodes()
-                    foreach ($Node in $ChildNodes) {
-                        if ($Entry.Value -eq $Node.Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
-                            $Found = $True
-                            if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                            else { $NodeTable[$Node.getPathName()] = $Node }
-                        }
+            }
+        }
+        elseif ($this -is [PSListNode]) { # Member access enumeration
+            foreach ($Node in $this.get_ChildNodes()) {
+                $Node.CollectNodes($NodeTable, $Path, $PathIndex)
+            }
+        }
+        elseif ($this -is [PSMapNode]) {
+            $Count0 = $NodeTable.get_Count()
+            foreach ($Value in $Entry.Value) {
+                $Name = $Value._Value
+                if ($Value.ContainsWildcard()) {
+                    $CaseMatters =  $this.CaseMatters
+                    foreach ($Node in $this.ChildNodes) {
+                        if ($CaseMatters) { if ($Node.Name -cnotlike $Name) { continue } }
+                        else              { if ($Node.Name -notlike  $Name) { continue } }
+                        $Node.CollectNodes($NodeTable, $Path, ($PathIndex + 1))
                     }
-                    if (-not $Found -and $Entry.Key -eq 'Descendant') {
-                        foreach ($Node in $ChildNodes) {
-                            $Node.CollectNodes($NodeTable, $Path, $PathIndex)
-                        }
-                    }
+                }
+                elseif ($this.Contains($Name)) {
+                    $this.GetChildNode($Name).CollectNodes($NodeTable, $Path, ($PathIndex + 1))
+                }
+            }
+            if (
+                ($Entry.Key -eq 'Offspring') -or
+                ($Entry.Key -eq 'Descendant' -and $NodeTable.get_Count() -eq $Count0)
+            ) {
+                foreach ($Node in $this.get_ChildNodes()) {
+                    $Node.CollectNodes($NodeTable, $Path, $PathIndex)
                 }
             }
         }
     }
+
 
     [Object] GetNode([XdnPath]$Path) {
         $NodeTable = [system.collections.generic.dictionary[String, PSNode]]::new() # Case sensitive (case insensitive map nodes use the same name)
@@ -550,7 +557,7 @@ class ObjectComparer {
                                 Path        = $Node2.Path + "[$Index2]"
                                 $this.Issue = 'Exists'
                                 $this.Name1 = $Null
-                                $this.Name2 = if ($Item2 -is [PSLeafNode]) { "$($Item2.Value)" } else { "[$($Item2.ValueType)]" }
+                                $this.Name2 = $Item2
                             })
                         }
                     }
@@ -563,7 +570,7 @@ class ObjectComparer {
                             $this.Differences.Add([PSCustomObject]@{
                                 Path        = $Node1.Path + "[$Index1]"
                                 $this.Issue = 'Exists'
-                                $this.Name1 = if ($Item1 -is [PSLeafNode]) { "$($Item1.Value)" } else { "[$($Item1.ValueType)]" }
+                                $this.Name1 = $Item1
                                 $this.Name2 = $Null
                             })
                         }
@@ -1137,7 +1144,10 @@ Class PSSerialize {
                         $this.StringBuilder.Append(',')
                         $this.NewWord()
                     }
-                    elseif ($ExpandSingle) { $this.NewWord('') }
+                    else {
+                        if ($ExpandSingle) { $this.NewWord('') }
+                        if ($ChildNodes.Count -eq 1 -and $ChildNodes[0] -is [PSListNode]) { $this.StringBuilder.Append(',') }
+                    }
                     $this.Stringify($ChildNode)
                 }
                 $this.Offset--
@@ -1162,7 +1172,11 @@ Class PSSerialize {
                             $this.StringBuilder.Append([VariableColor](
                                 [PSKeyExpression]::new($ChildNodes[$Index].Name, [PSSerialize]::MaxKeyLength)))
                             $this.StringBuilder.Append('=')
-                            if (-not $IsSubNode -or $this.StringBuilder.Length -le [PSSerialize]::MaxKeyLength) {
+                            if (
+                                -not $IsSubNode -or
+                                $this.StringBuilder.Length -le [PSSerialize]::MaxKeyLength -or
+                                ($ChildNodes.Count -eq 1 -and $ChildNodes[$Index] -is [PSLeafNode])
+                            ) {
                                 $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
                             }
                             else { $this.StringBuilder.Append([Abbreviate]::Ellipses) }
@@ -1246,6 +1260,17 @@ Class ANSI {
     static [String]$InverseOff
 
     Static ANSI() {
+        # https://stackoverflow.com/questions/38045245/how-to-call-getstdhandle-getconsolemode-from-powershell
+        $MethodDefinitions = @'
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern IntPtr GetStdHandle(int nStdHandle);
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+'@
+        $Kernel32 = Add-Type -MemberDefinition $MethodDefinitions -Name 'Kernel32' -Namespace 'Win32' -PassThru
+        $hConsoleHandle = $Kernel32::GetStdHandle(-11) # STD_OUTPUT_HANDLE
+        if (-not $Kernel32::GetConsoleMode($hConsoleHandle, [ref]0)) { return }
+
         $PSReadLineOption = try { Get-PSReadLineOption -ErrorAction SilentlyContinue } catch { $null }
         if (-not $PSReadLineOption) { return }
         $ANSIType = [ANSI] -as [Type]
@@ -2034,8 +2059,8 @@ Class PSDictionaryNode : PSMapNode {
                 if ($this.get_CaseMatters()) {
                     $ChildNode = $this.Cache['ChildNode']
                     $this.Cache['ChildNode'] = [HashTable]::new() # Create a new cache as it appears to be case sensitive
-                    foreach ($Key in $ChildNode.get_Keys()) { # Migrate the content
-                        $this.Cache.ChildNode[$Key] = $ChildNode[$Key]
+                    foreach ($Name in $ChildNode.get_Keys()) { # Migrate the content
+                        $this.Cache.ChildNode[$Name] = $ChildNode[$Name]
                     }
                 }
             }
@@ -2114,7 +2139,7 @@ Class PSObjectNode : PSMapNode {
             $this._Value.PSObject.Properties[$Name].Value = $Value
         }
         else {
-            Add-Member -InputObject $this._Value -Type NoteProperty -Name $Name -Value $Value
+            $this._Value.PSObject.Properties.Add([PSNoteProperty]::new($Name, $Value))
             $this.Cache.Remove('ChildNodes')
         }
     }
@@ -2390,66 +2415,66 @@ if (@(`$Invoke).Count -gt 1) { `$Output } else { ,`$Output }
 function Compare-ObjectGraph {
 <#
 .SYNOPSIS
-    Compare Object Graph
+Compare Object Graph
 
 .DESCRIPTION
-    Deep compares two Object Graph and lists the differences between them.
+Deep compares two Object Graph and lists the differences between them.
 
 .PARAMETER InputObject
-    The input object that will be compared with the reference object (see: [-Reference] parameter).
+The input object that will be compared with the reference object (see: [-Reference] parameter).
 
-    > [!NOTE]
-    > Multiple input object might be provided via the pipeline.
-    > The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
-    > To avoid a list of (root) objects to unroll, use the **comma operator**:
+> [!NOTE]
+> Multiple input object might be provided via the pipeline.
+> The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
+> To avoid a list of (root) objects to unroll, use the **comma operator**:
 
-        ,$InputObject | Compare-ObjectGraph $Reference.
+    ,$InputObject | Compare-ObjectGraph $Reference.
 
 .PARAMETER Reference
-    The reference that is used to compared with the input object (see: [-InputObject] parameter).
+The reference that is used to compared with the input object (see: [-InputObject] parameter).
 
 .PARAMETER PrimaryKey
-    If supplied, dictionaries (including PSCustomObject or Component Objects) in a list are matched
-    based on the values of the `-PrimaryKey` supplied.
+If supplied, dictionaries (including PSCustomObject or Component Objects) in a list are matched
+based on the values of the `-PrimaryKey` supplied.
 
 .PARAMETER IsEqual
-    If set, the cmdlet will return a boolean (`$true` or `$false`).
-    As soon a Discrepancy is found, the cmdlet will immediately stop comparing further properties.
+If set, the cmdlet will return a boolean (`$true` or `$false`).
+As soon a Discrepancy is found, the cmdlet will immediately stop comparing further properties.
 
 .PARAMETER MatchCase
-    Unless the `-MatchCase` switch is provided, string values are considered case insensitive.
+Unless the `-MatchCase` switch is provided, string values are considered case insensitive.
 
-    > [!NOTE]
-    > Dictionary keys are compared based on the `$Reference`.
-    > if the `$Reference` is an object (PSCustomObject or component object), the key or name comparison
-    > is case insensitive otherwise the comparer supplied with the dictionary is used.
+> [!NOTE]
+> Dictionary keys are compared based on the `$Reference`.
+> if the `$Reference` is an object (PSCustomObject or component object), the key or name comparison
+> is case insensitive otherwise the comparer supplied with the dictionary is used.
 
 .PARAMETER MatchType
-    Unless the `-MatchType` switch is provided, a loosely (inclusive) comparison is done where the
-    `$Reference` object is leading. Meaning `$Reference -eq $InputObject`:
+Unless the `-MatchType` switch is provided, a loosely (inclusive) comparison is done where the
+`$Reference` object is leading. Meaning `$Reference -eq $InputObject`:
 
-        '1.0' -eq 1.0 # $false
-        1.0 -eq '1.0' # $true (also $false if the `-MatchType` is provided)
+    '1.0' -eq 1.0 # $false
+    1.0 -eq '1.0' # $true (also $false if the `-MatchType` is provided)
 
 .PARAMETER IgnoreLisOrder
-    By default, items in a list are matched independent of the order (meaning by index position).
-    If the `-IgnoreListOrder` switch is supplied, any list in the `$InputObject` is searched for a match
-    with the reference.
+By default, items in a list are matched independent of the order (meaning by index position).
+If the `-IgnoreListOrder` switch is supplied, any list in the `$InputObject` is searched for a match
+with the reference.
 
-    > [!NOTE]
-    > Regardless the list order, any dictionary lists are matched by the primary key (if supplied) first.
+> [!NOTE]
+> Regardless the list order, any dictionary lists are matched by the primary key (if supplied) first.
 
 .PARAMETER MatchMapOrder
-    By default, items in dictionary (including properties of an PSCustomObject or Component Object) are
-    matched by their key name (independent of the order).
-    If the `-MatchMapOrder` switch is supplied, each entry is also validated by the position.
+By default, items in dictionary (including properties of an PSCustomObject or Component Object) are
+matched by their key name (independent of the order).
+If the `-MatchMapOrder` switch is supplied, each entry is also validated by the position.
 
-    > [!NOTE]
-    > A `[HashTable]` type is unordered by design and therefore, regardless the `-MatchMapOrder` switch,
-    the order of the `[HashTable]` (defined by the `$Reference`) are always ignored.
+> [!NOTE]
+> A `[HashTable]` type is unordered by design and therefore, regardless the `-MatchMapOrder` switch,
+the order of the `[HashTable]` (defined by the `$Reference`) are always ignored.
 
 .PARAMETER MaxDepth
-    The maximal depth to recursively compare each embedded property (default: 10).
+The maximal depth to recursively compare each embedded property (default: 10).
 #>
 
 [CmdletBinding(HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Compare-ObjectGraph.md')] param(
@@ -2496,43 +2521,43 @@ process {
 function ConvertFrom-Expression {
 <#
 .SYNOPSIS
-    Deserializes a PowerShell expression to an object.
+Deserializes a PowerShell expression to an object.
 
 .DESCRIPTION
-    The `ConvertFrom-Expression` cmdlet safely converts a PowerShell formatted expression to an object-graph
-    existing of a mixture of nested arrays, hash tables and objects that contain a list of strings and values.
+The `ConvertFrom-Expression` cmdlet safely converts a PowerShell formatted expression to an object-graph
+existing of a mixture of nested arrays, hash tables and objects that contain a list of strings and values.
 
 .PARAMETER InputObject
-    Specifies the PowerShell expressions to convert to objects. Enter a variable that contains the string,
-    or type a command or expression that gets the string. You can also pipe a string to ConvertFrom-Expression.
+Specifies the PowerShell expressions to convert to objects. Enter a variable that contains the string,
+or type a command or expression that gets the string. You can also pipe a string to ConvertFrom-Expression.
 
-    The **InputObject** parameter is required, but its value can be an empty string.
-    The **InputObject** value can't be `$null` or an empty string.
+The **InputObject** parameter is required, but its value can be an empty string.
+The **InputObject** value can't be `$null` or an empty string.
 
 .PARAMETER LanguageMode
-    Defines which object types are allowed for the deserialization, see: [About language modes][2]
+Defines which object types are allowed for the deserialization, see: [About language modes][2]
 
-    * Any type that is not allowed by the given language mode, will be omitted leaving a bare `[ValueType]`,
-      `[String]`, `[Array]` or `[HashTable]`.
-    * Any variable that is not `$True`, `$False` or `$Null` will be converted to a literal string, e.g. `$Test`.
+* Any type that is not allowed by the given language mode, will be omitted leaving a bare `[ValueType]`,
+    `[String]`, `[Array]` or `[HashTable]`.
+* Any variable that is not `$True`, `$False` or `$Null` will be converted to a literal string, e.g. `$Test`.
 
-    > [!Caution]
-    >
-    > In full language mode, `ConvertTo-Expression` permits all type initializers. Cmdlets, functions,
-    > CIM commands, and workflows will *not* be invoked by the `ConvertFrom-Expression` cmdlet.
-    >
-    > Take reasonable precautions when using the `Invoke-Expression -LanguageMode Full` command in scripts.
-    > Verify that the class types in the expression are safe before instantiating them. In general, it is
-    > best to design your configuration expressions with restricted or constrained classes, rather than
-    > allowing full freeform expressions.
+> [!Caution]
+>
+> In full language mode, `ConvertTo-Expression` permits all type initializers. Cmdlets, functions,
+> CIM commands, and workflows will *not* be invoked by the `ConvertFrom-Expression` cmdlet.
+>
+> Take reasonable precautions when using the `Invoke-Expression -LanguageMode Full` command in scripts.
+> Verify that the class types in the expression are safe before instantiating them. In general, it is
+> best to design your configuration expressions with restricted or constrained classes, rather than
+> allowing full freeform expressions.
 
 .PARAMETER ListAs
-    If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown
-    or denied type initializer will be converted to the given list type.
+If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown
+or denied type initializer will be converted to the given list type.
 
 .PARAMETER MapAs
-    If supplied, the Hash table literal syntax `@{ }` syntaxes without an type initializer or with an unknown
-    or denied type initializer will be converted to the given map (dictionary or object) type.
+If supplied, the Hash table literal syntax `@{ }` syntaxes without an type initializer or with an unknown
+or denied type initializer will be converted to the given map (dictionary or object) type.
 
 #>
 
@@ -2590,112 +2615,112 @@ process {
 function ConvertTo-Expression {
 <#
 .SYNOPSIS
-    Serializes an object to a PowerShell expression.
+Serializes an object to a PowerShell expression.
 
 .DESCRIPTION
-    The ConvertTo-Expression cmdlet converts (serializes) an object to a PowerShell expression.
-    The object can be stored in a variable, (.psd1) file or any other common storage for later use or to be ported
-    to another system.
+The ConvertTo-Expression cmdlet converts (serializes) an object to a PowerShell expression.
+The object can be stored in a variable, (.psd1) file or any other common storage for later use or to be ported
+to another system.
 
-    expressions might be restored to an object using the native [Invoke-Expression] cmdlet:
+expressions might be restored to an object using the native [Invoke-Expression] cmdlet:
 
-        $Object = Invoke-Expression ($Object | ConvertTo-Expression)
+    $Object = Invoke-Expression ($Object | ConvertTo-Expression)
 
-    > [!Warning]
-    > Take reasonable precautions when using the Invoke-Expression cmdlet in scripts. When using `Invoke-Expression`
-    > to run a command that the user enters, verify that the command is safe to run before running it.
-    > In general, it is best to restore your objects using [ConvertFrom-Expression].
+> [!Warning]
+> Take reasonable precautions when using the Invoke-Expression cmdlet in scripts. When using `Invoke-Expression`
+> to run a command that the user enters, verify that the command is safe to run before running it.
+> In general, it is best to restore your objects using [ConvertFrom-Expression].
 
-    > [!Note]
-    > Some object types can not be reconstructed from a simple serialized expression.
+> [!Note]
+> Some object types can not be reconstructed from a simple serialized expression.
 
 .INPUTS
-    Any. Each objects provided through the pipeline will converted to an expression. To concatenate all piped
-    objects in a single expression, use the unary comma operator,  e.g.: `,$Object | ConvertTo-Expression`
+Any. Each objects provided through the pipeline will converted to an expression. To concatenate all piped
+objects in a single expression, use the unary comma operator,  e.g.: `,$Object | ConvertTo-Expression`
 
 .OUTPUTS
-    String[]. `ConvertTo-Expression` returns a PowerShell [String] expression for each input object.
+String[]. `ConvertTo-Expression` returns a PowerShell [String] expression for each input object.
 
 .PARAMETER InputObject
-    Specifies the objects to convert to a PowerShell expression. Enter a variable that contains the objects,
-    or type a command or expression that gets the objects. You can also pipe one or more objects to
-    `ConvertTo-Expression.`
+Specifies the objects to convert to a PowerShell expression. Enter a variable that contains the objects,
+or type a command or expression that gets the objects. You can also pipe one or more objects to
+`ConvertTo-Expression.`
 
 .PARAMETER LanguageMode
-    Defines which object types are allowed for the serialization, see: [About language modes][2]
-    If a specific type isn't allowed in the given language mode, it will be substituted by:
+Defines which object types are allowed for the serialization, see: [About language modes][2]
+If a specific type isn't allowed in the given language mode, it will be substituted by:
 
-    * **`$Null`** in case of a null value
-    * **`$False`** in case of a boolean false
-    * **`$True`** in case of a boolean true
-    * **A number** in case of a primitive value
-    * **A string** in case of a string or any other **leaf** node
-    * `@(...)` for an array (**list** node)
-    * `@{...}` for any dictionary, PSCustomObject or Component (aka **map** node)
+* **`$Null`** in case of a null value
+* **`$False`** in case of a boolean false
+* **`$True`** in case of a boolean true
+* **A number** in case of a primitive value
+* **A string** in case of a string or any other **leaf** node
+* `@(...)` for an array (**list** node)
+* `@{...}` for any dictionary, PSCustomObject or Component (aka **map** node)
 
-    See the [PSNode Object Parser][1] for a detailed definition on node types.
+See the [PSNode Object Parser][1] for a detailed definition on node types.
 
 .PARAMETER ExpandDepth
-    Defines up till what level the collections will be expanded in the output.
+Defines up till what level the collections will be expanded in the output.
 
-    * A `-ExpandDepth 0` will create a single line expression.
-    * A `-ExpandDepth -1` will compress the single line by removing command spaces.
+* A `-ExpandDepth 0` will create a single line expression.
+* A `-ExpandDepth -1` will compress the single line by removing command spaces.
 
-    > [!Note]
-    > White spaces (as newline characters and spaces) will not be removed from the content
-    > of a (here) string.
+> [!Note]
+> White spaces (as newline characters and spaces) will not be removed from the content
+> of a (here) string.
 
 .PARAMETER Explicit
-    By default, restricted language types initializers are suppressed.
-    When the `Explicit` switch is set, *all* values will be prefixed with an initializer
-    (as e.g. `[Long]` and `[Array]`)
+By default, restricted language types initializers are suppressed.
+When the `Explicit` switch is set, *all* values will be prefixed with an initializer
+(as e.g. `[Long]` and `[Array]`)
 
-    > [!Note]
-    > The `-Explicit` switch can not be used in **restricted** language mode
+> [!Note]
+> The `-Explicit` switch can not be used in **restricted** language mode
 
 .PARAMETER FullTypeName
-    In case a value is prefixed with an initializer, the full type name of the initializer is used.
+In case a value is prefixed with an initializer, the full type name of the initializer is used.
 
-    > [!Note]
-    > The `-FullTypename` switch can not be used in **restricted** language mode and will only be
-    > meaningful if the initializer is used (see also the [-Explicit] switch).
+> [!Note]
+> The `-FullTypename` switch can not be used in **restricted** language mode and will only be
+> meaningful if the initializer is used (see also the [-Explicit] switch).
 
 .PARAMETER HighFidelity
-    If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
+If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
 
-    By default the fidelity of an object expression will end if:
+By default the fidelity of an object expression will end if:
 
-    1) the (embedded) object is a leaf node (see: [PSNode Object Parser][1])
-    2) the (embedded) object expression is able to round trip.
+1) the (embedded) object is a leaf node (see: [PSNode Object Parser][1])
+2) the (embedded) object expression is able to round trip.
 
-    An object is able to roundtrip if the resulted expression of the object itself or one of
-    its properties (prefixed with the type initializer) can be used to rebuild the object.
+An object is able to roundtrip if the resulted expression of the object itself or one of
+its properties (prefixed with the type initializer) can be used to rebuild the object.
 
-    The advantage of the default fidelity is that the resulted expression round trips (aka the
-    object might be rebuild from the expression), the disadvantage is that information hold by
-    less significant properties is lost (as e.g. timezone information in a `DateTime]` object).
+The advantage of the default fidelity is that the resulted expression round trips (aka the
+object might be rebuild from the expression), the disadvantage is that information hold by
+less significant properties is lost (as e.g. timezone information in a `DateTime]` object).
 
-    The advantage of the high fidelity switch is that all the information of the underlying
-    properties is shown, yet any constrained or full object type will likely fail to rebuild
-    due to constructor limitations such as readonly property.
+The advantage of the high fidelity switch is that all the information of the underlying
+properties is shown, yet any constrained or full object type will likely fail to rebuild
+due to constructor limitations such as readonly property.
 
-    > [!Note]
-    > The Object property `TypeId = [<ParentType>]` is always excluded.
+> [!Note]
+> The Object property `TypeId = [<ParentType>]` is always excluded.
 
 .PARAMETER ExpandSingleton
-    (List or map) collections nodes that contain a single item will not be expanded unless this
-    `-ExpandSingleton` is supplied.
+(List or map) collections nodes that contain a single item will not be expanded unless this
+`-ExpandSingleton` is supplied.
 
 .PARAMETER IndentSize
-    Specifies indent used for the nested properties.
+Specifies indent used for the nested properties.
 
 .PARAMETER MaxDepth
-    Specifies how many levels of contained objects are included in the PowerShell representation.
-    The default value is define by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`).
+Specifies how many levels of contained objects are included in the PowerShell representation.
+The default value is define by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`).
 
 .LINK
-    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-    [2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
 #>
 
 [Alias('cto')]
@@ -2755,45 +2780,45 @@ process {
 function Copy-ObjectGraph {
 <#
 .SYNOPSIS
-    Copy object graph
+Copy object graph
 
 .DESCRIPTION
-    Recursively ("deep") copies a object graph.
+Recursively ("deep") copies a object graph.
 
 .EXAMPLE
-    # Deep copy a complete object graph into a new object graph
+# Deep copy a complete object graph into a new object graph
 
-        $NewObjectGraph = Copy-ObjectGraph $ObjectGraph
-
-.EXAMPLE
-    # Copy (convert) an object graph using common PowerShell arrays and PSCustomObjects
-
-        $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObject
+    $NewObjectGraph = Copy-ObjectGraph $ObjectGraph
 
 .EXAMPLE
-    # Convert a Json string to an object graph with (case insensitive) ordered dictionaries
+# Copy (convert) an object graph using common PowerShell arrays and PSCustomObjects
 
-        $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
+    $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObject
+
+.EXAMPLE
+# Convert a Json string to an object graph with (case insensitive) ordered dictionaries
+
+    $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
 
 .PARAMETER InputObject
-    The input object that will be recursively copied.
+The input object that will be recursively copied.
 
 .PARAMETER ListAs
-    If supplied, lists will be converted to the given type (or type of the supplied object example).
+If supplied, lists will be converted to the given type (or type of the supplied object example).
 
 .PARAMETER DictionaryAs
-    If supplied, dictionaries will be converted to the given type (or type of the supplied object example).
-    This parameter also accepts the [`PSCustomObject`][1] types
-    By default (if the [-DictionaryAs] parameters is omitted),
-    [`Component`][2] objects will be converted to a [`PSCustomObject`][1] type.
+If supplied, dictionaries will be converted to the given type (or type of the supplied object example).
+This parameter also accepts the [`PSCustomObject`][1] types
+By default (if the [-DictionaryAs] parameters is omitted),
+[`Component`][2] objects will be converted to a [`PSCustomObject`][1] type.
 
 .PARAMETER ExcludeLeafs
-    If supplied, only the structure (lists, dictionaries, [`PSCustomObject`][1] types and [`Component`][2] types will be copied.
-    If omitted, each leaf will be shallow copied
+If supplied, only the structure (lists, dictionaries, [`PSCustomObject`][1] types and [`Component`][2] types will be copied.
+If omitted, each leaf will be shallow copied
 
 .LINK
-    [1]: https://learn.microsoft.com/dotnet/api/system.management.automation.pscustomobject "PSCustomObject Class"
-    [2]: https://learn.microsoft.com/dotnet/api/system.componentmodel.component "Component Class"
+[1]: https://learn.microsoft.com/dotnet/api/system.management.automation.pscustomobject "PSCustomObject Class"
+[2]: https://learn.microsoft.com/dotnet/api/system.componentmodel.component "Component Class"
 #>
 [Alias('Copy-Object', 'cpo')]
 [OutputType([Object[]])]
@@ -2874,100 +2899,100 @@ process {
 function Export-ObjectGraph {
 <#
 .SYNOPSIS
-    Serializes a PowerShell File or object-graph and exports it to a PowerShell (data) file.
+Serializes a PowerShell File or object-graph and exports it to a PowerShell (data) file.
 
 .DESCRIPTION
-    The `Export-ObjectGraph` cmdlet converts a PowerShell (complex) object to an PowerShell expression
-    and exports it to a PowerShell (`.ps1`) file or a PowerShell data (`.psd1`) file.
+The `Export-ObjectGraph` cmdlet converts a PowerShell (complex) object to an PowerShell expression
+and exports it to a PowerShell (`.ps1`) file or a PowerShell data (`.psd1`) file.
 
 .PARAMETER Path
-    Specifies the path to a file where `Export-ObjectGraph` exports the ObjectGraph.
-    Wildcard characters are permitted.
+Specifies the path to a file where `Export-ObjectGraph` exports the ObjectGraph.
+Wildcard characters are permitted.
 
 .PARAMETER LiteralPath
-    Specifies a path to one or more locations where PowerShell should export the object-graph.
-    The value of LiteralPath is used exactly as it's typed. No characters are interpreted as wildcards.
-    If the path includes escape characters, enclose it in single quotation marks. Single quotation marks tell
-    PowerShell not to interpret any characters as escape sequences.
+Specifies a path to one or more locations where PowerShell should export the object-graph.
+The value of LiteralPath is used exactly as it's typed. No characters are interpreted as wildcards.
+If the path includes escape characters, enclose it in single quotation marks. Single quotation marks tell
+PowerShell not to interpret any characters as escape sequences.
 
 .PARAMETER LanguageMode
-    Defines which object types are allowed for the serialization, see: [About language modes][2]
-    If a specific type isn't allowed in the given language mode, it will be substituted by:
+Defines which object types are allowed for the serialization, see: [About language modes][2]
+If a specific type isn't allowed in the given language mode, it will be substituted by:
 
-    * **`$Null`** in case of a null value
-    * **`$False`** in case of a boolean false
-    * **`$True`** in case of a boolean true
-    * **A number** in case of a primitive value
-    * **A string** in case of a string or any other **leaf** node
-    * `@(...)` for an array (**list** node)
-    * `@{...}` for any dictionary, PSCustomObject or Component (aka **map** node)
+* **`$Null`** in case of a null value
+* **`$False`** in case of a boolean false
+* **`$True`** in case of a boolean true
+* **A number** in case of a primitive value
+* **A string** in case of a string or any other **leaf** node
+* `@(...)` for an array (**list** node)
+* `@{...}` for any dictionary, PSCustomObject or Component (aka **map** node)
 
-    See the [PSNode Object Parser][1] for a detailed definition on node types.
+See the [PSNode Object Parser][1] for a detailed definition on node types.
 
 .PARAMETER ExpandDepth
-    Defines up till what level the collections will be expanded in the output.
+Defines up till what level the collections will be expanded in the output.
 
-    * A `-ExpandDepth 0` will create a single line expression.
-    * A `-ExpandDepth -1` will compress the single line by removing command spaces.
+* A `-ExpandDepth 0` will create a single line expression.
+* A `-ExpandDepth -1` will compress the single line by removing command spaces.
 
-    > [!Note]
-    > White spaces (as newline characters and spaces) will not be removed from the content
-    > of a (here) string.
+> [!Note]
+> White spaces (as newline characters and spaces) will not be removed from the content
+> of a (here) string.
 
 .PARAMETER Explicit
-    By default, restricted language types initializers are suppressed.
-    When the `Explicit` switch is set, *all* values will be prefixed with an initializer
-    (as e.g. `[Long]` and `[Array]`)
+By default, restricted language types initializers are suppressed.
+When the `Explicit` switch is set, *all* values will be prefixed with an initializer
+(as e.g. `[Long]` and `[Array]`)
 
-    > [!Note]
-    > The `-Explicit` switch can not be used in **restricted** language mode
+> [!Note]
+> The `-Explicit` switch can not be used in **restricted** language mode
 
 .PARAMETER FullTypeName
-    In case a value is prefixed with an initializer, the full type name of the initializer is used.
+In case a value is prefixed with an initializer, the full type name of the initializer is used.
 
-    > [!Note]
-    > The `-FullTypename` switch can not be used in **restricted** language mode and will only be
-    > meaningful if the initializer is used (see also the [-Explicit] switch).
+> [!Note]
+> The `-FullTypename` switch can not be used in **restricted** language mode and will only be
+> meaningful if the initializer is used (see also the [-Explicit] switch).
 
 .PARAMETER HighFidelity
-    If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
+If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
 
-    By default the fidelity of an object expression will end if:
+By default the fidelity of an object expression will end if:
 
-    1) the (embedded) object is a leaf node (see: [PSNode Object Parser][1])
-    2) the (embedded) object expression is able to round trip.
+1) the (embedded) object is a leaf node (see: [PSNode Object Parser][1])
+2) the (embedded) object expression is able to round trip.
 
-    An object is able to roundtrip if the resulted expression of the object itself or one of
-    its properties (prefixed with the type initializer) can be used to rebuild the object.
+An object is able to roundtrip if the resulted expression of the object itself or one of
+its properties (prefixed with the type initializer) can be used to rebuild the object.
 
-    The advantage of the default fidelity is that the resulted expression round trips (aka the
-    object might be rebuild from the expression), the disadvantage is that information hold by
-    less significant properties is lost (as e.g. timezone information in a `DateTime]` object).
+The advantage of the default fidelity is that the resulted expression round trips (aka the
+object might be rebuild from the expression), the disadvantage is that information hold by
+less significant properties is lost (as e.g. timezone information in a `DateTime]` object).
 
-    The advantage of the high fidelity switch is that all the information of the underlying
-    properties is shown, yet any constrained or full object type will likely fail to rebuild
-    due to constructor limitations such as readonly property.
+The advantage of the high fidelity switch is that all the information of the underlying
+properties is shown, yet any constrained or full object type will likely fail to rebuild
+due to constructor limitations such as readonly property.
 
-    > [!Note]
-    > Objects properties of type `[Reflection.MemberInfo]` are always excluded.
+> [!Note]
+> Objects properties of type `[Reflection.MemberInfo]` are always excluded.
 
 .PARAMETER ExpandSingleton
-    (List or map) collections nodes that contain a single item will not be expanded unless this
-    `-ExpandSingleton` is supplied.
+(List or map) collections nodes that contain a single item will not be expanded unless this
+`-ExpandSingleton` is supplied.
 
 .PARAMETER IndentSize
-    Specifies indent used for the nested properties.
+Specifies indent used for the nested properties.
 
 .PARAMETER MaxDepth
-    Specifies how many levels of contained objects are included in the PowerShell representation.
-    The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
+Specifies how many levels of contained objects are included in the PowerShell representation.
+The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
 
 .PARAMETER Encoding
-    Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
+Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
 
 .LINK
-    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-    [2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
 #>
 
 [Alias('Export-Object', 'epo')]
@@ -3034,161 +3059,161 @@ end {
 function Get-ChildNode {
 <#
 .SYNOPSIS
-    Gets the child nodes of an object-graph
+Gets the child nodes of an object-graph
 
 .DESCRIPTION
-    Gets the (unique) nodes and child nodes in one or more specified locations of an object-graph
-    The returned nodes are unique even if the provide list of input parent nodes have an overlap.
+Gets the (unique) nodes and child nodes in one or more specified locations of an object-graph
+The returned nodes are unique even if the provide list of input parent nodes have an overlap.
 
 .EXAMPLE
-    # Select all leaf nodes in a object graph
+# Select all leaf nodes in a object graph
 
-    Given the following object graph:
+Given the following object graph:
 
-        $Object = @{
-            Comment = 'Sample ObjectGraph'
-            Data = @(
-                @{
-                    Index = 1
-                    Name = 'One'
-                    Comment = 'First item'
-                }
-                @{
-                    Index = 2
-                    Name = 'Two'
-                    Comment = 'Second item'
-                }
-                @{
-                    Index = 3
-                    Name = 'Three'
-                    Comment = 'Third item'
-                }
-            )
-        }
+    $Object = @{
+        Comment = 'Sample ObjectGraph'
+        Data = @(
+            @{
+                Index = 1
+                Name = 'One'
+                Comment = 'First item'
+            }
+            @{
+                Index = 2
+                Name = 'Two'
+                Comment = 'Second item'
+            }
+            @{
+                Index = 3
+                Name = 'Three'
+                Comment = 'Third item'
+            }
+        )
+    }
 
-    The following example will receive all leaf nodes:
+The following example will receive all leaf nodes:
 
-        $Object | Get-ChildNode -Recurse -Leaf
+    $Object | Get-ChildNode -Recurse -Leaf
 
-        Path             Name    Depth Value
-        ----             ----    ----- -----
-        .Data[0].Comment Comment     3 First item
-        .Data[0].Name    Name        3 One
-        .Data[0].Index   Index       3 1
-        .Data[1].Comment Comment     3 Second item
-        .Data[1].Name    Name        3 Two
-        .Data[1].Index   Index       3 2
-        .Data[2].Comment Comment     3 Third item
-        .Data[2].Name    Name        3 Three
-        .Data[2].Index   Index       3 3
-        .Comment         Comment     1 Sample ObjectGraph
+    Path             Name    Depth Value
+    ----             ----    ----- -----
+    .Data[0].Comment Comment     3 First item
+    .Data[0].Name    Name        3 One
+    .Data[0].Index   Index       3 1
+    .Data[1].Comment Comment     3 Second item
+    .Data[1].Name    Name        3 Two
+    .Data[1].Index   Index       3 2
+    .Data[2].Comment Comment     3 Third item
+    .Data[2].Name    Name        3 Three
+    .Data[2].Index   Index       3 3
+    .Comment         Comment     1 Sample ObjectGraph
 
 .EXAMPLE
-    # update a property
+# update a property
 
-    The following example selects all child nodes named `Comment` at a depth of `3`.
-    Than filters the one that has an `Index` sibling with the value `2` and eventually
-    sets the value (of the `Comment` node) to: 'Two to the Loo'.
+The following example selects all child nodes named `Comment` at a depth of `3`.
+Than filters the one that has an `Index` sibling with the value `2` and eventually
+sets the value (of the `Comment` node) to: 'Two to the Loo'.
 
-        $Object | Get-ChildNode -AtDepth 3 -Include Comment |
-            Where-Object { $_.ParentNode.GetChildNode('Index').Value -eq 2 } |
-            ForEach-Object { $_.Value = 'Two to the Loo' }
+    $Object | Get-ChildNode -AtDepth 3 -Include Comment |
+        Where-Object { $_.ParentNode.GetChildNode('Index').Value -eq 2 } |
+        ForEach-Object { $_.Value = 'Two to the Loo' }
 
-        ConvertTo-Expression $Object
+    ConvertTo-Expression $Object
 
-        @{
-            Data =
-                @{
-                    Comment = 'First item'
-                    Name = 'One'
-                    Index = 1
-                },
-                @{
-                    Comment = 'Two to the Loo'
-                    Name = 'Two'
-                    Index = 2
-                },
-                @{
-                    Comment = 'Third item'
-                    Name = 'Three'
-                    Index = 3
-                }
-            Comment = 'Sample ObjectGraph'
-        }
+    @{
+        Data =
+            @{
+                Comment = 'First item'
+                Name = 'One'
+                Index = 1
+            },
+            @{
+                Comment = 'Two to the Loo'
+                Name = 'Two'
+                Index = 2
+            },
+            @{
+                Comment = 'Third item'
+                Name = 'Three'
+                Index = 3
+            }
+        Comment = 'Sample ObjectGraph'
+    }
 
-    See the [PowerShell Object Parser][1] For details on the `[PSNode]` properties and methods.
+See the [PowerShell Object Parser][1] For details on the `[PSNode]` properties and methods.
 
 .PARAMETER InputObject
-    The concerned object graph or node.
+The concerned object graph or node.
 
 .PARAMETER Recurse
-    Recursively iterates through all embedded property objects (nodes) to get the selected nodes.
-    The maximum depth of of a specific node that might be retrieved is define by the `MaxDepth`
-    of the (root) node. To change the maximum depth the (root) node needs to be loaded first, e.g.:
+Recursively iterates through all embedded property objects (nodes) to get the selected nodes.
+The maximum depth of of a specific node that might be retrieved is define by the `MaxDepth`
+of the (root) node. To change the maximum depth the (root) node needs to be loaded first, e.g.:
 
-        Get-Node <InputObject> -Depth 20 | Get-ChildNode ...
+    Get-Node <InputObject> -Depth 20 | Get-ChildNode ...
 
-    (See also: [`Get-Node`][2])
+(See also: [`Get-Node`][2])
 
-    > [!NOTE]
-    > If the [AtDepth] parameter is supplied, the object graph is recursively searched anyways
-    > for the selected nodes up till the deepest given `AtDepth` value.
+> [!NOTE]
+> If the [AtDepth] parameter is supplied, the object graph is recursively searched anyways
+> for the selected nodes up till the deepest given `AtDepth` value.
 
 .PARAMETER AtDepth
-    When defined, only returns nodes at the given depth(s).
+When defined, only returns nodes at the given depth(s).
 
-    > [!NOTE]
-    > The nodes below the `MaxDepth` can not be retrieved.
+> [!NOTE]
+> The nodes below the `MaxDepth` can not be retrieved.
 
 .PARAMETER ListChild
-    Returns the closest nodes derived from a **list node**.
+Returns the closest nodes derived from a **list node**.
 
 .PARAMETER Include
-    Returns only nodes derived from a **map node** including only the ones specified by one or more
-    string patterns defined by this parameter. Wildcard characters are permitted.
+Returns only nodes derived from a **map node** including only the ones specified by one or more
+string patterns defined by this parameter. Wildcard characters are permitted.
 
-    > [!NOTE]
-    > The [-Include] and [-Exclude] parameters can be used together. However, the exclusions are applied
-    > after the inclusions, which can affect the final output.
+> [!NOTE]
+> The [-Include] and [-Exclude] parameters can be used together. However, the exclusions are applied
+> after the inclusions, which can affect the final output.
 
 .PARAMETER Exclude
-    Returns only nodes derived from a **map node** excluding the ones specified by one or more
-    string patterns defined by this parameter. Wildcard characters are permitted.
+Returns only nodes derived from a **map node** excluding the ones specified by one or more
+string patterns defined by this parameter. Wildcard characters are permitted.
 
-    > [!NOTE]
-    > The [-Include] and [-Exclude] parameters can be used together. However, the exclusions are applied
-    > after the inclusions, which can affect the final output.
+> [!NOTE]
+> The [-Include] and [-Exclude] parameters can be used together. However, the exclusions are applied
+> after the inclusions, which can affect the final output.
 
 .PARAMETER Literal
-    The values of the [-Include] - and [-Exclude] parameters are used exactly as it is typed.
-    No characters are interpreted as wildcards.
+The values of the [-Include] - and [-Exclude] parameters are used exactly as it is typed.
+No characters are interpreted as wildcards.
 
 .PARAMETER Leaf
-    Only return leaf nodes. Leaf nodes are nodes at the end of a branch and do not have any child nodes.
-    You can use the [-Recurse] parameter with the [-Leaf] parameter.
+Only return leaf nodes. Leaf nodes are nodes at the end of a branch and do not have any child nodes.
+You can use the [-Recurse] parameter with the [-Leaf] parameter.
 
 .PARAMETER IncludeSelf
-    Includes the current node with the returned child nodes.
+Includes the current node with the returned child nodes.
 
 .PARAMETER ValueOnly
-    returns the value of the node instead of the node itself.
+returns the value of the node instead of the node itself.
 
 .PARAMETER MaxDepth
-    Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
-    The failsafe will prevent infinitive loops for circular references as e.g. in:
+Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
+The failsafe will prevent infinitive loops for circular references as e.g. in:
 
-        $Test = @{Guid = New-Guid}
-        $Test.Parent = $Test
+    $Test = @{Guid = New-Guid}
+    $Test.Parent = $Test
 
-    The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
+The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 
-    > [!Note]
-    > The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
-    > at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
+> [!Note]
+> The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
+> at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
 
 .LINK
-    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-    [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md "Get-Node"
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md "Get-Node"
 #>
 
 [Alias('gcn')]
@@ -3278,113 +3303,113 @@ process {
 function Get-Node {
 <#
 .SYNOPSIS
-    Get a node
+Get a node
 
 .DESCRIPTION
-    The Get-Node cmdlet gets the node at the specified property location of the supplied object graph.
+The Get-Node cmdlet gets the node at the specified property location of the supplied object graph.
 
 .EXAMPLE
-    # Parse a object graph to a node instance
+# Parse a object graph to a node instance
 
-    The following example parses a hash table to `[PSNode]` instance:
+The following example parses a hash table to `[PSNode]` instance:
 
-        @{ 'My' = 1, 2, 3; 'Object' = 'Graph' } | Get-Node
+    @{ 'My' = 1, 2, 3; 'Object' = 'Graph' } | Get-Node
 
-        PathName Name Depth Value
-        -------- ---- ----- -----
-                          0 {My, Object}
-
-.EXAMPLE
-    # select a sub node in an object graph
-
-    The following example parses a hash table to `[PSNode]` instance and selects the second (`0` indexed)
-    item in the `My` map node
-
-        @{ 'My' = 1, 2, 3; 'Object' = 'Graph' } | Get-Node My[1]
-
-        PathName Name Depth Value
-        -------- ---- ----- -----
-        My[1]       1     2     2
+    PathName Name Depth Value
+    -------- ---- ----- -----
+                        0 {My, Object}
 
 .EXAMPLE
-    # Change the price of the **PowerShell** book:
+# select a sub node in an object graph
 
-        $ObjectGraph =
-            @{
-                BookStore = @(
-                    @{
-                        Book = @{
-                            Title = 'Harry Potter'
-                            Price = 29.99
-                        }
-                    },
-                    @{
-                        Book = @{
-                            Title = 'Learning PowerShell'
-                            Price = 39.95
-                        }
-                    }
-                )
-            }
+The following example parses a hash table to `[PSNode]` instance and selects the second (`0` indexed)
+item in the `My` map node
 
-        ($ObjectGraph | Get-Node BookStore~Title=*PowerShell*..Price).Value = 24.95
-        $ObjectGraph | ConvertTo-Expression
+    @{ 'My' = 1, 2, 3; 'Object' = 'Graph' } | Get-Node My[1]
+
+    PathName Name Depth Value
+    -------- ---- ----- -----
+    My[1]       1     2     2
+
+.EXAMPLE
+# Change the price of the **PowerShell** book:
+
+    $ObjectGraph =
         @{
             BookStore = @(
                 @{
                     Book = @{
-                        Price = 29.99
                         Title = 'Harry Potter'
+                        Price = 29.99
                     }
                 },
                 @{
                     Book = @{
-                        Price = 24.95
                         Title = 'Learning PowerShell'
+                        Price = 39.95
                     }
                 }
             )
         }
 
-    for more details, see: [PowerShell Object Parser][1] and [Extended dot notation][2]
+    ($ObjectGraph | Get-Node BookStore~Title=*PowerShell*..Price).Value = 24.95
+    $ObjectGraph | ConvertTo-Expression
+    @{
+        BookStore = @(
+            @{
+                Book = @{
+                    Price = 29.99
+                    Title = 'Harry Potter'
+                }
+            },
+            @{
+                Book = @{
+                    Price = 24.95
+                    Title = 'Learning PowerShell'
+                }
+            }
+        )
+    }
+
+for more details, see: [PowerShell Object Parser][1] and [Extended dot notation][2]
 
 .PARAMETER InputObject
-    The concerned object graph or node.
+The concerned object graph or node.
 
 .PARAMETER Path
-    Specifies the path to a specific node in the object graph.
-    The path might be either:
+Specifies the path to a specific node in the object graph.
+The path might be either:
 
-    * A dot-notation (`[String]`) literal or expression (as natively used with PowerShell)
-    * A array of strings (dictionary keys or Property names) and/or integers (list indices)
-    * A `[PSNodePath]` (such as `$Node.Path`) or a `[XdnPath]` (Extended Dot-Notation) object
+* A dot-notation (`[String]`) literal or expression (as natively used with PowerShell)
+* A array of strings (dictionary keys or Property names) and/or integers (list indices)
+* A `[PSNodePath]` (such as `$Node.Path`) or a `[XdnPath]` (Extended Dot-Notation) object
 
 .PARAMETER Literal
-    If Literal switch is set, all (map) nodes in the given path are considered literal.
+If Literal switch is set, all (map) nodes in the given path are considered literal.
 
 .PARAMETER ValueOnly
-    returns the value of the node instead of the node itself.
+returns the value of the node instead of the node itself.
 
 .PARAMETER Unique
-    Specifies that if a subset of the nodes has identical properties and values,
-    only a single node of the subset should be selected.
+Specifies that if a subset of the nodes has identical properties and values,
+only a single node of the subset should be selected.
 
 .PARAMETER MaxDepth
-    Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
-    The failsafe will prevent infinitive loops for circular references as e.g. in:
+Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
+The failsafe will prevent infinitive loops for circular references as e.g. in:
 
-        $Test = @{Guid = New-Guid}
-        $Test.Parent = $Test
+    $Test = @{Guid = New-Guid}
+    $Test.Parent = $Test
 
-    The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
+The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 
-    > [!Note]
-    > The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
-    > at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
+> [!Note]
+> The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
+> at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
 
 .LINK
-    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-    [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Xdn.md "Extended dot notation"
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Xdn.md "Extended dot notation"
 #>
 
 [Alias('gn')]
@@ -3534,61 +3559,61 @@ process {
 function Import-ObjectGraph {
 <#
 .SYNOPSIS
-    Deserializes a PowerShell File or any object-graphs from PowerShell file to an object.
+Deserializes a PowerShell File or any object-graphs from PowerShell file to an object.
 
 .DESCRIPTION
-    The `Import-ObjectGraph` cmdlet safely converts a PowerShell formatted expression contained by a file
-    to an object-graph existing of a mixture of nested arrays, hash tables and objects that contain a list
-    of strings and values.
+The `Import-ObjectGraph` cmdlet safely converts a PowerShell formatted expression contained by a file
+to an object-graph existing of a mixture of nested arrays, hash tables and objects that contain a list
+of strings and values.
 
 .PARAMETER Path
-    Specifies the path to a file where `Import-ObjectGraph` imports the object-graph.
-    Wildcard characters are permitted.
+Specifies the path to a file where `Import-ObjectGraph` imports the object-graph.
+Wildcard characters are permitted.
 
 .PARAMETER LiteralPath
-    Specifies a path to one or more locations that contain a PowerShell the object-graph.
-    The value of LiteralPath is used exactly as it's typed. No characters are interpreted as wildcards.
-    If the path includes escape characters, enclose it in single quotation marks. Single quotation marks tell
-    PowerShell not to interpret any characters as escape sequences.
+Specifies a path to one or more locations that contain a PowerShell the object-graph.
+The value of LiteralPath is used exactly as it's typed. No characters are interpreted as wildcards.
+If the path includes escape characters, enclose it in single quotation marks. Single quotation marks tell
+PowerShell not to interpret any characters as escape sequences.
 
 .PARAMETER LanguageMode
-    Defines which object types are allowed for the deserialization, see: [About language modes][2]
+Defines which object types are allowed for the deserialization, see: [About language modes][2]
 
-    * Any type that is not allowed by the given language mode, will be omitted leaving a bare `[ValueType]`,
-      `[String]`, `[Array]` or `[HashTable]`.
-    * Any variable that is not `$True`, `$False` or `$Null` will be converted to a literal string, e.g. `$Test`.
+* Any type that is not allowed by the given language mode, will be omitted leaving a bare `[ValueType]`,
+    `[String]`, `[Array]` or `[HashTable]`.
+* Any variable that is not `$True`, `$False` or `$Null` will be converted to a literal string, e.g. `$Test`.
 
-    The default `LanguageMode` is `Restricted` for PowerShell Data (`psd1`) files and `Constrained` for any
-    other files, which usually concerns PowerShell (`.ps1`) files.
+The default `LanguageMode` is `Restricted` for PowerShell Data (`psd1`) files and `Constrained` for any
+other files, which usually concerns PowerShell (`.ps1`) files.
 
-    > [!Caution]
-    >
-    > In full language mode, `ConvertTo-Expression` permits all type initializers. Cmdlets, functions,
-    > CIM commands, and workflows will *not* be invoked by the `ConvertFrom-Expression` cmdlet.
-    >
-    > Take reasonable precautions when using the `Invoke-Expression -LanguageMode Full` command in scripts.
-    > Verify that the class types in the expression are safe before instantiating them. In general, it is
-    > best to design your configuration expressions with restricted or constrained classes, rather than
-    > allowing full freeform expressions.
+> [!Caution]
+>
+> In full language mode, `ConvertTo-Expression` permits all type initializers. Cmdlets, functions,
+> CIM commands, and workflows will *not* be invoked by the `ConvertFrom-Expression` cmdlet.
+>
+> Take reasonable precautions when using the `Invoke-Expression -LanguageMode Full` command in scripts.
+> Verify that the class types in the expression are safe before instantiating them. In general, it is
+> best to design your configuration expressions with restricted or constrained classes, rather than
+> allowing full freeform expressions.
 
 .PARAMETER ListAs
-    If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown or
-    denied type initializer will be converted to the given list type.
+If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown or
+denied type initializer will be converted to the given list type.
 
 .PARAMETER MapAs
-    If supplied, the array subexpression `@{ }` syntaxes without an type initializer or with an unknown or
-    denied type initializer will be converted to the given map (dictionary or object) type.
+If supplied, the array subexpression `@{ }` syntaxes without an type initializer or with an unknown or
+denied type initializer will be converted to the given map (dictionary or object) type.
 
-    The default `MapAs` is an (ordered) `PSCustomObject` for PowerShell Data (`psd1`) files and
-    a (unordered) `HashTable` for any other files, which usually concerns PowerShell (`.ps1`) files that
-    support explicit type initiators.
+The default `MapAs` is an (ordered) `PSCustomObject` for PowerShell Data (`psd1`) files and
+a (unordered) `HashTable` for any other files, which usually concerns PowerShell (`.ps1`) files that
+support explicit type initiators.
 
 .PARAMETER Encoding
-    Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
+Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
 
 .LINK
-    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-    [2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
 #>
 
 [Alias('Import-Object', 'imo')]
@@ -3645,37 +3670,37 @@ end {
 function Merge-ObjectGraph {
 <#
 .SYNOPSIS
-    Merges two object graphs into one
+Merges two object graphs into one
 
 .DESCRIPTION
-    Recursively merges two object graphs into a new object graph.
+Recursively merges two object graphs into a new object graph.
 
 .PARAMETER InputObject
-    The input object that will be merged with the template object (see: [-Template] parameter).
+The input object that will be merged with the template object (see: [-Template] parameter).
 
-    > [!NOTE]
-    > Multiple input object might be provided via the pipeline.
-    > The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
-    > To avoid a list of (root) objects to unroll, use the **comma operator**:
+> [!NOTE]
+> Multiple input object might be provided via the pipeline.
+> The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
+> To avoid a list of (root) objects to unroll, use the **comma operator**:
 
-        ,$InputObject | Compare-ObjectGraph $Template.
+    ,$InputObject | Compare-ObjectGraph $Template.
 
 .PARAMETER Template
-    The template that is used to merge with the input object (see: [-InputObject] parameter).
+The template that is used to merge with the input object (see: [-InputObject] parameter).
 
 .PARAMETER PrimaryKey
-    In case of a list of dictionaries or PowerShell objects, the PowerShell key is used to
-    link the items or properties: if the PrimaryKey exists on both the [-Template] and the
-    [-InputObject] and the values are equal, the dictionary or PowerShell object will be merged.
-    Otherwise (if the key can't be found or the values differ), the complete dictionary or
-    PowerShell object will be added to the list.
+In case of a list of dictionaries or PowerShell objects, the PowerShell key is used to
+link the items or properties: if the PrimaryKey exists on both the [-Template] and the
+[-InputObject] and the values are equal, the dictionary or PowerShell object will be merged.
+Otherwise (if the key can't be found or the values differ), the complete dictionary or
+PowerShell object will be added to the list.
 
-    It is allowed to supply multiple primary keys where each primary key will be used to
-    check the relation between the [-Template] and the [-InputObject].
+It is allowed to supply multiple primary keys where each primary key will be used to
+check the relation between the [-Template] and the [-InputObject].
 
 .PARAMETER MaxDepth
-    The maximal depth to recursively compare each embedded node.
-    The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
+The maximal depth to recursively compare each embedded node.
+The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
 #>
 
 [Alias('Merge-Object', 'mgo')]
@@ -3859,48 +3884,139 @@ The default value is defined by the PowerShell object node parser (`[PSNode]::De
 
 .LINK
     [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/SchemaObject.md "Schema object definitions"
-
 #>
 
 [Alias('Test-Object', 'tso')]
-[CmdletBinding(DefaultParameterSetName = 'ResultList', HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Test-ObjectGraph.md')][OutputType([String])] param(
+[CmdletBinding(DefaultParameterSetName = 'ResultList', HelpUri = 'https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Test-ObjectGraph.md')][OutputType([String])] param(
 
-    [Parameter(ParameterSetName='ValidateOnly', Mandatory = $true, ValueFromPipeLine = $True)]
-    [Parameter(ParameterSetName='ResultList', Mandatory = $true, ValueFromPipeLine = $True)]
+    [Parameter(ParameterSetName = 'ValidateOnly', Mandatory = $true, ValueFromPipeLine = $True)]
+    [Parameter(ParameterSetName = 'ResultList', Mandatory = $true, ValueFromPipeLine = $True)]
     $InputObject,
 
-    [Parameter(ParameterSetName='ValidateOnly', Mandatory = $true, Position = 0)]
-    [Parameter(ParameterSetName='ResultList', Mandatory = $true, Position = 0)]
+    [Parameter(ParameterSetName = 'ValidateOnly', Mandatory = $true, Position = 0)]
+    [Parameter(ParameterSetName = 'ResultList', Mandatory = $true, Position = 0)]
     $SchemaObject,
 
-    [Parameter(ParameterSetName='ValidateOnly')]
+    [Parameter(ParameterSetName = 'ValidateOnly')]
     [Switch]$ValidateOnly,
 
-    [Parameter(ParameterSetName='ResultList')]
+    [Parameter(ParameterSetName = 'ResultList')]
     [Switch]$Elaborate,
 
-    [Parameter(ParameterSetName='ValidateOnly')]
-    [Parameter(ParameterSetName='ResultList')]
+    [Parameter(ParameterSetName = 'ValidateOnly')]
+    [Parameter(ParameterSetName = 'ResultList')]
     [ValidateNotNullOrEmpty()][String]$AssertTestPrefix = 'AssertTestPrefix',
 
-    [Parameter(ParameterSetName='ValidateOnly')]
-    [Parameter(ParameterSetName='ResultList')]
+    [Parameter(ParameterSetName = 'ValidateOnly')]
+    [Parameter(ParameterSetName = 'ResultList')]
     [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
 )
 
 begin {
+    $Script:Elaborate = $Elaborate
 
     $Script:Yield = {
-        $Name = "$Args" -Replace '\W'
+        $Name = "$Args" -replace '\W'
         $Value = Get-Variable -Name $Name -ValueOnly -ErrorAction SilentlyContinue
         if ($Value) { "$args" }
     }
 
     $Script:Ordinal = @{$false = [StringComparer]::OrdinalIgnoreCase; $true = [StringComparer]::Ordinal }
 
+    $Script:UniqueCollections = @{}
+
     # The maximum schema object depth is bound by the input object depth (+1 one for the leaf test definition)
     $SchemaNode = [PSNode]::ParseInput($SchemaObject, ($MaxDepth + 2)) # +2 to be safe
     $Script:AssertPrefix = if ($SchemaNode.Contains($AssertTestPrefix)) { $SchemaNode.Value[$AssertTestPrefix] } else { '@' }
+
+    Enum ResultMode {
+        Validate    # Only determines if the node is valid, if not the cmdlet is supposed to exit immediately
+        Output      # Outputs the results immediately to the pipeline
+        Collect     # Collects the results to match any potential node branch
+    }
+
+    Class Result {
+        static [ResultMode]$Mode
+        static [Bool]$Failed
+        static [List[Object]]$List
+
+        static [Bool]$Elaborate
+        static [Bool]$Debug
+        hidden static [Void]Initialize($ValidateOnly, $Elaborate, $Debug) {
+            [Result]::Mode      = if ($ValidateOnly) { 'Validate' } else { 'Output' }
+            [Result]::List      = $null
+            [Result]::Failed    = $false
+            [Result]::Elaborate = $Elaborate
+            [Result]::Debug     = $Debug
+        }
+        [PSNode]$ObjectNode
+        [PSNode]$SchemaNode
+        hidden [Bool]$CollectStage
+
+        Result($ObjectNode, $SchemaNode) {
+            if ([Result]::Debug) {
+                $Tab = ' ' * ($SchemaNode.Depth * 2)
+                Write-Host "$Tab$([ParameterColor]'Caller:')" $this.GetCallerInfo() "(Mode: $([Result]::Mode))"
+                Write-Host "$Tab$([ParameterColor]'ObjectNode:')" $ObjectNode.Path '=' "$ObjectNode"
+                Write-Host "$Tab$([ParameterColor]'SchemaNode:')" $SchemaNode.Path '=' "$SchemaNode"
+            }
+            $this.ObjectNode = $ObjectNode
+            $this.SchemaNode = $SchemaNode
+        }
+
+        [Object]Check([String]$Issue, [Bool]$Passed) {
+
+            # Common test instance invocation:
+            # if (($Out = $Result.Check('My issue', $Passed)) -eq $false) { return } else { $Out }
+
+            if (-not $Passed) { [Result]::Failed = $true }
+
+            if ([Result]::Debug) {
+                $Tab = ' ' * ($this.SchemaNode.Depth * 2)
+                Write-Host "$Tab$([ParameterColor]'Return:')" $this.GetCallerInfo() "(Mode: $([Result]::Mode))"
+                Write-Host "$Tab$([ParameterColor]'Result:')" $Issue "($(if ($Passed) { 'Passed'} else { 'Failed' }))"
+            }
+
+            if (-Not $Issue) { return @() }
+            if ([Result]::Mode -eq 'Validate' -and [Result]::Failed) { return $false }
+            # if (-not [Result]::Elaborate -and ([Result]::Mode -eq 'Collect' -or $Passed)) { return @() }
+            if (-not [Result]::Elaborate -and $Passed) { return @() }
+
+            $TestResult = [PSCustomObject]@{
+                ObjectNode = $this.ObjectNode
+                SchemaNode = $this.SchemaNode
+                Valid      = $Passed
+                Issue      = $Issue
+            }
+            $TestResult.PSTypeNames.Insert(0, 'TestResult')
+            if ([Result]::Mode -eq 'Output' -or [Result]::Elaborate) { return $TestResult }
+            [Result]::List.Add($TestResult)
+            return @()
+        }
+
+        hidden [String]GetCallerInfo() {
+            $PSCallStack = Get-PSCallStack
+            if ($PSCallStack.Count -le 2) { return ''}
+            return "line $($PSCallStack[2].ScriptLineNumber): $($PSCallStack[2].InvocationInfo.Line.Trim())"
+        }
+
+        Collect() {
+            if ([Result]::Mode -ne 'Output') { return } # Already in collect mode
+            [Result]::Mode = 'Collect'
+            [Result]::Failed = $false
+            $this.CollectStage = $true
+            [Result]::List = [List[Object]]::new()
+        }
+
+        [object] Complete([Bool]$Output) {
+            if (-not $this.CollectStage) { return @() } # The result collection didn't start at this stage
+            [Result]::Mode = 'Output'
+            $this.CollectStage = $false
+            $Results = [Result]::List
+            [Result]::List = $null
+            if ($Output) { return $Results } else { return @() }
+        }
+    }
 
     function StopError($Exception, $Id = 'TestNode', $Category = [ErrorCategory]::SyntaxError, $Object) {
         if ($Exception -is [ErrorRecord]) { $Exception = $Exception.Exception }
@@ -3915,7 +4031,7 @@ begin {
         StopError -Exception $Exception -Id 'SchemaError' -Category InvalidOperation -Object $Object
     }
 
-    $Script:Tests = @{
+    $Script:Asserts = @{
         Description      = 'Describes the test node'
         References       = 'Contains a list of assert references'
         Type             = 'The node or value is of type'
@@ -3948,14 +4064,10 @@ begin {
     }
 
     $At = @{}
-    $Tests.Get_Keys().Foreach{ $At[$_] = "$($AssertPrefix)$_" }
-
-    function ResolveReferences($Node) {
-        if ($Node.Cache.ContainsKey('TestReferences')) { return }
-
-    }
+    $Asserts.Get_Keys().Foreach{ $At[$_] = "$($AssertPrefix)$_" }
 
     function GetReference($LeafNode) {
+        # An assert node with a string value is a reference to another node
         $TestNode = $LeafNode.ParentNode
         $References = if ($TestNode) {
             if (-not $TestNode.Cache.ContainsKey('TestReferences')) {
@@ -3968,7 +4080,8 @@ begin {
                         continue
                     }
                     $RefNode = if ($TestNode.Contains($At.References)) { $TestNode.GetChildNode($At.References) }
-                    $TestNode.Cache['TestReferences'] = [HashTable]::new($Ordinal[[Bool]$RefNode.CaseMatters])
+                    $CaseMatters = if ($RefNode) { $RefNode.CaseMatters }
+                    $TestNode.Cache['TestReferences'] = [HashTable]::new($Ordinal[[Bool]$CaseMatters])
                     if ($RefNode) {
                         foreach ($ChildNode in $RefNode.ChildNodes) {
                             if (-not $TestNode.Cache['TestReferences'].ContainsKey($ChildNode.Name)) {
@@ -3989,138 +4102,35 @@ begin {
                 }
             }
             $TestNode.Cache['TestReferences']
-        } else { @{} }
+        }
+        else { @{} }
         if ($References.Contains($LeafNode.Value)) {
             $AssertNode.Cache['TestReferences'] = $References
             $References[$LeafNode.Value]
         }
         else { SchemaError "Unknown reference: $LeafNode" $ObjectNode $LeafNode }
     }
-
-    function MatchNode (
-        [PSNode]$ObjectNode,
-        [PSNode]$TestNode,
-        [Switch]$ValidateOnly,
-        [Switch]$Elaborate,
-        [Switch]$Ordered,
-        [Nullable[Bool]]$CaseSensitive,
-        [Switch]$MatchAll,
-        $MatchedNames
-    ) {
-        $Violates = $null
-        $Name = $TestNode.Name
-
-        $ChildNodes = $ObjectNode.ChildNodes
-        if ($ChildNodes.Count -eq 0) { return }
-
-        $AssertNode = if ($TestNode -is [PSCollectionNode]) { $TestNode } else { GetReference $TestNode }
-
-        if ($ObjectNode -is [PSMapNode] -and $TestNode.NodeOrigin -eq 'Map') {
-            if ($ObjectNode.Contains($Name)) {
-                $ChildNode = $ObjectNode.GetChildNode($Name)
-                if ($Ordered -and $ChildNodes.IndexOf($ChildNode) -ne $TestNodes.IndexOf($TestNode)) {
-                    $Violates = "The node $Name is not in order"
-                }
-            } else { $ChildNode = $false }
-        }
-        elseif ($ChildNodes.Count -eq 1) { $ChildNode = $ChildNodes[0] }
-        elseif ($Ordered) {
-            $NodeIndex = $TestNodes.IndexOf($TestNode)
-            if ($NodeIndex -ge $ChildNodes.Count) {
-                $Violates = "Expected at least $($TestNodes.Count) (ordered) nodes"
-            }
-            $ChildNode = $ChildNodes[$NodeIndex]
-        }
-        else { $ChildNode = $null }
-
-        if ($Violates) {
-            if (-not $ValidateOnly) {
-                $Output = [PSCustomObject]@{
-                    ObjectNode = $ObjectNode
-                    SchemaNode = $AssertNode
-                    Valid      = -not $Violates
-                    Issue      = $Violates
-                }
-                $Output.PSTypeNames.Insert(0, 'TestResult')
-                $Output
-            }
-            return
-        }
-        if ($ChildNode -is [PSNode]) {
-            $Issue = $Null
-            $TestParams = @{
-                ObjectNode     = $ChildNode
-                SchemaNode     = $AssertNode
-                Elaborate      = $Elaborate
-                CaseSensitive  = $CaseSensitive
-                ValidateOnly   = $ValidateOnly
-                RefInvalidNode = [Ref]$Issue
-            }
-            TestNode @TestParams
-            if (-not $Issue) { $null = $MatchedNames.Add($ChildNode.Name) }
-        }
-        elseif ($null -eq $ChildNode) {
-            $SingleIssue = $Null
-            foreach ($ChildNode in $ChildNodes) {
-                if ($MatchedNames.Contains($ChildNode.Name)) { continue }
-                $Issue = $Null
-                $TestParams = @{
-                    ObjectNode     = $ChildNode
-                    SchemaNode     = $AssertNode
-                    Elaborate      = $Elaborate
-                    CaseSensitive  = $CaseSensitive
-                    ValidateOnly   = $true
-                    RefInvalidNode = [Ref]$Issue
-                }
-                TestNode @TestParams
-                if($Issue) {
-                    if ($Elaborate) { $Issue }
-                    elseif (-not $ValidateOnly -and $MatchAll) {
-                        if ($null -eq $SingleIssue) { $SingleIssue = $Issue } else { $SingleIssue = $false }
-                    }
-                }
-                else {
-                    $null = $MatchedNames.Add($ChildNode.Name)
-                    if (-not $MatchAll) { break }
-                }
-            }
-            if ($SingleIssue) { $SingleIssue }
-        }
-        elseif ($ChildNode -eq $false) { $AssertResults[$Name] = $false }
-        else { throw "Unexpected return reference: $ChildNode" }
-    }
-
     function TestNode (
         [PSNode]$ObjectNode,
         [PSNode]$SchemaNode,
-        [Switch]$Elaborate,             # if set, include the failed test results in the output
-        [Nullable[Bool]]$CaseSensitive, # inherited the CaseSensitivity frm the parent node if not defined
-        [Switch]$ValidateOnly,          # if set, stop at the first invalid node
-        $RefInvalidNode                 # references the first invalid node
+        [Nullable[Bool]]$CaseSensitive # inherited the CaseSensitivity from the parent node if not defined
     ) {
-        $CallStack = Get-PSCallStack
-        # if ($CallStack.Count -gt 20) { Throw 'Call stack failsafe' }
-        if ($DebugPreference -in 'Stop', 'Continue', 'Inquire') {
-            $Caller = $CallStack[1]
-            Write-Host "$([ParameterColor]'Caller (line: $($Caller.ScriptLineNumber))'):" $Caller.InvocationInfo.Line.Trim()
-            Write-Host "$([ParameterColor]'ObjectNode:')" $ObjectNode.Path "$ObjectNode"
-            Write-Host "$([ParameterColor]'SchemaNode:')" $SchemaNode.Path "$SchemaNode"
-            Write-Host "$([ParameterColor]'ValidateOnly:')" ([Bool]$ValidateOnly)
-        }
         if ($SchemaNode -is [PSListNode] -and $SchemaNode.Count -eq 0) { return } # Allow any node
 
+        $Result = [Result]::new($ObjectNode, $SchemaNode)
+        $Violates = $null
+
         $AssertValue = $ObjectNode.Value
-        $RefInvalidNode.Value = $null
 
         # Separate the assert nodes from the schema subnodes
         $AssertNodes = [Ordered]@{} # $AssertNodes{<Assert Test name>] = $ChildNodes.@<Assert Test name>
         if ($SchemaNode -is [PSMapNode]) {
             $TestNodes = [List[PSNode]]::new()
             foreach ($Node in $SchemaNode.ChildNodes) {
-                if ($Null -eq $Node.Parent -and $Node.Name -eq $AssertTestPrefix) { continue }
+                if ($Null -eq $Node.ParentNode.ParentNode -and $Node.Name -eq $AssertTestPrefix) { continue }
                 if ($Node.Name.StartsWith($AssertPrefix)) {
                     $TestName = $Node.Name.SubString($AssertPrefix.Length)
-                    if ($TestName -notin $Tests.Keys) { SchemaError "Unknown assert: '$($Node.Name)'" $ObjectNode $SchemaNode }
+                    if ($TestName -notin $Asserts.Keys) { SchemaError "Unknown assert: '$($Node.Name)'" $ObjectNode $SchemaNode }
                     $AssertNodes[$TestName] = $Node
                 }
                 else { $TestNodes.Add($Node) }
@@ -4132,12 +4142,12 @@ begin {
         if ($AssertNodes.Contains('CaseSensitive')) { $CaseSensitive = [Nullable[Bool]]$AssertNodes['CaseSensitive'] }
         $AllowExtraNodes = if ($AssertNodes.Contains('AllowExtraNodes')) { $AssertNodes['AllowExtraNodes'] }
 
-#Region Node validation
-
-        $RefInvalidNode.Value = $false
         $MatchedNames = [HashSet[Object]]::new()
-        $AssertResults = $Null
+        $MatchedAsserts = $Null
         foreach ($TestName in $AssertNodes.get_Keys()) {
+
+            #Region Node assertions
+
             $AssertNode = $AssertNodes[$TestName]
             $Criteria = $AssertNode.Value
             $Violates = $null # is either a boolean ($true if invalid) or a string with what was expected
@@ -4157,7 +4167,7 @@ begin {
                     if ($ObjectNode -is $Type -or $AssertValue -is $Type) { $true; break }
                 }
                 $Not = $TestName.StartsWith('Not', 'OrdinalIgnoreCase')
-                if ($null -eq $FoundType -xor $Not) { $Violates = "The node or value is $(if (!$Not) { 'not ' })of type $AssertNode" }
+                if ($null -eq $FoundType -xor $Not) { $Violates = "The node $ObjectNode is $(if (!$Not) { 'not ' })of type $AssertNode" }
             }
             elseif ($TestName -eq 'CaseSensitive') {
                 if ($null -ne $Criteria -and $Criteria -isnot [Bool]) {
@@ -4174,36 +4184,37 @@ begin {
                     }
                     elseif ($TestName -eq 'Minimum') {
                         $IsValid =
-                            if     ($CaseSensitive -eq $true)  { $Criteria -cle $Value }
-                            elseif ($CaseSensitive -eq $false) { $Criteria -ile $Value }
-                            else                               { $Criteria -le  $Value }
+                        if ($CaseSensitive -eq $true) { $Criteria -cle $Value }
+                        elseif ($CaseSensitive -eq $false) { $Criteria -ile $Value }
+                        else { $Criteria -le $Value }
                         if (-not $IsValid) {
                             $Violates = "The $(&$Yield '(case sensitive) ')value $Value is less or equal than $AssertNode"
                         }
                     }
                     elseif ($TestName -eq 'ExclusiveMinimum') {
                         $IsValid =
-                            if     ($CaseSensitive -eq $true)  { $Criteria -clt $Value }
-                            elseif ($CaseSensitive -eq $false) { $Criteria -ilt $Value }
-                            else                               { $Criteria -lt  $Value }
+                        if ($CaseSensitive -eq $true) { $Criteria -clt $Value }
+                        elseif ($CaseSensitive -eq $false) { $Criteria -ilt $Value }
+                        else { $Criteria -lt $Value }
                         if (-not $IsValid) {
                             $Violates = "The $(&$Yield '(case sensitive) ')value $Value is less than $AssertNode"
                         }
                     }
                     elseif ($TestName -eq 'ExclusiveMaximum') {
                         $IsValid =
-                            if     ($CaseSensitive -eq $true)  { $Criteria -cgt $Value }
-                            elseif ($CaseSensitive -eq $false) { $Criteria -igt $Value }
-                            else                               { $Criteria -gt  $Value }
+                        if ($CaseSensitive -eq $true) { $Criteria -cgt $Value }
+                        elseif ($CaseSensitive -eq $false) { $Criteria -igt $Value }
+                        else { $Criteria -gt $Value }
                         if (-not $IsValid) {
                             $Violates = "The $(&$Yield '(case sensitive) ')value $Value is greater than $AssertNode"
                         }
                     }
-                    else { # if ($TestName -eq 'Maximum') {
+                    else {
+                        # if ($TestName -eq 'Maximum') {
                         $IsValid =
-                            if     ($CaseSensitive -eq $true)  { $Criteria -cge $Value }
-                            elseif ($CaseSensitive -eq $false) { $Criteria -ige $Value }
-                            else                               { $Criteria -ge  $Value }
+                        if ($CaseSensitive -eq $true) { $Criteria -cge $Value }
+                        elseif ($CaseSensitive -eq $false) { $Criteria -ige $Value }
+                        else { $Criteria -ge $Value }
                         if (-not $IsValid) {
                             $Violates = "The $(&$Yield '(case sensitive) ')value $Value is greater than $AssertNode"
                         }
@@ -4232,7 +4243,8 @@ begin {
                             $Violates = "The string length of '$Value' ($Length) is not equal to $AssertNode"
                         }
                     }
-                    else { # if ($TestName -eq 'MaximumLength') {
+                    else {
+                        # if ($TestName -eq 'MaximumLength') {
                         if ($Length -gt $Criteria) {
                             $Violates = "The string length of '$Value' ($Length) is greater than $AssertNode"
                         }
@@ -4244,7 +4256,7 @@ begin {
             elseif ($TestName -in 'Like', 'NotLike', 'Match', 'NotMatch') {
                 if ($null -eq $AllowExtraNodes) { $AllowExtraNodes = $true }
                 $Negate = $TestName.StartsWith('Not', 'OrdinalIgnoreCase')
-                $Match  = $TestName.EndsWith('Match', 'OrdinalIgnoreCase')
+                $Match = $TestName.EndsWith('Match', 'OrdinalIgnoreCase')
                 $ValueNodes = if ($ObjectNode -is [PSCollectionNode]) { $ObjectNode.ChildNodes } else { @($ObjectNode) }
                 foreach ($ValueNode in $ValueNodes) {
                     $Value = $ValueNode.Value
@@ -4255,23 +4267,24 @@ begin {
                     $Found = $false
                     foreach ($AnyCriteria in $Criteria) {
                         $Found = if ($Match) {
-                            if     ($true -eq $CaseSensitive)  { $Value -cMatch $AnyCriteria }
-                            elseif ($false -eq $CaseSensitive) { $Value -iMatch $AnyCriteria }
-                            else                               { $Value -Match  $AnyCriteria }
+                            if ($true -eq $CaseSensitive) { $Value -cmatch $AnyCriteria }
+                            elseif ($false -eq $CaseSensitive) { $Value -imatch $AnyCriteria }
+                            else { $Value -match $AnyCriteria }
                         }
-                        else { # if ($TestName.EndsWith('Link', 'OrdinalIgnoreCase')) {
-                            if     ($true -eq $CaseSensitive)  { $Value -cLike  $AnyCriteria }
-                            elseif ($false -eq $CaseSensitive) { $Value -iLike  $AnyCriteria }
-                            else                               { $Value -Like   $AnyCriteria }
+                        else {
+                            # if ($TestName.EndsWith('Link', 'OrdinalIgnoreCase')) {
+                            if ($true -eq $CaseSensitive) { $Value -clike $AnyCriteria }
+                            elseif ($false -eq $CaseSensitive) { $Value -ilike $AnyCriteria }
+                            else { $Value -like $AnyCriteria }
                         }
                         if ($Found) { break }
                     }
                     $IsValid = $Found -xor $Negate
                     if (-not $IsValid) {
-                        $Not = if (-Not $Negate) { ' not' }
+                        $Not = if (-not $Negate) { ' not' }
                         $Violates =
-                            if ($Match) { "The $(&$Yield '(case sensitive) ')value $Value does$not match $AssertNode" }
-                            else        { "The $(&$Yield '(case sensitive) ')value $Value is$not like $AssertNode" }
+                        if ($Match) { "The $(&$Yield '(case sensitive) ')value $Value does$not match $AssertNode" }
+                        else { "The $(&$Yield '(case sensitive) ')value $Value is$not like $AssertNode" }
                     }
                 }
             }
@@ -4290,7 +4303,8 @@ begin {
                         $Violates = "The node count ($($ChildNodes.Count)) is not equal to $AssertNode"
                     }
                 }
-                else { # if ($TestName -eq 'MaximumCount') {
+                else {
+                    # if ($TestName -eq 'MaximumCount') {
                     if ($ChildNodes.Count -gt $Criteria) {
                         $Violates = "The node count ($($ChildNodes.Count)) is greater than $AssertNode"
                     }
@@ -4314,7 +4328,7 @@ begin {
                 foreach ($UniqueNode in $UniqueCollection) {
                     if ([object]::ReferenceEquals($ObjectNode, $UniqueNode)) { continue } # Self
                     if ($ObjectComparer.IsEqual($ObjectNode, $UniqueNode)) {
-                        $Violates = "The node is equal to the node: $($UniqueNode.Path)"
+                        $Violates = "The node $ObjectNode is equal to the node: $($UniqueNode.Path)"
                         break
                     }
                 }
@@ -4328,236 +4342,270 @@ begin {
             }
             else { SchemaError "Unknown assert node: $TestName" $ObjectNode $SchemaNode }
 
-            if ($DebugPreference -in 'Stop', 'Continue', 'Inquire') {
-                if (-not $Violates) { Write-Host -ForegroundColor Green "Valid: $TestName $Criteria" }
-                else { Write-Host -ForegroundColor Red "Invalid: $TestName $Criteria" }
-            }
+            #EndRegion Node assertions
 
-            if ($Violates -or $Elaborate) {
-                $Issue =
-                    if ($Violates -is [String]) { $Violates }
-                    elseif ($Criteria -eq $true) { $($Tests[$TestName]) }
-                    else { "$($Tests[$TestName] -replace 'The value ', "The value $ObjectNode ") $AssertNode" }
-                $Output = [PSCustomObject]@{
-                    ObjectNode = $ObjectNode
-                    SchemaNode = $SchemaNode
-                    Valid      = -not $Violates
-                    Issue      = $Issue
-                }
-                $Output.PSTypeNames.Insert(0, 'TestResult')
-                if ($Violates) {
-                    $RefInvalidNode.Value = $Output
-                    if ($ValidateOnly) { return }
-                }
-                if (-not $ValidateOnly -or $Elaborate) { <# Write-Output #> $Output }
-            }
+            $Issue =
+                if ($Violates -is [String]) { $Violates }
+                elseif ($Criteria -eq $true) { $($Asserts[$TestName]) }
+                else { "$($Asserts[$TestName] -replace 'The value ', "The value $ObjectNode ") $AssertNode" }
+            if (($Out = $Result.Check($Issue, (-not $Violates))) -eq $false) { return } else { $Out }
+            if ($Violates) { return }
         }
 
-#EndRegion Node validation
-
-        if ($Violates) { return }
-
-#Region Required nodes
-
-        $ChildNodes = $ObjectNode.ChildNodes
+        #Region Required nodes
 
         if ($TestNodes.Count -and -not $AssertNodes.Contains('Type')) {
             if ($SchemaNode -is [PSListNode] -and $ObjectNode -isnot [PSListNode]) {
-                $Violates = "The node $ObjectNode is not a list node"
+                if ($Out = $Result.Check("The node $ObjectNode is not a list node", $false)) { $Out }
+                return
             }
             if ($SchemaNode -is [PSMapNode] -and $ObjectNode -isnot [PSMapNode]) {
-                $Violates = "The node $ObjectNode is not a map node"
+                if ($Out = $Result.Check("The node $ObjectNode is not a map node", $false)) { $Out }
+                return
             }
         }
 
-        if (-Not $Violates) {
-            $RequiredNodes = $AssertNodes['RequiredNodes']
-            $CaseSensitiveNames = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.CaseMatters }
-            $AssertResults = [HashTable]::new($Ordinal[[Bool]$CaseSensitiveNames])
+        $LogicalFormulas = $null
+        $RequiredList = [List[Object]]::new()
+        $RequiredNodes = $AssertNodes['RequiredNodes']
+        $CaseSensitiveNames = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.CaseMatters }
+        $MatchedAsserts = [HashTable]::new($Ordinal[[Bool]$CaseSensitiveNames])
 
-            if ($RequiredNodes) { $RequiredList = [List[Object]]$RequiredNodes.Value } else { $RequiredList = [List[Object]]::new() }
-            foreach ($TestNode in $TestNodes) {
-                $AssertNode = if ($TestNode -is [PSCollectionNode]) { $TestNode } else { GetReference $TestNode }
-                if ($AssertNode -is [PSMapNode] -and $AssertNode.GetValue($At.Required)) { $RequiredList.Add($TestNode.Name) }
-            }
+        if ($RequiredNodes) { $RequiredList = [List[Object]]$RequiredNodes.Value }
+        foreach ($TestNode in $TestNodes) {
+            $AssertNode = if ($TestNode -is [PSCollectionNode]) { $TestNode } else { GetReference $TestNode }
+            if ($AssertNode -is [PSMapNode] -and $AssertNode.GetValue($At.Required)) { $RequiredList.Add($TestNode.Name) }
+        }
 
-            foreach ($Requirement in $RequiredList) {
-                $LogicalFormula = [LogicalFormula]$Requirement
-                $Enumerator = $LogicalFormula.Terms.GetEnumerator()
-                $Stack = [Stack]::new()
-                $Stack.Push(@{
+        $LogicalFormulas = foreach ($Requirement in $RequiredList) {
+            $LogicalFormula = [LogicalFormula]$Requirement
+            if ($LogicalFormula.Terms.Count -gt 1) { $Result.Collect() }
+            $LogicalFormula
+        }
+
+        $Accumulator, $Violates = $null
+        foreach ($LogicalFormula in $LogicalFormulas) {
+            $Enumerator = $LogicalFormula.Terms.GetEnumerator()
+            $Stack = [Stack]::new()
+            $Stack.Push(@{
                     Enumerator  = $Enumerator
                     Accumulator = $null
                     Operator    = $null
                     Negate      = $null
                 })
-                $Term, $Operand, $Accumulator = $null
-                While ($Stack.Count -gt 0) {
-                    # Accumulator = Accumulator <operation> Operand
-                    # if ($Stack.Count -gt 20) { Throw 'Formula stack failsafe'}
-                    $Pop         = $Stack.Pop()
-                    $Enumerator  = $Pop.Enumerator
-                    $Operator    = $Pop.Operator
-                    if ($null -eq $Operator) { $Operand = $Pop.Accumulator }
-                    else { $Operand, $Accumulator = $Accumulator, $Pop.Accumulator }
-                    $Negate      = $Pop.Negate
-                    $Compute = $null -notin $Operand, $Operator, $Accumulator
-                    while ($Compute -or $Enumerator.MoveNext()) {
-                        if ($Compute) { $Compute = $false}
-                        else {
-                            $Term = $Enumerator.Current
-                            if ($Term -is [LogicalVariable]) {
-                                $Name = $Term.Value
-                                if (-not $AssertResults.ContainsKey($Name)) {
-                                    if (-not $SchemaNode.Contains($Name)) {
-                                        SchemaError "Unknown test node: $Term" $ObjectNode $SchemaNode
-                                    }
-                                    $MatchCount0 = $MatchedNames.Count
-                                    $MatchParams = @{
-                                        ObjectNode    = $ObjectNode
-                                        TestNode      = $SchemaNode.GetChildNode($Name)
-                                        Elaborate     = $Elaborate
-                                        ValidateOnly  = $ValidateOnly
-                                        Ordered       = $AssertNodes['Ordered']
-                                        CaseSensitive = $CaseSensitive
-                                        MatchAll      = $false
-                                        MatchedNames  = $MatchedNames
-                                    }
-                                    MatchNode @MatchParams
-                                    $AssertResults[$Name] = $MatchedNames.Count -gt $MatchCount0
+            $Term, $Operand, $Accumulator = $null
+            while ($Stack.Count -gt 0) {
+                # Accumulator = Accumulator <operation> Operand
+                # if ($Stack.Count -gt 20) { Throw 'Formula stack failsafe'}
+                $Pop = $Stack.Pop()
+                $Enumerator = $Pop.Enumerator
+                $Operator = $Pop.Operator
+                if ($null -eq $Operator) { $Operand = $Pop.Accumulator }
+                else { $Operand, $Accumulator = $Accumulator, $Pop.Accumulator }
+                $Negate = $Pop.Negate
+                $Compute = $null -notin $Operand, $Operator, $Accumulator
+                while ($Compute -or $Enumerator.MoveNext()) {
+                    if ($Compute) { $Compute = $false }
+                    else {
+                        $Term = $Enumerator.Current
+                        if ($Term -is [LogicalVariable]) {
+                            $Name = $Term.Value
+                            if (-not $MatchedAsserts.ContainsKey($Name)) {
+                                if (-not $SchemaNode.Contains($Name)) {
+                                    SchemaError "Unknown test node: $Term" $ObjectNode $SchemaNode
                                 }
-                                $Operand = $AssertResults[$Name]
+                                $ScanParams = @{
+                                    ObjectNode    = $ObjectNode
+                                    TestNode      = $SchemaNode.GetChildNode($Name)
+                                    Ordered       = $AssertNodes['Ordered']
+                                    CaseSensitive = $CaseSensitive
+                                    MatchAll      = $false
+                                    MatchedNames  = $MatchedNames
+                                }
+                                QueryChildNodes @ScanParams
+                                $MatchedAsserts[$Name] = -not [Result]::Failed
                             }
-                            elseif ($Term -is [LogicalOperator]) {
-                                if ($Term.Value -eq 'Not') { $Negate = -Not $Negate }
-                                elseif ($null -eq $Operator -and $null -ne $Accumulator) { $Operator = $Term.Value }
-                                else { SchemaError "Unexpected operator: $Term" $ObjectNode $SchemaNode }
-                            }
-                            elseif ($Term -is [LogicalFormula]) {
-                                $Stack.Push(@{
+                            $Operand = $MatchedAsserts[$Name]
+                        }
+                        elseif ($Term -is [LogicalOperator]) {
+                            if ($Term.Value -eq 'Not') { $Negate = -not $Negate }
+                            elseif ($null -eq $Operator -and $null -ne $Accumulator) { $Operator = $Term.Value }
+                            else { SchemaError "Unexpected operator: $Term" $ObjectNode $SchemaNode }
+                        }
+                        elseif ($Term -is [LogicalFormula]) {
+                            $Stack.Push(@{
                                     Enumerator  = $Enumerator
                                     Accumulator = $Accumulator
                                     Operator    = $Operator
                                     Negate      = $Negate
                                 })
-                                $Accumulator, $Operator, $Negate = $null
-                                $Enumerator  = $Term.Terms.GetEnumerator()
-                                continue
-                            }
-                            else { SchemaError "Unknown logical operator term: $Term" $ObjectNode $SchemaNode }
+                            $Accumulator, $Operator, $Negate = $null
+                            $Enumerator = $Term.Terms.GetEnumerator()
+                            continue
                         }
-                        if ($null -ne $Operand) {
-                            if ($null -eq $Accumulator -xor $null -eq $Operator) {
-                                if ($Accumulator) { SchemaError "Missing operator before: $Term" $ObjectNode $SchemaNode }
-                                else { SchemaError "Missing variable before: $Operator $Term" $ObjectNode $SchemaNode }
-                            }
-                            $Operand = $Operand -Xor $Negate
-                            $Negate = $null
-                            if ($Operator -eq 'And') {
-                                $Operator = $null
-                                if ($Accumulator -eq $false -and -not $AllowExtraNodes) { break }
-                                $Accumulator = $Accumulator -and $Operand
-                            }
-                            elseif ($Operator -eq 'Or') {
-                                $Operator = $null
-                                if ($Accumulator -eq $true -and -not $AllowExtraNodes) { break }
-                                $Accumulator = $Accumulator -Or $Operand
-                            }
-                            elseif ($Operator -eq 'Xor') {
-                                $Operator = $null
-                                $Accumulator = $Accumulator -xor $Operand
-                            }
-                            else { $Accumulator = $Operand }
-                            $Operand = $Null
-                        }
+                        else { SchemaError "Unknown logical operator term: $Term" $ObjectNode $SchemaNode }
                     }
-                    if ($null -ne $Operator -or $null -ne $Negate) {
-                        SchemaError "Missing variable after $Operator" $ObjectNode $SchemaNode
+                    if ($null -ne $Operand) {
+                        if ($null -eq $Accumulator -xor $null -eq $Operator) {
+                            if ($Accumulator) { SchemaError "Missing operator before: $Term" $ObjectNode $SchemaNode }
+                            else { SchemaError "Missing variable before: $Operator $Term" $ObjectNode $SchemaNode }
+                        }
+                        $Operand = $Operand -xor $Negate
+                        $Negate = $null
+                        if ($Operator -eq 'And') {
+                            $Operator = $null
+                            if ($Accumulator -eq $false -and -not $AllowExtraNodes) { break }
+                            $Accumulator = $Accumulator -and $Operand
+                        }
+                        elseif ($Operator -eq 'Or') {
+                            $Operator = $null
+                            if ($Accumulator -eq $true -and -not $AllowExtraNodes) { break }
+                            $Accumulator = $Accumulator -or $Operand
+                        }
+                        elseif ($Operator -eq 'Xor') {
+                            $Operator = $null
+                            $Accumulator = $Accumulator -xor $Operand
+                        }
+                        else { $Accumulator = $Operand }
+                        $Operand = $Null
                     }
                 }
-                if ($Accumulator -eq $False) {
-                    $Violates = "The required node condition $LogicalFormula is not met"
-                    break
+                if ($null -ne $Operator -or $null -ne $Negate) {
+                    SchemaError "Missing variable after $Operator" $ObjectNode $SchemaNode
                 }
+            }
+            if ($Accumulator -eq $false) {
+                if (-not [Result]::Failed) { $Violates = "The child node requirement $LogicalFormula is not met" }
+                break
             }
         }
+        [Result]::Failed = $False
+        if ($Accumulator -eq $false) {
+            if (-not $Violates) { $Violates = "The child node requirement $LogicalFormulas is not met" }
+            if (($Out = $Result.Check($Violates, $true)) -eq $false) { return } else { $Out }
+        }
+        $Result.Complete($Accumulator -eq $false)
 
-#EndRegion Required nodes
+        #EndRegion Required nodes
 
-#Region Optional nodes
+        if ([Result]::Failed -and [Result]::Mode -eq 'Output' -and -not [Result]::Elaborate) { return }
 
-        if (-not $Violates) {
+        #Region Optional nodes
 
-            foreach ($TestNode in $TestNodes) {
-                if ($MatchedNames.Count -ge $ChildNodes.Count) { break }
-                if ($AssertResults.Contains($TestNode.Name)) { continue }
-                $MatchCount0 = $MatchedNames.Count
-                $MatchParams = @{
-                    ObjectNode    = $ObjectNode
-                    TestNode      = $TestNode
-                    Elaborate     = $Elaborate
-                    ValidateOnly  = $ValidateOnly
-                    Ordered       = $AssertNodes['Ordered']
-                    CaseSensitive = $CaseSensitive
-                    MatchAll      = -not $AllowExtraNodes
-                    MatchedNames  = $MatchedNames
-                }
-                MatchNode @MatchParams
-                if ($AllowExtraNodes -and $MatchedNames.Count -eq $MatchCount0) {
-                    $Violates = "When extra nodes are allowed, the node $ObjectNode should be accepted"
+        if ($ObjectNode -is [PSLeafNode]) { return }
+        $ChildNodes = $ObjectNode.ChildNodes
+        $AllPassed = $True
+        foreach ($TestNode in $TestNodes) {
+            if ($MatchedNames.Count -ge $ChildNodes.Count) { break }
+            if ($MatchedAsserts.Contains($TestNode.Name)) { continue }
+            $ScanParams = @{
+                ObjectNode    = $ObjectNode
+                TestNode      = $TestNode
+                Ordered       = $AssertNodes['Ordered']
+                CaseSensitive = $CaseSensitive
+                MatchAll      = -not $AllowExtraNodes
+                MatchedNames  = $MatchedNames
+            }
+            QueryChildNodes @ScanParams
+            if ([Result]::Failed) {
+                $AllPassed = $False
+                if ($AllowExtraNodes) {
+                    $Violates = "When extra nodes are allowed, the $($TestNode.Name) test should pass"
                     break
                 }
-                $AssertResults[$TestNode.Name] = $MatchedNames.Count -gt $MatchCount0
             }
+            $MatchedAsserts[$TestNode.Name] = -not [Result]::Failed
+        }
 
-            if (-not $AllowExtraNodes -and $MatchedNames.Count -lt $ChildNodes.Count) {
-                $Count = 0; $LastName = $Null
+        if (-not $AllowExtraNodes -and $MatchedNames.Count -lt $ChildNodes.Count) {
+            [Result]::Failed = $true
+            $Count = 0
+            $LastName = $Null
+            if ($LogicalFormulas -or $AllPassed -or [Result]::Elaborate) {
                 $Names = foreach ($Name in $ChildNodes.Name) {
                     if ($MatchedNames.Contains($Name)) { continue }
                     if ($Count++ -lt 4) {
                         if ($ObjectNode -is [PSListNode]) { [CommandColor]$Name }
-                            else { [StringColor][PSKeyExpression]::new($Name, [PSSerialize]::MaxKeyLength)}
+                        else { [StringColor][PSKeyExpression]::new($Name) }
                     }
                     else { $LastName = $Name }
                 }
                 $Violates = "The following nodes are not accepted: $($Names -join ', ')"
                 if ($LastName) {
                     $LastName = if ($ObjectNode -is [PSListNode]) { [CommandColor]$LastName }
-                        else { [StringColor][PSKeyExpression]::new($LastName, [PSSerialize]::MaxKeyLength) }
+                    else { [StringColor][PSKeyExpression]::new($LastName, [PSSerialize]::MaxKeyLength) }
                     $Violates += " .. $LastName"
                 }
             }
         }
 
-#EndRegion Optional nodes
+        if (($Out = $Result.Check($Violates, (-not $Violates))) -eq $false) { return } else { $Out }
 
-        if ($Violates -or $Elaborate) {
-            $Output = [PSCustomObject]@{
-                ObjectNode = $ObjectNode
-                SchemaNode = $SchemaNode
-                Valid      = -not $Violates
-                Issue      = if ($Violates) { $Violates } else { 'All the child nodes are valid'}
+        #EndRegion Optional nodes
+    }
+
+    function QueryChildNodes (
+        [PSNode]$ObjectNode,
+        [PSNode]$TestNode,
+        [Switch]$Ordered,
+        [Nullable[Bool]]$CaseSensitive,
+        [Switch]$MatchAll,
+        $MatchedNames
+    ) {
+        $Result = [Result]::new($ObjectNode, $SchemaNode)
+        $Violates = $null
+        $Name = $TestNode.Name
+        $AssertNode = if ($TestNode -is [PSCollectionNode]) { $TestNode } else { GetReference $TestNode }
+        $ChildList = $null
+        if ($ObjectNode -isnot [PSCollectionNode] -or $ObjectNode.ChildNodes.Count -eq 0) {
+            $Violates = "The node $ObjectNode has no child nodes"
+        }
+        elseif ($ObjectNode -is [PSMapNode] -and $TestNode.NodeOrigin -eq 'Map') {
+            if ($ObjectNode.Contains($Name)) {
+                if ($Ordered -and $ObjectNode.IndexOf($ObjectNode.ChildNodes) -ne $TestNodes.IndexOf($TestNode)) {
+                    $Violates = "The node $Name is not in order"
+                } else { $ChildList = $ObjectNode.GetChildNode($Name) }
             }
-            $Output.PSTypeNames.Insert(0, 'TestResult')
-            if ($Violates) { $RefInvalidNode.Value = $Output }
-            if (-not $ValidateOnly -or $Elaborate) { <# Write-Output #> $Output }
+            else { $Violates = "The node $Name does not exist" }
+        }
+        elseif ($ObjectNode.ChildNodes.Count -eq 1) { $ChildList = $ObjectNode.ChildNodes[0] }
+        elseif ($Ordered) {
+            $NodeIndex = $TestNodes.IndexOf($TestNode)
+            if ($NodeIndex -ge $ObjectNode.ChildNodes.Count) {
+                $Violates = "Expected at least $($TestNodes.Count) (ordered) nodes"
+            } else { $ChildList = $ObjectNode.ChildNodes[$NodeIndex] }
+        }
+        else { $ChildList = $ObjectNode.ChildNodes }
+
+        if (($Out = $Result.Check($Violates, (-not $Violates))) -eq $false) { return } else { $Out }
+        if ($Violates) { return }
+
+        if ($ChildList -is [PSNode]) { # There is only one child node to match
+            [Result]::Failed = $false
+            TestNode -ObjectNode $ChildList -SchemaNode $AssertNode -CaseSensitive $CaseSensitive
+            if (-not [Result]::Failed) { $null = $MatchedNames.Add($ChildList.Name) }
+        }
+        elseif ($ChildList) { # There are multiple child nodes to match
+            $Result.Collect()
+            $Failed = -not $MatchAll
+            foreach ($ChildNode in $ChildList) {
+                if ($MatchedNames.Contains($ChildNode.Name)) { continue }
+                [Result]::Failed = $false
+                TestNode -ObjectNode $ChildNode -SchemaNode $AssertNode -CaseSensitive $CaseSensitive
+                if (-not [Result]::Failed -xor $MatchAll) { $Failed = $MatchAll }
+                if (-not [Result]::Failed) { $null = $MatchedNames.Add($ChildNode.Name) }
+            }
+            [Result]::Failed = $Failed
+            $Result.Complete($failed)
         }
     }
 }
 
 process {
+    [Result]::Initialize($ValidateOnly, $Elaborate, ($DebugPreference -in 'Stop', 'Continue', 'Inquire')) # This cmdlet can only be invoked once in a single pipeline
     $ObjectNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
-    $Script:UniqueCollections = @{}
-    $Invalid = $Null
-    $TestParams = @{
-        ObjectNode     = $ObjectNode
-        SchemaNode     = $SchemaNode
-        Elaborate     = $Elaborate
-        ValidateOnly   = $ValidateOnly
-        RefInvalidNode = [Ref]$Invalid
-    }
-    TestNode @TestParams
-    if ($ValidateOnly) { -not $Invalid }
+    TestNode $ObjectNode $SchemaNode
+    if ($ValidateOnly) { -not [Result]::Failed }
 }
 }
 

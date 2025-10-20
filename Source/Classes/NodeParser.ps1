@@ -153,7 +153,7 @@ Class PSNode : IComparable {
         return $Node
     }
 
-    static [PSNode] ParseInput($Object) { return [PSNode]::parseInput($Object, 0) }
+    static [PSNode] ParseInput($Object) { return [PSNode]::ParseInput($Object, 0) }
 
     static [int] Compare($Left, $Right) {
         return [ObjectComparer]::new().Compare($Left, $Right)
@@ -251,59 +251,66 @@ Class PSNode : IComparable {
     }
 
     hidden CollectNodes($NodeTable, [XdnPath]$Path, [Int]$PathIndex) {
-        $Entry = $Path.Entries[$PathIndex]
-        $NextIndex = if ($PathIndex -lt $Path.Entries.Count -1) { $PathIndex + 1 }
-        $NextEntry = if ($NextIndex) { $Path.Entries[$NextIndex] }
-        $Equals    = if ($NextEntry -and $NextEntry.Key -eq 'Equals') {
-            $NextEntry.Value
-            $NextIndex = if ($NextIndex -lt $Path.Entries.Count -1) { $NextIndex + 1 }
+        if ($PathIndex -ge $Path.Entries.Count) {
+            $NodeTable[$this.getPathName()] = $this
+            return
         }
-        switch ($Entry.Key) {
-            Root {
-                $Node = $this.RootNode
-                if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                else { $NodeTable[$Node.getPathName()] = $Node }
+        $Entry = $Path.Entries[$PathIndex]
+        if ($Entry.Key -eq 'Root') {
+            $this.RootNode.CollectNodes($NodeTable, $Path, ($PathIndex + 1))
+        }
+        elseif ($Entry.Key -eq 'Ancestor') {
+            $Node = $this
+            for($i = $Entry.Value; $i -gt 0 -and $Node.ParentNode; $i--) { $Node = $Node.ParentNode }
+            if ($i -eq 0) { $Node.CollectNodes($NodeTable, $Path, ($PathIndex + 1)) }
+        }
+        elseif ($Entry.Key -eq 'Index') {
+            if ($this -is [PSListNode] -and [Int]::TryParse($Entry.Value, [Ref]$Null)) {
+                $this.GetChildNode([Int]$Entry.Value).CollectNodes($NodeTable, $Path, ($PathIndex + 1))
             }
-            Ancestor {
-                $Node = $this
-                for($i = $Entry.Value; $i -gt 0 -and $Node.ParentNode; $i--) { $Node = $Node.ParentNode }
-                if ($i -eq 0) { # else: reached root boundary
-                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                    else { $NodeTable[$Node.getPathName()] = $Node }
-                }
-            }
-            Index {
-                if ($this -is [PSListNode] -and [Int]::TryParse($Entry.Value, [Ref]$Null)) {
-                    $Node = $this.GetChildNode([Int]$Entry.Value)
-                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                    else { $NodeTable[$Node.getPathName()] = $Node }
-                }
-            }
-            Default { # Child, Descendant
-                if ($this -is [PSListNode]) { # Member access enumeration
-                    foreach ($Node in $this.get_ChildNodes()) {
-                        $Node.CollectNodes($NodeTable, $Path, $PathIndex)
+        }
+        elseif ($Entry.Key -eq 'Equals') {
+            if ($this -is [PSLeafNode]) {
+                foreach ($Value in $Entry.Value) {
+                    if ($this._Value -like $Value) {
+                        $this.CollectNodes($NodeTable, $Path, ($PathIndex + 1))
+                        break
                     }
                 }
-                elseif ($this -is [PSMapNode]) {
-                    $Found = $False
-                    $ChildNodes = $this.get_ChildNodes()
-                    foreach ($Node in $ChildNodes) {
-                        if ($Entry.Value -eq $Node.Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
-                            $Found = $True
-                            if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                            else { $NodeTable[$Node.getPathName()] = $Node }
-                        }
+            }
+        }
+        elseif ($this -is [PSListNode]) { # Member access enumeration
+            foreach ($Node in $this.get_ChildNodes()) {
+                $Node.CollectNodes($NodeTable, $Path, $PathIndex)
+            }
+        }
+        elseif ($this -is [PSMapNode]) {
+            $Count0 = $NodeTable.get_Count()
+            foreach ($Value in $Entry.Value) {
+                $Name = $Value._Value
+                if ($Value.ContainsWildcard()) {
+                    $CaseMatters =  $this.CaseMatters
+                    foreach ($Node in $this.ChildNodes) {
+                        if ($CaseMatters) { if ($Node.Name -cnotlike $Name) { continue } }
+                        else              { if ($Node.Name -notlike  $Name) { continue } }
+                        $Node.CollectNodes($NodeTable, $Path, ($PathIndex + 1))
                     }
-                    if (-not $Found -and $Entry.Key -eq 'Descendant') {
-                        foreach ($Node in $ChildNodes) {
-                            $Node.CollectNodes($NodeTable, $Path, $PathIndex)
-                        }
-                    }
+                }
+                elseif ($this.Contains($Name)) {
+                    $this.GetChildNode($Name).CollectNodes($NodeTable, $Path, ($PathIndex + 1))
+                }
+            }
+            if (
+                ($Entry.Key -eq 'Offspring') -or
+                ($Entry.Key -eq 'Descendant' -and $NodeTable.get_Count() -eq $Count0)
+            ) {
+                foreach ($Node in $this.get_ChildNodes()) {
+                    $Node.CollectNodes($NodeTable, $Path, $PathIndex)
                 }
             }
         }
     }
+
 
     [Object] GetNode([XdnPath]$Path) {
         $NodeTable = [system.collections.generic.dictionary[String, PSNode]]::new() # Case sensitive (case insensitive map nodes use the same name)
@@ -697,8 +704,8 @@ Class PSDictionaryNode : PSMapNode {
                 if ($this.get_CaseMatters()) {
                     $ChildNode = $this.Cache['ChildNode']
                     $this.Cache['ChildNode'] = [HashTable]::new() # Create a new cache as it appears to be case sensitive
-                    foreach ($Key in $ChildNode.get_Keys()) { # Migrate the content
-                        $this.Cache.ChildNode[$Key] = $ChildNode[$Key]
+                    foreach ($Name in $ChildNode.get_Keys()) { # Migrate the content
+                        $this.Cache.ChildNode[$Name] = $ChildNode[$Name]
                     }
                 }
             }
@@ -778,7 +785,7 @@ Class PSObjectNode : PSMapNode {
             $this._Value.PSObject.Properties[$Name].Value = $Value
         }
         else {
-            Add-Member -InputObject $this._Value -Type NoteProperty -Name $Name -Value $Value
+            $this._Value.PSObject.Properties.Add([PSNoteProperty]::new($Name, $Value))
             $this.Cache.Remove('ChildNodes')
         }
     }

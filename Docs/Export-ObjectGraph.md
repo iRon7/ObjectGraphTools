@@ -7,6 +7,7 @@ Serializes a PowerShell File or object-graph and exports it to a PowerShell (dat
 
 ```PowerShell
 Export-ObjectGraph
+    -Path <String[]>
     -InputObject <Object>
     [-LanguageMode <PSLanguageMode>]
     [-ExpandDepth <Int32> = [Int]::MaxValue]
@@ -22,13 +23,17 @@ Export-ObjectGraph
 
 ```PowerShell
 Export-ObjectGraph
-    -Path <String[]>
-    [<CommonParameters>]
-```
-
-```PowerShell
-Export-ObjectGraph
     -LiteralPath <String[]>
+    -InputObject <Object>
+    [-LanguageMode <PSLanguageMode>]
+    [-ExpandDepth <Int32> = [Int]::MaxValue]
+    [-Explicit]
+    [-FullTypeName]
+    [-HighFidelity]
+    [-ExpandSingleton]
+    [-Indent <String> = '    ']
+    [-MaxDepth <Int32> = [PSNode]::DefaultMaxDepth]
+    [-Encoding <Object>]
     [<CommonParameters>]
 ```
 
@@ -39,48 +44,57 @@ and exports it to a PowerShell (`.ps1`) file or a PowerShell data (`.psd1`) file
 
 ## Parameters
 
-### <a id="-inputobject">**`-InputObject <Object>`**</a>
+### <a id="-inputobject">`-InputObject` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">&lt;Object&gt;</a></a>
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
-<tr><td>Mandatory:</td><td>True</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -InputObject
+Aliases:                    # None
+Type:                       [Object]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  True
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-path">**`-Path <String[]>`**</a>
+### <a id="-path">`-Path` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.String[]">&lt;String[]&gt;</a></a>
 
 Specifies the path to a file where `Export-ObjectGraph` exports the ObjectGraph.
 Wildcard characters are permitted.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.String[]">String[]</a></td></tr>
-<tr><td>Mandatory:</td><td>True</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Path
+Aliases:                    # None
+Type:                       [String[]]
+Value (default):            # Undefined
+Parameter sets:             Path
+Mandatory:                  True
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-literalpath">**`-LiteralPath <String[]>`**</a>
+### <a id="-literalpath">`-LiteralPath` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.String[]">&lt;String[]&gt;</a></a>
 
 Specifies a path to one or more locations where PowerShell should export the object-graph.
 The value of LiteralPath is used exactly as it's typed. No characters are interpreted as wildcards.
 If the path includes escape characters, enclose it in single quotation marks. Single quotation marks tell
 PowerShell not to interpret any characters as escape sequences.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.String[]">String[]</a></td></tr>
-<tr><td>Mandatory:</td><td>True</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -LiteralPath
+Aliases:                    -PSPath, -LP
+Type:                       [String[]]
+Value (default):            # Undefined
+Parameter sets:             LiteralPath
+Mandatory:                  True
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-languagemode">**`-LanguageMode <PSLanguageMode>`**</a>
+### <a id="-languagemode">`-LanguageMode` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.PSLanguageMode">&lt;PSLanguageMode&gt;</a></a>
 
 Defines which object types are allowed for the serialization, see: [About language modes][2]
 If a specific type isn't allowed in the given language mode, it will be substituted by:
@@ -95,16 +109,19 @@ If a specific type isn't allowed in the given language mode, it will be substitu
 
 See the [PSNode Object Parser][1] for a detailed definition on node types.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.PSLanguageMode">PSLanguageMode</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -LanguageMode
+Aliases:                    # None
+Type:                       [PSLanguageMode]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-expanddepth">**`-ExpandDepth <Int32>`**</a>
+### <a id="-expanddepth">`-ExpandDepth` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">&lt;Int32&gt;</a></a>
 
 Defines up till what level the collections will be expanded in the output.
 
@@ -115,16 +132,19 @@ Defines up till what level the collections will be expanded in the output.
 > White spaces (as newline characters and spaces) will not be removed from the content
 > of a (here) string.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td><code>[Int]::MaxValue</code></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -ExpandDepth
+Aliases:                    -Expand
+Type:                       [Int32]
+Value (default):            [Int]::MaxValue
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-explicit">**`-Explicit`**</a>
+### <a id="-explicit">`-Explicit`</a>
 
 By default, restricted language types initializers are suppressed.
 When the `Explicit` switch is set, *all* values will be prefixed with an initializer
@@ -133,33 +153,39 @@ When the `Explicit` switch is set, *all* values will be prefixed with an initial
 > [!Note]
 > The `-Explicit` switch can not be used in **restricted** language mode
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Explicit
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-fulltypename">**`-FullTypeName`**</a>
+### <a id="-fulltypename">`-FullTypeName`</a>
 
 In case a value is prefixed with an initializer, the full type name of the initializer is used.
 
 > [!Note]
 > The `-FullTypename` switch can not be used in **restricted** language mode and will only be
-> meaningful if the initializer is used (see also the [-Explicit](#-explicit) switch).
+> meaningful if the initializer is used (see also the [`-Explicit`](#-explicit) switch).
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -FullTypeName
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-highfidelity">**`-HighFidelity`**</a>
+### <a id="-highfidelity">`-HighFidelity`</a>
 
 If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
 
@@ -182,71 +208,88 @@ due to constructor limitations such as readonly property.
 > [!Note]
 > Objects properties of type `[Reflection.MemberInfo]` are always excluded.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -HighFidelity
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-expandsingleton">**`-ExpandSingleton`**</a>
+### <a id="-expandsingleton">`-ExpandSingleton`</a>
 
 (List or map) collections nodes that contain a single item will not be expanded unless this
 `-ExpandSingleton` is supplied.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -ExpandSingleton
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-indent">**`-Indent <String>`**</a>
+### <a id="-indent">`-Indent` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.String">&lt;String&gt;</a></a>
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.String">String</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td><code>'    '</code></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Indent
+Aliases:                    # None
+Type:                       [String]
+Value (default):            '    '
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-maxdepth">**`-MaxDepth <Int32>`**</a>
+### <a id="-maxdepth">`-MaxDepth` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">&lt;Int32&gt;</a></a>
 
 Specifies how many levels of contained objects are included in the PowerShell representation.
-The default value is define by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`).
+The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td><code>[PSNode]::DefaultMaxDepth</code></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -MaxDepth
+Aliases:                    -Depth
+Type:                       [Int32]
+Value (default):            [PSNode]::DefaultMaxDepth
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-encoding">**`-Encoding <Object>`**</a>
+### <a id="-encoding">`-Encoding` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">&lt;Object&gt;</a></a>
 
 Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Encoding
+Aliases:                    # None
+Type:                       [Object]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
 ## Related Links
 
-* 1: [PowerShell Object Parser][1]
-* 2: [About language modes][2]
+* [PowerShell Object Parser](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md)
+* [About language modes](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes)
+<!-- -->
+
 
 [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
 [2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"

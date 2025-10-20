@@ -1,37 +1,44 @@
+using module .\..\..\..\ObjectGraphTools
+
 <#
 .SYNOPSIS
-    Sort an object graph
+Sort an object graph
 
 .DESCRIPTION
-    Recursively sorts a object graph.
+Recursively sorts an object graph.
+
+> [!WARNING](#warning)
+> `Sort-ObjectGraph` is an alias for `Invoke-SortObjectGraph` but to avoid "unapproved verb" warnings during the
+> module import a different cmdlet name used. See:
+> [Give the script author the ability to disable the unapproved verbs warning][https://github.com/PowerShell/PowerShell/issues/25642]
 
 .PARAMETER InputObject
-    The input object that will be recursively sorted.
+The input object that will be recursively sorted.
 
-    > [!NOTE]
-    > Multiple input object might be provided via the pipeline.
-    > The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
-    > To avoid a list of (root) objects to unroll, use the **comma operator**:
+> [!NOTE]
+> Multiple input object might be provided via the pipeline.
+> The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
+> To avoid a list of (root) objects to unroll, use the **comma operator**:
 
-        ,$InputObject | Sort-Object.
+    ,$InputObject | Sort-Object.
 
 .PARAMETER PrimaryKey
-    Any primary key defined by the [-PrimaryKey] parameter will be put on top of [-InputObject]
-    independent of the (descending) sort order.
+Any primary key defined by the [-PrimaryKey] parameter will be put on top of [-InputObject]
+independent of the (descending) sort order.
 
-    It is allowed to supply multiple primary keys.
+It is allowed to supply multiple primary keys.
 
 .PARAMETER MatchCase
-    (Alias `-CaseSensitive`) Indicates that the sort is case-sensitive. By default, sorts aren't case-sensitive.
+(Alias `-CaseSensitive`) Indicates that the sort is case-sensitive. By default, sorts aren't case-sensitive.
 
 .PARAMETER Descending
-    Indicates that Sort-Object sorts the objects in descending order. The default is ascending order.
+Indicates that Sort-Object sorts the objects in descending order. The default is ascending order.
 
-    > [!NOTE]
-    > Primary keys (see: [-PrimaryKey]) will always put on top.
+> [!NOTE]
+> Primary keys (see: [-PrimaryKey]) will always put on top.
 
 .PARAMETER MaxDepth
-    The maximal depth to recursively compare each embedded property (default: 10).
+The maximal depth to recursively compare each embedded property (default: 10).
 #>
 
 [Alias('Sort-ObjectGraph', 'sro')]

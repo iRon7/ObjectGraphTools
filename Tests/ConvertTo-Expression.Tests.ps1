@@ -3,14 +3,19 @@
 using module ..\..\ObjectGraphTools
 
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'False positive')]
+param([alias("Path")]$PrototypePath)
 
-param()
-
-Describe 'Test-Object' {
+Describe 'ConvertTo-Expression' {
 
     BeforeAll {
 
         Set-StrictMode -Version Latest
+
+        if ($PrototypePath) {
+            $Content = Get-Content -Raw -LiteralPath $PrototypePath
+            $CommandName = [io.path]::GetFileNameWithoutExtension($PSCommandPath) -replace '\.Tests$'
+            Mock $CommandName ([ScriptBlock]::Create($Content))
+        }
 
         $Person = [PSCustomObject]@{
             FirstName = 'John'
@@ -1295,6 +1300,31 @@ Describe 'Test-Object' {
             $Person | Test-Object $Schema -ValidateOnly | Should -BeTrue
             $Person | Test-Object $Schema | Should -BeNullOrEmpty
         }
+    }
 
+    Context 'Github issues' {
+
+        It "#97 RuntimeTypes don't properly ConvertTo-Expression" {
+            @{ '@Type' = [Int] } | ConvertTo-Expression                           | Should -be "@{ '@Type' = 'int' }"
+            @{ '@Type' = [Int] } | ConvertTo-Expression -LanguageMode Constrained | Should -be "@{ '@Type' = [Type]'int' }"
+        }
+
+        It '#116 Use comma operator , for (embedded) empty arrays' {
+            ,@(,@()) | ConvertTo-Expression | Should -be @'
+@(
+    ,@()
+)
+'@
+            ,@(,@('Test')) | ConvertTo-Expression | Should -be @'
+@(
+    ,@('Test')
+)
+'@
+            ConvertTo-Expression @(,@()) -Expand 0 | Should -be '@(,@())'
+            ,@(,@())       | ConvertTo-Expression -Expand 0 | Should -be '@(,@())'
+            ,@(,@('Test')) | ConvertTo-Expression -Expand 0 | Should -be "@(,@('Test'))"
+            ,@(,[System.Collections.Generic.List[Object]]'Test') | ConvertTo-Expression -Expand 0  -LanguageMode Full |
+                Should -be "[Array]@(,[System.Collections.Generic.List[System.Object]]@([string]'Test'))"
+        }
     }
 }

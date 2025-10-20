@@ -1,3 +1,5 @@
+# using module .\..\..\..\ObjectGraphTools
+
 using namespace System.Management.Automation
 using namespace System.Management.Automation.Language
 using namespace System.Collections
@@ -575,148 +577,149 @@ begin {
 
         if ($TestNodes.Count -and -not $AssertNodes.Contains('Type')) {
             if ($SchemaNode -is [PSListNode] -and $ObjectNode -isnot [PSListNode]) {
-                if ($Out = $Result.Check("The node $ObjectNode is not a list node", $false)) { $Out }
-                return
+                $Violates = "The node $ObjectNode is not a list node"
             }
             if ($SchemaNode -is [PSMapNode] -and $ObjectNode -isnot [PSMapNode]) {
-                if ($Out = $Result.Check("The node $ObjectNode is not a map node", $false)) { $Out }
-                return
+                $Violates = "The node $ObjectNode is not a map node"
             }
         }
 
         $LogicalFormulas = $null
         $RequiredList = [List[Object]]::new()
-        $RequiredNodes = $AssertNodes['RequiredNodes']
-        $CaseSensitiveNames = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.CaseMatters }
-        $MatchedAsserts = [HashTable]::new($Ordinal[[Bool]$CaseSensitiveNames])
+        if (-not $Violates) {
+            $RequiredNodes = $AssertNodes['RequiredNodes']
+            $CaseSensitiveNames = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.CaseMatters }
+            $MatchedAsserts = [HashTable]::new($Ordinal[[Bool]$CaseSensitiveNames])
 
-        if ($RequiredNodes) { $RequiredList = [List[Object]]$RequiredNodes.Value }
-        foreach ($TestNode in $TestNodes) {
-            $AssertNode = if ($TestNode -is [PSCollectionNode]) { $TestNode } else { GetReference $TestNode }
-            if ($AssertNode -is [PSMapNode] -and $AssertNode.GetValue($At.Required)) { $RequiredList.Add($TestNode.Name) }
-        }
+            if ($RequiredNodes) { $RequiredList = [List[Object]]$RequiredNodes.Value }
+            foreach ($TestNode in $TestNodes) {
+                $AssertNode = if ($TestNode -is [PSCollectionNode]) { $TestNode } else { GetReference $TestNode }
+                if ($AssertNode -is [PSMapNode] -and $AssertNode.GetValue($At.Required)) { $RequiredList.Add($TestNode.Name) }
+            }
 
-        $LogicalFormulas = foreach ($Requirement in $RequiredList) {
-            $LogicalFormula = [LogicalFormula]$Requirement
-            if ($LogicalFormula.Terms.Count -gt 1) { $Result.Collect() }
-            $LogicalFormula
-        }
+            $LogicalFormulas = foreach ($Requirement in $RequiredList) {
+                $LogicalFormula = [LogicalFormula]$Requirement
+                if ($LogicalFormula.Terms.Count -gt 1) { $Result.Collect() }
+                $LogicalFormula
+            }
 
-        $Accumulator, $Violates = $null
-        foreach ($LogicalFormula in $LogicalFormulas) {
-            $Enumerator = $LogicalFormula.Terms.GetEnumerator()
-            $Stack = [Stack]::new()
-            $Stack.Push(@{
-                    Enumerator  = $Enumerator
-                    Accumulator = $null
-                    Operator    = $null
-                    Negate      = $null
-                })
-            $Term, $Operand, $Accumulator = $null
-            while ($Stack.Count -gt 0) {
-                # Accumulator = Accumulator <operation> Operand
-                # if ($Stack.Count -gt 20) { Throw 'Formula stack failsafe'}
-                $Pop = $Stack.Pop()
-                $Enumerator = $Pop.Enumerator
-                $Operator = $Pop.Operator
-                if ($null -eq $Operator) { $Operand = $Pop.Accumulator }
-                else { $Operand, $Accumulator = $Accumulator, $Pop.Accumulator }
-                $Negate = $Pop.Negate
-                $Compute = $null -notin $Operand, $Operator, $Accumulator
-                while ($Compute -or $Enumerator.MoveNext()) {
-                    if ($Compute) { $Compute = $false }
-                    else {
-                        $Term = $Enumerator.Current
-                        if ($Term -is [LogicalVariable]) {
-                            $Name = $Term.Value
-                            if (-not $MatchedAsserts.ContainsKey($Name)) {
-                                if (-not $SchemaNode.Contains($Name)) {
-                                    SchemaError "Unknown test node: $Term" $ObjectNode $SchemaNode
+            foreach ($LogicalFormula in $LogicalFormulas) {
+                $Enumerator = $LogicalFormula.Terms.GetEnumerator()
+                $Stack = [Stack]::new()
+                $Stack.Push(@{
+                        Enumerator  = $Enumerator
+                        Accumulator = $null
+                        Operator    = $null
+                        Negate      = $null
+                    })
+                $Term, $Operand, $Accumulator = $null
+                while ($Stack.Count -gt 0) {
+                    # Accumulator = Accumulator <operation> Operand
+                    # if ($Stack.Count -gt 20) { Throw 'Formula stack failsafe'}
+                    $Pop = $Stack.Pop()
+                    $Enumerator = $Pop.Enumerator
+                    $Operator = $Pop.Operator
+                    if ($null -eq $Operator) { $Operand = $Pop.Accumulator }
+                    else { $Operand, $Accumulator = $Accumulator, $Pop.Accumulator }
+                    $Negate = $Pop.Negate
+                    $Compute = $null -notin $Operand, $Operator, $Accumulator
+                    while ($Compute -or $Enumerator.MoveNext()) {
+                        if ($Compute) { $Compute = $false }
+                        else {
+                            $Term = $Enumerator.Current
+                            if ($Term -is [LogicalVariable]) {
+                                $Name = $Term.Value
+                                if (-not $MatchedAsserts.ContainsKey($Name)) {
+                                    if (-not $SchemaNode.Contains($Name)) {
+                                        SchemaError "Unknown test node: $Term" $ObjectNode $SchemaNode
+                                    }
+                                    $MatchCount0 = $MatchedNames.Count
+                                    $ScanParams = @{
+                                        ObjectNode    = $ObjectNode
+                                        TestNode      = $SchemaNode.GetChildNode($Name)
+                                        Ordered       = $AssertNodes['Ordered']
+                                        CaseSensitive = $CaseSensitive
+                                        MatchAll      = $false
+                                        MatchedNames  = $MatchedNames
+                                    }
+                                    QueryChildNodes @ScanParams
+                                    [Result]::Failed = $false # The (negated) formula determines the validation (not the individual tests)
+                                    $MatchedAsserts[$Name] = $MatchedNames.Count -gt $MatchCount0
                                 }
-                                $ScanParams = @{
-                                    ObjectNode    = $ObjectNode
-                                    TestNode      = $SchemaNode.GetChildNode($Name)
-                                    Ordered       = $AssertNodes['Ordered']
-                                    CaseSensitive = $CaseSensitive
-                                    MatchAll      = $false
-                                    MatchedNames  = $MatchedNames
-                                }
-                                QueryChildNodes @ScanParams
-                                $MatchedAsserts[$Name] = -not [Result]::Failed
+                                $Operand = $MatchedAsserts[$Name]
                             }
-                            $Operand = $MatchedAsserts[$Name]
+                            elseif ($Term -is [LogicalOperator]) {
+                                if ($Term.Value -eq 'Not') { $Negate = -not $Negate }
+                                elseif ($null -eq $Operator -and $null -ne $Accumulator) { $Operator = $Term.Value }
+                                else { SchemaError "Unexpected operator: $Term" $ObjectNode $SchemaNode }
+                            }
+                            elseif ($Term -is [LogicalFormula]) {
+                                $Stack.Push(@{
+                                        Enumerator  = $Enumerator
+                                        Accumulator = $Accumulator
+                                        Operator    = $Operator
+                                        Negate      = $Negate
+                                    })
+                                $Accumulator, $Operator, $Negate = $null
+                                $Enumerator = $Term.Terms.GetEnumerator()
+                                continue
+                            }
+                            else { SchemaError "Unknown logical operator term: $Term" $ObjectNode $SchemaNode }
                         }
-                        elseif ($Term -is [LogicalOperator]) {
-                            if ($Term.Value -eq 'Not') { $Negate = -not $Negate }
-                            elseif ($null -eq $Operator -and $null -ne $Accumulator) { $Operator = $Term.Value }
-                            else { SchemaError "Unexpected operator: $Term" $ObjectNode $SchemaNode }
+                        if ($null -ne $Operand) {
+                            if ($null -eq $Accumulator -xor $null -eq $Operator) {
+                                if ($Accumulator) { SchemaError "Missing operator before: $Term" $ObjectNode $SchemaNode }
+                                else { SchemaError "Missing variable before: $Operator $Term" $ObjectNode $SchemaNode }
+                            }
+                            $Operand = $Operand -xor $Negate
+                            $Negate = $null
+                            if ($Operator -eq 'And') {
+                                $Operator = $null
+                                if ($Accumulator -eq $false -and -not $AllowExtraNodes) { break }
+                                $Accumulator = $Accumulator -and $Operand
+                            }
+                            elseif ($Operator -eq 'Or') {
+                                $Operator = $null
+                                if ($Accumulator -eq $true -and -not $AllowExtraNodes) { break }
+                                $Accumulator = $Accumulator -or $Operand
+                            }
+                            elseif ($Operator -eq 'Xor') {
+                                $Operator = $null
+                                $Accumulator = $Accumulator -xor $Operand
+                            }
+                            else { $Accumulator = $Operand }
+                            $Operand = $Null
                         }
-                        elseif ($Term -is [LogicalFormula]) {
-                            $Stack.Push(@{
-                                    Enumerator  = $Enumerator
-                                    Accumulator = $Accumulator
-                                    Operator    = $Operator
-                                    Negate      = $Negate
-                                })
-                            $Accumulator, $Operator, $Negate = $null
-                            $Enumerator = $Term.Terms.GetEnumerator()
-                            continue
-                        }
-                        else { SchemaError "Unknown logical operator term: $Term" $ObjectNode $SchemaNode }
                     }
-                    if ($null -ne $Operand) {
-                        if ($null -eq $Accumulator -xor $null -eq $Operator) {
-                            if ($Accumulator) { SchemaError "Missing operator before: $Term" $ObjectNode $SchemaNode }
-                            else { SchemaError "Missing variable before: $Operator $Term" $ObjectNode $SchemaNode }
-                        }
-                        $Operand = $Operand -xor $Negate
-                        $Negate = $null
-                        if ($Operator -eq 'And') {
-                            $Operator = $null
-                            if ($Accumulator -eq $false -and -not $AllowExtraNodes) { break }
-                            $Accumulator = $Accumulator -and $Operand
-                        }
-                        elseif ($Operator -eq 'Or') {
-                            $Operator = $null
-                            if ($Accumulator -eq $true -and -not $AllowExtraNodes) { break }
-                            $Accumulator = $Accumulator -or $Operand
-                        }
-                        elseif ($Operator -eq 'Xor') {
-                            $Operator = $null
-                            $Accumulator = $Accumulator -xor $Operand
-                        }
-                        else { $Accumulator = $Operand }
-                        $Operand = $Null
+                    if ($null -ne $Operator -or $null -ne $Negate) {
+                        SchemaError "Missing variable after $Operator" $ObjectNode $SchemaNode
                     }
                 }
-                if ($null -ne $Operator -or $null -ne $Negate) {
-                    SchemaError "Missing variable after $Operator" $ObjectNode $SchemaNode
+                if ($Accumulator -eq $false) {
+                    $Violates = "The child node requirement $LogicalFormula is not met"
+                    break
                 }
             }
-            if ($Accumulator -eq $false) {
-                if (-not [Result]::Failed) { $Violates = "The child node requirement $LogicalFormula is not met" }
-                break
-            }
         }
-        [Result]::Failed = $False
-        if ($Accumulator -eq $false) {
-            if (-not $Violates) { $Violates = "The child node requirement $LogicalFormulas is not met" }
-            if (($Out = $Result.Check($Violates, $true)) -eq $false) { return } else { $Out }
-        }
-        $Result.Complete($Accumulator -eq $false)
+
+        $Result.Complete([Bool]$Violates)
+        $issue =
+            if ($Violates) { $Violates }
+            elseif ($LogicalFormulas) { "The child node requirement $LogicalFormulas is met" }
+            else { 'There are no child node requirements' }
+        if (($Out = $Result.Check($Issue, (-not $Violates))) -eq $false) { return } else { $Out }
+        if ($Violates) { return }
 
         #EndRegion Required nodes
-
-        if ([Result]::Failed -and [Result]::Mode -eq 'Output' -and -not [Result]::Elaborate) { return }
 
         #Region Optional nodes
 
         if ($ObjectNode -is [PSLeafNode]) { return }
         $ChildNodes = $ObjectNode.ChildNodes
-        $AllPassed = $True
         foreach ($TestNode in $TestNodes) {
             if ($MatchedNames.Count -ge $ChildNodes.Count) { break }
             if ($MatchedAsserts.Contains($TestNode.Name)) { continue }
+            $MatchCount0 = $MatchedNames.Count
             $ScanParams = @{
                 ObjectNode    = $ObjectNode
                 TestNode      = $TestNode
@@ -726,38 +729,33 @@ begin {
                 MatchedNames  = $MatchedNames
             }
             QueryChildNodes @ScanParams
-            if ([Result]::Failed) {
-                $AllPassed = $False
-                if ($AllowExtraNodes) {
-                    $Violates = "When extra nodes are allowed, the $($TestNode.Name) test should pass"
-                    break
-                }
+            if ($AllowExtraNodes -and $MatchedNames.Count -eq $MatchCount0) {
+                $Violates = "When extra nodes are allowed, the node $ObjectNode should be accepted"
+                break
             }
-            $MatchedAsserts[$TestNode.Name] = -not [Result]::Failed
+            $MatchedAsserts[$TestNode.Name] = $MatchedNames.Count -gt $MatchCount0
         }
 
         if (-not $AllowExtraNodes -and $MatchedNames.Count -lt $ChildNodes.Count) {
-            [Result]::Failed = $true
-            $Count = 0
-            $LastName = $Null
-            if ($LogicalFormulas -or $AllPassed -or [Result]::Elaborate) {
-                $Names = foreach ($Name in $ChildNodes.Name) {
-                    if ($MatchedNames.Contains($Name)) { continue }
-                    if ($Count++ -lt 4) {
-                        if ($ObjectNode -is [PSListNode]) { [CommandColor]$Name }
-                        else { [StringColor][PSKeyExpression]::new($Name) }
-                    }
-                    else { $LastName = $Name }
+            $Count = 0; $LastName = $Null
+            $Names = foreach ($Name in $ChildNodes.Name) {
+                if ($MatchedNames.Contains($Name)) { continue }
+                if ($Count++ -lt 4) {
+                    if ($ObjectNode -is [PSListNode]) { [CommandColor]$Name }
+                    else { [StringColor][PSKeyExpression]::new($Name) }
                 }
-                $Violates = "The following nodes are not accepted: $($Names -join ', ')"
-                if ($LastName) {
-                    $LastName = if ($ObjectNode -is [PSListNode]) { [CommandColor]$LastName }
-                    else { [StringColor][PSKeyExpression]::new($LastName, [PSSerialize]::MaxKeyLength) }
-                    $Violates += " .. $LastName"
-                }
+                else { $LastName = $Name }
+            }
+            write-host 123 ([Result]::Failed)
+            $Violates = "The following nodes are not accepted: $($Names -join ', ')"
+            if ($LastName) {
+                $LastName = if ($ObjectNode -is [PSListNode]) { [CommandColor]$LastName }
+                else { [StringColor][PSKeyExpression]::new($LastName, [PSSerialize]::MaxKeyLength) }
+                $Violates += " .. $LastName"
             }
         }
 
+        if (-not $Violates) { return }
         if (($Out = $Result.Check($Violates, (-not $Violates))) -eq $false) { return } else { $Out }
 
         #EndRegion Optional nodes
@@ -775,48 +773,45 @@ begin {
         $Violates = $null
         $Name = $TestNode.Name
         $AssertNode = if ($TestNode -is [PSCollectionNode]) { $TestNode } else { GetReference $TestNode }
-        $ChildList = $null
-        if ($ObjectNode -isnot [PSCollectionNode] -or $ObjectNode.ChildNodes.Count -eq 0) {
-            $Violates = "The node $ObjectNode has no child nodes"
-        }
-        elseif ($ObjectNode -is [PSMapNode] -and $TestNode.NodeOrigin -eq 'Map') {
+        $ChildNodes = $null
+        if ($ObjectNode -is [PSMapNode] -and $TestNode.NodeOrigin -eq 'Map') {
             if ($ObjectNode.Contains($Name)) {
                 if ($Ordered -and $ObjectNode.IndexOf($ObjectNode.ChildNodes) -ne $TestNodes.IndexOf($TestNode)) {
                     $Violates = "The node $Name is not in order"
-                } else { $ChildList = $ObjectNode.GetChildNode($Name) }
+                } else { $ChildNodes = $ObjectNode.GetChildNode($Name) }
             }
             else { $Violates = "The node $Name does not exist" }
         }
-        elseif ($ObjectNode.ChildNodes.Count -eq 1) { $ChildList = $ObjectNode.ChildNodes[0] }
+        elseif ($ObjectNode.ChildNodes.Count -eq 1) { $ChildNodes = $ObjectNode.ChildNodes[0] }
         elseif ($Ordered) {
             $NodeIndex = $TestNodes.IndexOf($TestNode)
             if ($NodeIndex -ge $ObjectNode.ChildNodes.Count) {
                 $Violates = "Expected at least $($TestNodes.Count) (ordered) nodes"
-            } else { $ChildList = $ObjectNode.ChildNodes[$NodeIndex] }
+            } else { $ChildNodes = $ObjectNode.ChildNodes[$NodeIndex] }
         }
-        else { $ChildList = $ObjectNode.ChildNodes }
+        else { $ChildNodes = $ObjectNode.ChildNodes}
+
+        if ($ChildNodes -is [PSNode]) { # There is only one child node to match
+            TestNode -ObjectNode $ChildNodes -SchemaNode $AssertNode -CaseSensitive $CaseSensitive
+            if ([Result]::Failed) { [Result]::Failed = $false }
+            else { $null = $MatchedNames.Add($ChildNodes.Name) }
+        }
+        elseif ($ChildNodes) { # There are multiple child nodes to match
+            $Result.Collect()
+            $MatchCount0 = $MatchedNames.Count
+            foreach ($ChildNode in $ChildNodes) {
+                if ($MatchedNames.Contains($ChildNode.Name)) { continue }
+                TestNode -ObjectNode $ChildNode -SchemaNode $AssertNode -CaseSensitive $CaseSensitive
+                if ([Result]::Failed) { [Result]::Failed = $false }
+                else { $null = $MatchedNames.Add($ChildNodes.Name) }
+            }
+            $TotalFound = $MatchedNames.Count - $MatchCount0
+            $Missing = $TotalFound -eq 0 -or ($MatchAll -and $TotalFound -lt $ChildNodes.Count)
+            $Result.Complete($Missing)
+        }
+        elseif (-not $Violates) { $Violates = "The node $ObjectNode has no child nodes" }
 
         if (($Out = $Result.Check($Violates, (-not $Violates))) -eq $false) { return } else { $Out }
-        if ($Violates) { return }
-
-        if ($ChildList -is [PSNode]) { # There is only one child node to match
-            [Result]::Failed = $false
-            TestNode -ObjectNode $ChildList -SchemaNode $AssertNode -CaseSensitive $CaseSensitive
-            if (-not [Result]::Failed) { $null = $MatchedNames.Add($ChildList.Name) }
-        }
-        elseif ($ChildList) { # There are multiple child nodes to match
-            $Result.Collect()
-            $Failed = -not $MatchAll
-            foreach ($ChildNode in $ChildList) {
-                if ($MatchedNames.Contains($ChildNode.Name)) { continue }
-                [Result]::Failed = $false
-                TestNode -ObjectNode $ChildNode -SchemaNode $AssertNode -CaseSensitive $CaseSensitive
-                if (-not [Result]::Failed -xor $MatchAll) { $Failed = $MatchAll }
-                if (-not [Result]::Failed) { $null = $MatchedNames.Add($ChildNode.Name) }
-            }
-            [Result]::Failed = $Failed
-            $Result.Complete($failed)
-        }
     }
 }
 

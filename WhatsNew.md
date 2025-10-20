@@ -1,3 +1,25 @@
+## 2025-04-05 0.3.2
+  -Fixes
+    - #96 .Get_Value() return more than just the Value
+    - #97 RuntimeTypes don't properly ConvertTo-Expression
+    - #116 Use comma operator , for (embedded) empty arrays
+    - #119 IncludeUnderlying switch to Get-Node: Use two tilde `~~` to access all offspring nodes
+
+
+  - Enhancements
+    - #32 Add remove method
+    - #98 Pass on Add and Remove methods to PSCollectionNode
+    - #131 Test-ObjectGraph: use class for output
+    - #132 Display child value when it concerns a [PSLeafNode]
+
+## 2025-04-05 0.3.2-Preview3 (iRon)
+  - Fixes
+    - #121 Fixed merge -PrimaryKey bug
+
+## 2025-04-05 0.3.2-Preview (iRon)
+  - Fixes
+    - #120 Fixed auto-loading issues where types aren't known
+
 ## 2025-04-05 0.3.1-Preview (iRon)
   - Fixes
     - #111 Compare-ObjectGraph fails with certain object graphs, presumably due to cyclical references

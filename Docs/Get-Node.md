@@ -7,16 +7,12 @@ Get a node
 
 ```PowerShell
 Get-Node
-    -InputObject <Object>
-    [-Unique]
-    [-MaxDepth <Int32>]
-    [<CommonParameters>]
-```
-
-```PowerShell
-Get-Node
     [-Path <Object>]
     [-Literal]
+    -InputObject <Object>
+    [-ValueOnly]
+    [-Unique]
+    [-MaxDepth <Int32>]
     [<CommonParameters>]
 ```
 
@@ -26,7 +22,7 @@ The Get-Node cmdlet gets the node at the specified property location of the supp
 
 ## Examples
 
-### Example 1: Parse a object graph to a node instance
+### <a id="example-1"><a id="example-parse-a-object-graph-to-a-node-instance">Example 1: Parse a object graph to a node instance</a></a>
 
 
 The following example parses a hash table to `[PSNode]` instance:
@@ -36,10 +32,10 @@ The following example parses a hash table to `[PSNode]` instance:
 
 PathName Name Depth Value
 -------- ---- ----- -----
-                  0 {My, Object}
+                    0 {My, Object}
 ```
 
-### Example 2: select a sub node in an object graph
+### <a id="example-2"><a id="example-select-a-sub-node-in-an-object-graph">Example 2: select a sub node in an object graph</a></a>
 
 
 The following example parses a hash table to `[PSNode]` instance and selects the second (`0` indexed)
@@ -53,7 +49,7 @@ PathName Name Depth Value
 My[1]       1     2     2
 ```
 
-### Example 3: Change the price of the **PowerShell** book:
+### <a id="example-3"><a id="example-change-the-price-of-the-powershell-book">Example 3: Change the price of the **PowerShell** book:</a></a>
 
 
 ```PowerShell
@@ -99,20 +95,23 @@ for more details, see: [PowerShell Object Parser][1] and [Extended dot notation]
 
 ## Parameters
 
-### <a id="-inputobject">**`-InputObject <Object>`**</a>
+### <a id="-inputobject">`-InputObject` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">&lt;Object&gt;</a></a>
 
 The concerned object graph or node.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
-<tr><td>Mandatory:</td><td>True</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -InputObject
+Aliases:                    # None
+Type:                       [Object]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  True
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-path">**`-Path <Object>`**</a>
+### <a id="-path">`-Path` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">&lt;Object&gt;</a></a>
 
 Specifies the path to a specific node in the object graph.
 The path might be either:
@@ -121,43 +120,68 @@ The path might be either:
 * A array of strings (dictionary keys or Property names) and/or integers (list indices)
 * A `[PSNodePath]` (such as `$Node.Path`) or a `[XdnPath]` (Extended Dot-Notation) object
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Path
+Aliases:                    # None
+Type:                       [Object]
+Value (default):            # Undefined
+Parameter sets:             Path
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-literal">**`-Literal`**</a>
+### <a id="-literal">`-Literal`</a>
 
 If Literal switch is set, all (map) nodes in the given path are considered literal.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Literal
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             Path
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-unique">**`-Unique`**</a>
+### <a id="-valueonly">`-ValueOnly`</a>
+
+returns the value of the node instead of the node itself.
+
+```powershell
+Name:                       -ValueOnly
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
+
+### <a id="-unique">`-Unique`</a>
 
 Specifies that if a subset of the nodes has identical properties and values,
 only a single node of the subset should be selected.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Unique
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-maxdepth">**`-MaxDepth <Int32>`**</a>
+### <a id="-maxdepth">`-MaxDepth` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">&lt;Int32&gt;</a></a>
 
 Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
 The failsafe will prevent infinitive loops for circular references as e.g. in:
@@ -173,21 +197,26 @@ The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 > The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
 > at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -MaxDepth
+Aliases:                    # None
+Type:                       [Int32]
+Value (default):            # Undefined
+Parameter sets:             # All
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
 ## Related Links
 
-* 1: [PowerShell Object Parser][1]
-* 2: [Extended dot notation][2]
+* [PowerShell Object Parser](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md)
+* [Extended dot notation](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Xdn.md)
+<!-- -->
+
 
 [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-[2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/XdnPath.md "Extended dot notation"
+[2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Xdn.md "Extended dot notation"
 
 [comment]: <> (Created with Get-MarkdownHelp: Install-Script -Name Get-MarkdownHelp)
