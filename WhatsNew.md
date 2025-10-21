@@ -4,7 +4,12 @@
     - #97 RuntimeTypes don't properly ConvertTo-Expression
     - #116 Use comma operator , for (embedded) empty arrays
     - #119 IncludeUnderlying switch to Get-Node: Use two tilde `~~` to access all offspring nodes
-
+    - #124 [Test-ObjectGraph] Add possibility to allow removal of text formatting
+    - #125 [Test-ObjectGraph] Long parameter names are shortened in the Issue output
+    - #126 [Test-ObjectGraph] Parents of failing item are also included in the output
+    - #128 [Test-ObjectGraph] When two objects are failing and specifying Elaborate, the failing objects are listed twice
+    - #129 [Test-ObjectGraph] When the schema specifies that a parameter is required and another parameter is not correct, that other parameter is not listed as failed.
+    - #136 When schema child nodes are defined, any collection should be accepted. #136
 
   - Enhancements
     - #32 Add remove method

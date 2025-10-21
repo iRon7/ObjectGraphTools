@@ -1,5 +1,5 @@
 {
-    "[powershell]": {
+    "[powershell][markdown]": {
         "editor.colorDecorators": false,
     },
     "cSpell.words": [

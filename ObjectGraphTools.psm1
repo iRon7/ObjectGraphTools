@@ -4359,8 +4359,8 @@ begin {
                 if ($Out = $Result.Check("The node $ObjectNode is not a list node", $false)) { $Out }
                 return
             }
-            if ($SchemaNode -is [PSMapNode] -and $ObjectNode -isnot [PSMapNode]) {
-                if ($Out = $Result.Check("The node $ObjectNode is not a map node", $false)) { $Out }
+            if ($SchemaNode -is [PSMapNode] -and $ObjectNode -isnot [PSCollectionNode]) {
+                if ($Out = $Result.Check("The node $ObjectNode is not a collection node", $false)) { $Out }
                 return
             }
         }
