@@ -205,4 +205,12 @@ Describe 'Get-ChildNode' {
             $Output.where{$_ -is [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*is a leaf node*'
         }
     }
+
+    Context 'Issues' {
+
+        It "#133 Get-ChildNode Name -Recurse -AtDepth doesn't work as expected" {
+            $Object = @{ Name = @{ Name = @{ Name = @{ Name = @{ Name = 1 } } } } }
+            $Object | Get-ChildNode Name -AtDepth 3 | Should -not -BeNullOrEmpty
+        }
+    }
 }

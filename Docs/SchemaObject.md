@@ -60,7 +60,7 @@ to validate the **value** input node.
 ## Assert nodes
 
 The list of existing assert nodes is limited to:
-* `AssertTestPrefix`
+* `AssertPrefix`
 * `@Description`
 * `@References`
 * `@Type`
@@ -88,7 +88,7 @@ The list of existing assert nodes is limited to:
 
 * Each assert node describes or constrains the allowed opposite input object node or value as follows:
 
-### `AssertTestPrefix`
+### `AssertPrefix`
 
 By default, each assert node is prefixed by a single at-sign (`@`) and defines the constrains of the input node
 value (see [assert nodes](#Assert-nodes) for more details). Any other node object in the test node collection
@@ -97,9 +97,9 @@ further defines any child nodes in the schema object branch (see [child nodes](#
 > [!NOTE]
 > This "assert node" directive is only accepted at the top level of the schema object and is used to determine
 > the test node prefix for all other assert nodes. The name of this "assert node" directive might be overruled
-> by the `Test-Object -AssertTestPrefix` cmdlet parameter.
+> by the `Test-Object -AssertPrefix` cmdlet parameter.
 
-| Name        | AssertTestPrefix                              |
+| Name        | AssertPrefix                              |
 | ----------- | --------------------------------------------- |
 | Description | Defines the assert prefix of each assert node |
 | Type        | `String`                                      |

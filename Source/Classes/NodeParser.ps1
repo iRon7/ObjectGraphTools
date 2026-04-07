@@ -312,12 +312,20 @@ Class PSNode : IComparable {
     }
 
 
-    [Object] GetNode([XdnPath]$Path) {
+    [Object]GetNode([XdnPath]$Path) {
         $NodeTable = [system.collections.generic.dictionary[String, PSNode]]::new() # Case sensitive (case insensitive map nodes use the same name)
         $this.CollectNodes($NodeTable, $Path, 0)
         if ($NodeTable.Count -eq 0) { return @() }
         if ($NodeTable.Count -eq 1) { return $NodeTable[$NodeTable.Keys] }
         else                        { return [PSNode[]]$NodeTable.Values }
+    }
+
+    [string]ToString() {
+        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
+    }
+
+    hidden [string]get_DisplayValue() {
+        return "$([TypeColor][PSSerialize]::new($this._Value, [PSLanguageMode]'NoLanguage'))"
     }
 }
 
@@ -336,10 +344,6 @@ Class PSLeafNode : PSNode {
             if ($this._Value -is [String]) { return $this._Value.ToUpper().GetHashCode() } # Windows PowerShell doesn't have a System.HashCode structure
             else { return $this._Value.GetHashCode() }
         }
-    }
-
-    [string]ToString() {
-        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
     }
 }
 
@@ -577,10 +581,6 @@ Class PSListNode : PSCollectionNode {
         }
         return $this._HashCode[$CaseSensitive]
     }
-
-    [string]ToString() {
-        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
-    }
 }
 
 Class PSMapNode : PSCollectionNode {
@@ -731,10 +731,6 @@ Class PSDictionaryNode : PSMapNode {
         }
         return $this.Cache['ChildNodes']
     }
-
-    [string]ToString() {
-        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
-    }
 }
 
 Class PSObjectNode : PSMapNode {
@@ -827,14 +823,8 @@ Class PSObjectNode : PSMapNode {
     hidden [Object[]]get_ChildNodes() {
         if (-not $this.Cache.ContainsKey('ChildNodes')) {
             $ChildNodes = foreach ($Property in $this._Value.PSObject.Properties) { $this.GetChildNode($Property.Name) }
-            #     if ($Property.Value -isnot [Reflection.MemberInfo]) { $this.GetChildNode($Property.Name) }
-            # }
             if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
         }
         return $this.Cache['ChildNodes']
-    }
-
-    [string]ToString() {
-        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
     }
 }
