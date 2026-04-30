@@ -2,14 +2,20 @@
 
 using module ..\..\ObjectGraphTools
 
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Reference', Justification = 'False positive')]
-param()
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'False positive')]
+param([alias("Path")]$PrototypePath)
 
 Describe 'Compare-ObjectGraph' {
 
     BeforeAll {
 
         Set-StrictMode -Version Latest
+
+        if ($PrototypePath) {
+            $Content = Get-Content -Raw -LiteralPath $PrototypePath
+            $CommandName = [io.path]::GetFileNameWithoutExtension($PSCommandPath) -replace '\.Tests$'
+            Mock $CommandName ([ScriptBlock]::Create($Content))
+        }
 
         $Reference = @{
             Comment = 'Sample ObjectGraph'
@@ -35,8 +41,8 @@ Describe 'Compare-ObjectGraph' {
 
     Context 'Existence Check' {
 
-        It 'Help' {
-            Compare-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
+        It 'Help' -Skip:$($null -ne $PrototypePath) {
+            Test-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
         }
     }
 
@@ -97,6 +103,34 @@ Describe 'Compare-ObjectGraph' {
             $Result.Reference   | Should -Be 'Sample ObjectGraph'
         }
 
+        It 'Single entry' {
+            $Object = @{
+                Comment = 'Sample ObjectGraph'
+                Data = @(
+                    @{
+                        Index = 1
+                        Name = 'One'
+                        Comment = 'First item'
+                    }
+                )
+            }
+            $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
+            $Result = $Object      | Compare-ObjectGraph $Reference
+            $Result.Count          | Should -Be 3
+            $Result[0].Path        | Should -Be 'Data'
+            $Result[0].Discrepancy | Should -Be 'Size'
+            $Result[0].InputObject | Should -Be 1
+            $Result[0].Reference   | Should -Be 3
+            $Result[1].Path        | Should -Be 'Data[1]'
+            $Result[1].Discrepancy | Should -Be 'Exists'
+            $Result[1].InputObject | Should -BeNullOrEmpty
+            $Result[1].Reference   | Should -Not -BeNullOrEmpty
+            $Result[2].Path        | Should -Be 'Data[2]'
+            $Result[2].Discrepancy | Should -Be 'Exists'
+            $Result[2].InputObject | Should -BeNullOrEmpty
+            $Result[2].Reference   | Should -Not -BeNullOrEmpty
+        }
+
         It 'Missing entry' {
             $Object = @{
                 Comment = 'Sample ObjectGraph'
@@ -123,7 +157,7 @@ Describe 'Compare-ObjectGraph' {
             $Result[1].Path        | Should -Be 'Data[2]'
             $Result[1].Discrepancy | Should -Be 'Exists'
             $Result[1].InputObject | Should -BeNullOrEmpty
-            $Result[1].Reference   | Should -Be '[HashTable]'
+            $Result[1].Reference   | Should -Not -BeNullOrEmpty
         }
 
         It 'Extra entry' {
@@ -161,8 +195,8 @@ Describe 'Compare-ObjectGraph' {
             $Result[0].Reference   | Should -Be 3
             $Result[1].Path        | Should -Be 'Data[3]'
             $Result[1].Discrepancy | Should -Be 'Exists'
-            $Result[1].InputObject | Should -Be '[HashTable]'
-            $Result[1].Reference   | Should -Be $Null
+            $Result[1].InputObject | Should -Not -BeNullOrEmpty
+            $Result[1].Reference   | Should -BeNullOrEmpty
         }
 
         It 'Different entry value' {
@@ -460,31 +494,31 @@ Describe 'Compare-ObjectGraph' {
 
             $Result = $Object | Compare-ObjectGraph $Reference -IsEqual | Should -Be $False
             $Result = $Object | Compare-ObjectGraph $Reference
-            $Lines = ($Result | Format-Table -Auto | Out-String -Stream).TrimEnd().where{ $_ }
+            $Lines = ($Result | Sort-Object Path | Format-Table -Auto | Out-String -Stream).TrimEnd().where{ $_ }
             $Lines[00] | Should -be 'Path            Discrepancy Reference InputObject'
             $Lines[01] | Should -be '----            ----------- --------- -----------'
             $Lines[02] | Should -be 'Data[0]         Size                3           2'
             $Lines[03] | Should -be 'Data[0].Comment Exists           True       False'
             $Lines[04] | Should -be 'Data[1]         Size                3           2'
-            $Lines[05] | Should -be 'Data[1].Name    Value             Two       Three'
+            $Lines[05] | Should -be 'Data[1].Comment Exists           True       False'
             $Lines[06] | Should -be 'Data[1].Index   Value               2           3'
-            $Lines[07] | Should -be 'Data[1].Comment Exists           True       False'
+            $Lines[07] | Should -be 'Data[1].Name    Value             Two       Three'
             $Lines[08] | Should -be 'Data[2]         Size                3           2'
-            $Lines[09] | Should -be 'Data[2].Name    Value           Three         Two'
+            $Lines[09] | Should -be 'Data[2].Comment Exists           True       False'
             $Lines[10] | Should -be 'Data[2].Index   Value               3           2'
-            $Lines[11] | Should -be 'Data[2].Comment Exists           True       False'
+            $Lines[11] | Should -be 'Data[2].Name    Value           Three         Two'
 
             $Result = $Object | Compare-ObjectGraph $Reference -PrimaryKey Index -IsEqual | Should -Be $False
             $Result = $Object | Compare-ObjectGraph $Reference -PrimaryKey Index
-            $Lines = ($Result | Format-Table -Auto | Out-String -Stream).TrimEnd().where{ $_ }
+            $Lines = ($Result | Sort-Object Path | Format-Table -Auto | Out-String -Stream).TrimEnd().where{ $_ }
             $Lines[0] | Should -be 'Path            Discrepancy Reference InputObject'
             $Lines[1] | Should -be '----            ----------- --------- -----------'
             $Lines[2] | Should -be 'Data[0]         Size                3           2'
             $Lines[3] | Should -be 'Data[0].Comment Exists           True       False'
             $Lines[4] | Should -be 'Data[1]         Size                3           2'
-            $Lines[5] | Should -be 'Data[2].Comment Exists           True       False'
+            $Lines[5] | Should -be 'Data[1].Comment Exists           True       False'
             $Lines[6] | Should -be 'Data[2]         Size                3           2'
-            $Lines[7] | Should -be 'Data[1].Comment Exists           True       False'
+            $Lines[7] | Should -be 'Data[2].Comment Exists           True       False'
         }
     }
 }

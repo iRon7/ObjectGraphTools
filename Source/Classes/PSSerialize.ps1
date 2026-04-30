@@ -249,7 +249,10 @@ Class PSSerialize {
                         $this.StringBuilder.Append(',')
                         $this.NewWord()
                     }
-                    elseif ($ExpandSingle) { $this.NewWord('') }
+                    else {
+                        if ($ExpandSingle) { $this.NewWord('') }
+                        if ($ChildNodes.Count -eq 1 -and $ChildNodes[0] -is [PSListNode]) { $this.StringBuilder.Append(',') }
+                    }
                     $this.Stringify($ChildNode)
                 }
                 $this.Offset--
@@ -274,7 +277,11 @@ Class PSSerialize {
                             $this.StringBuilder.Append([VariableColor](
                                 [PSKeyExpression]::new($ChildNodes[$Index].Name, [PSSerialize]::MaxKeyLength)))
                             $this.StringBuilder.Append('=')
-                            if (-not $IsSubNode -or $this.StringBuilder.Length -le [PSSerialize]::MaxKeyLength) {
+                            if (
+                                -not $IsSubNode -or
+                                $this.StringBuilder.Length -le [PSSerialize]::MaxKeyLength -or
+                                ($ChildNodes.Count -eq 1 -and $ChildNodes[$Index] -is [PSLeafNode])
+                            ) {
                                 $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
                             }
                             else { $this.StringBuilder.Append([Abbreviate]::Ellipses) }

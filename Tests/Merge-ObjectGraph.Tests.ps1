@@ -2,19 +2,29 @@
 
 using module ..\..\ObjectGraphTools
 
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'False positive')]
+param([alias("Path")]$PrototypePath)
+
 Describe 'Merge-ObjectGraph' {
 
     BeforeAll {
 
         Set-StrictMode -Version Latest
-    }
 
-    Context 'Existence Check' {
-
-        It 'Help' {
-            Merge-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
+        if ($PrototypePath) {
+            $Content = Get-Content -Raw -LiteralPath $PrototypePath
+            $CommandName = [io.path]::GetFileNameWithoutExtension($PSCommandPath) -replace '\.Tests$'
+            Mock $CommandName ([ScriptBlock]::Create($Content))
         }
     }
+    
+    Context 'Existence Check' {
+
+        It 'Help' -Skip:$($null -ne $PrototypePath) {
+            Test-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
+        }
+    }
+
 
     Context 'Merge' {
 

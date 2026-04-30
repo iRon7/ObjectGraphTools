@@ -38,7 +38,7 @@ The schema object has the following major features:
 
 ## Examples
 
-### Example 1: Test whether a `$Person` object meats the schema requirements.
+### <a id="example-1"><a id="example-test-whether-a-person-object-meats-the-schema-requirements">Example 1: Test whether a `$Person` object meats the schema requirements.</a></a>
 
 
 ```PowerShell
@@ -95,23 +95,26 @@ $Person | Test-Object $Schema | Should -BeNullOrEmpty
 
 ## Parameters
 
-### <a id="-inputobject">**`-InputObject <Object>`**</a>
+### <a id="-inputobject">`-InputObject` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">&lt;Object&gt;</a></a>
 
 Specifies the object to test for validity against the schema object.
 The object might be any object containing embedded (or even recursive) lists, dictionaries, objects or scalar
 values received from a application or an object notation as Json or YAML using their related `ConvertFrom-*`
 cmdlets.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
-<tr><td>Mandatory:</td><td>True</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -InputObject
+Aliases:                    # None
+Type:                       [Object]
+Value (default):            # Undefined
+Parameter sets:             ValidateOnly, ResultList
+Mandatory:                  True
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-schemaobject">**`-SchemaObject <Object>`**</a>
+### <a id="-schemaobject">`-SchemaObject` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">&lt;Object&gt;</a></a>
 
 Specifies a schema to validate the JSON input against. By default, if any discrepancies, toy will be reported
 in a object list containing the path to failed node, the value whether the node is valid or not and the issue.
@@ -119,72 +122,89 @@ If no issues are found, the output is empty.
 
 For details on the schema object, see the [schema object definitions][1] documentation.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Object">Object</a></td></tr>
-<tr><td>Mandatory:</td><td>True</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -SchemaObject
+Aliases:                    # None
+Type:                       [Object]
+Value (default):            # Undefined
+Parameter sets:             ValidateOnly, ResultList
+Mandatory:                  True
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-validateonly">**`-ValidateOnly`**</a>
+### <a id="-validateonly">`-ValidateOnly`</a>
 
 If set, the cmdlet will stop at the first invalid node and return the test result object.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -ValidateOnly
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             ValidateOnly
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-elaborate">**`-Elaborate`**</a>
+### <a id="-elaborate">`-Elaborate`</a>
 
 If set, the cmdlet will return the test result object for all tested nodes, even if they are valid
 or ruled out in a possible list node branch selection.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Management.Automation.SwitchParameter">SwitchParameter</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -Elaborate
+Aliases:                    # None
+Type:                       [SwitchParameter]
+Value (default):            # Undefined
+Parameter sets:             ResultList
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-asserttestprefix">**`-AssertTestPrefix <String>`**</a>
+### <a id="-asserttestprefix">`-AssertTestPrefix` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.String">&lt;String&gt;</a></a>
 
 The prefix used to identify the assert test nodes in the schema object. By default, the prefix is `AssertTestPrefix`.
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.String">String</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td><code>'AssertTestPrefix'</code></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -AssertTestPrefix
+Aliases:                    # None
+Type:                       [String]
+Value (default):            'AssertTestPrefix'
+Parameter sets:             ValidateOnly, ResultList
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
-### <a id="-maxdepth">**`-MaxDepth <Int32>`**</a>
+### <a id="-maxdepth">`-MaxDepth` <a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">&lt;Int32&gt;</a></a>
 
 The maximal depth to recursively test each embedded node.
 The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
 
-<table>
-<tr><td>Type:</td><td><a href="https://docs.microsoft.com/en-us/dotnet/api/System.Int32">Int32</a></td></tr>
-<tr><td>Mandatory:</td><td>False</td></tr>
-<tr><td>Position:</td><td>Named</td></tr>
-<tr><td>Default value:</td><td><code>[PSNode]::DefaultMaxDepth</code></td></tr>
-<tr><td>Accept pipeline input:</td><td>False</td></tr>
-<tr><td>Accept wildcard characters:</td><td>False</td></tr>
-</table>
+```powershell
+Name:                       -MaxDepth
+Aliases:                    -Depth
+Type:                       [Int32]
+Value (default):            [PSNode]::DefaultMaxDepth
+Parameter sets:             ValidateOnly, ResultList
+Mandatory:                  False
+Position:                   # Named
+Accept pipeline input:      False
+Accept wildcard characters: False
+```
 
 ## Related Links
 
-* 1: [Schema object definitions][1]
+* [Schema object definitions](https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/SchemaObject.md)
+<!-- -->
+
 
 [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/SchemaObject.md "Schema object definitions"
 

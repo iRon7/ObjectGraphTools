@@ -2,16 +2,20 @@
 
 using module ..\..\ObjectGraphTools
 
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object',      Justification = 'False positive')]
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'ObjectGraph', Justification = 'False positive')]
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Nodes',       Justification = 'False positive')]
-param()
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'False positive')]
+param([alias("Path")]$PrototypePath)
 
 Describe 'Get-Node' {
 
     BeforeAll {
 
         Set-StrictMode -Version Latest
+
+        if ($PrototypePath) {
+            $Content = Get-Content -Raw -LiteralPath $PrototypePath
+            $CommandName = [io.path]::GetFileNameWithoutExtension($PSCommandPath) -replace '\.Tests$'
+            Mock $CommandName ([ScriptBlock]::Create($Content))
+        }
 
         $Object = @{
             Comment = 'Sample ObjectGraph'
@@ -37,8 +41,8 @@ Describe 'Get-Node' {
 
     Context 'Existence Check' {
 
-        It 'Help' {
-            Get-Node -? | Out-String -Stream | Should -Contain SYNOPSIS
+        It 'Help' -Skip:$($null -ne $PrototypePath) {
+            Test-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
         }
     }
 
@@ -138,6 +142,31 @@ Describe 'Get-Node' {
 
     }
 
+    Context 'Offspring' {
+
+        BeforeAll {
+            $ObjectGraph = @{ Item = @{ Item = @{ Item = 123 } } }
+        }
+
+        it 'Get first descendant nodes' {
+            $Node = $ObjectGraph | Get-Node ~Item
+            $Node.Depth | Should -Be 1
+            $Node.Path  | Should -Be Item
+        }
+
+        it 'Get all offspring nodes' {
+            $Node = $ObjectGraph | Get-Node ~~Item
+            $Node.Count | Should -Be 3
+            $Node.Depth | Should -Be 1, 2, 3
+        }
+
+        it 'Get last descendant leaf node' {
+            $Node = $ObjectGraph | Get-Node ~Item=*
+            $Node.Depth | Should -Be 3
+            $Node.Path  | Should -Be Item.Item.Item
+        }
+    }
+
     Context 'Unique' {
 
         BeforeAll {
@@ -150,6 +179,16 @@ Describe 'Get-Node' {
 
         it 'Merged nodes' {
             ($Nodes | Get-Node -Unique).Count | Should -be 3
+        }
+    }
+
+    Context 'Escape' {
+
+        it 'Wildcard' {
+
+            @{ a = 'a' } | Get-Node a=*    | Should -not -BeNullOrEmpty
+            @{ a = 'a' } | Get-Node a='`*' | Should      -BeNullOrEmpty
+            @{ a = '*' } | Get-Node a='`*' | Should -not -BeNullOrEmpty
         }
     }
 

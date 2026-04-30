@@ -1,3 +1,5 @@
+# . .\Build\Build-Module.ps1 -ModulePath .\ObjectGraphTools.psm1 -SourceFolder .\Source
+
 $Params = @{
     ModulePath   = "$PSScriptRoot\..\ObjectGraphTools.psm1"
     SourceFolder = "$PSScriptRoot\..\Source"

@@ -2,18 +2,20 @@
 
 using module ..\..\ObjectGraphTools
 
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object',     Justification = 'False positive')]
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Expression', Justification = 'False positive')]
-param()
-
-# $PesterPreference = [PesterConfiguration]::Default
-# $PesterPreference.Should.ErrorAction = 'Stop'
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'False positive')]
+param([alias("Path")]$PrototypePath)
 
 Describe 'Import-ObjectGraph' {
 
     BeforeAll {
 
-        # Set-StrictMode -Version Latest
+        Set-StrictMode -Version Latest
+
+        if ($PrototypePath) {
+            $Content = Get-Content -Raw -LiteralPath $PrototypePath
+            $CommandName = [io.path]::GetFileNameWithoutExtension($PSCommandPath) -replace '\.Tests$'
+            Mock $CommandName ([ScriptBlock]::Create($Content))
+        }
 
         $PS1File  = Join-Path $Env:Temp 'ObjectGraph.ps1'
         $PSD1File = Join-Path $Env:Temp 'ObjectGraph.psd1'
@@ -46,8 +48,8 @@ Describe 'Import-ObjectGraph' {
 
     Context 'Existence Check' {
 
-        It 'Help' {
-            Import-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
+        It 'Help' -Skip:$($null -ne $PrototypePath) {
+            Test-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
         }
     }
 

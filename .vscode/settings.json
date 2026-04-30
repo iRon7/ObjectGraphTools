@@ -1,7 +1,20 @@
 {
+    "[powershell][markdown]": {
+        "editor.colorDecorators": false,
+    },
     "cSpell.words": [
+        "Browsable",
+        "clike",
         "Cloneable",
+        "cmatch",
+        "ilike",
+        "imatch",
+        "Linq",
         "Memberise",
-        "Memberwise"
+        "Memberwise",
+        "notin",
+        "psobject",
+        "Soesterberg",
+        "Steppable"
     ]
 }

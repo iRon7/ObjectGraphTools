@@ -6,6 +6,7 @@ using namespace System.Management.Automation
 using namespace System.Management.Automation.Language
 using namespace System.Linq.Expressions
 using namespace System.Reflection
+using namespace System.Collections.Specialized
 
 #EndRegion Using
 
@@ -101,6 +102,281 @@ Class Abbreviate {
     }
 }
 class LogicalTerm {}
+class LogicalOperator : LogicalTerm {
+    hidden [LogicalOperatorEnum]$Value
+    LogicalOperator ([LogicalOperatorEnum]$Operator) { $this.Value = $Operator }
+    LogicalOperator ([String]$Operator) { $this.Value = [LogicalOperatorEnum]$Operator }
+    [String]ToString() { return $this.Value }
+}
+class LogicalVariable : LogicalTerm {
+    hidden [Object]$Value
+    LogicalVariable ($Variable) { $this.Value = $Variable }
+    [String]ToString() {
+        if ($this.Value -is [String]) {
+            return "'$($this.Value -Replace "'", "''")'"
+        }
+        else { return $this.Value }
+    }
+}
+class LogicalFormula : LogicalTerm {
+    hidden static $OperatorSymbols = @{
+        '!' = [LogicalOperatorEnum]'Not'
+        ',' = [LogicalOperatorEnum]'And'
+        '*' = [LogicalOperatorEnum]'And'
+        '|' = [LogicalOperatorEnum]'Or'
+        '+' = [LogicalOperatorEnum]'Or'
+    }
+    hidden static [Int[]]$OperatorNameLengths
+
+    hidden [List[LogicalTerm]]$Terms = [List[LogicalTerm]]::new()
+    hidden [Int]$Pointer
+
+    GetFormula([String]$Expression, [Int]$Start) {
+        $SubExpression = $Start -gt 0
+        $InString = $null # Quote type (double - or single quoted)
+        $Escaped = $null
+        $this.Pointer = $Start
+        While ($this.Pointer -le $Expression.Length) {
+            $Char = if ($this.Pointer -lt $Expression.Length) { $Expression[$this.Pointer] }
+            if ($InString) {
+                if ($Char -eq $InString) {
+                    if ($this.Pointer + 1 -lt $Expression.Length -and $Expression[$this.Pointer + 1] -eq $InString) {
+                        $Escaped = $true
+                         $this.Pointer++
+                    }
+                    else {
+                        $Name = $Expression.SubString($Start + 1, ($this.Pointer - $Start - 1))
+                        if ($Escaped) { $Name = $Name.Replace("$InString$InString", $InString) }
+                        $this.Terms.Add([LogicalVariable]::new($Name))
+                        $InString = $Null
+                        $Start = $this.Pointer + 1
+                    }
+                }
+            }
+            elseif ('"', "'" -eq $Char) {
+                $InString = $Char
+                $Escaped = $false
+                $Start = $this.Pointer
+            }
+            elseif ($Char -eq '(') {
+                $Formula = [LogicalFormula]::new($Expression, ($this.Pointer + 1))
+                $this.Terms.Add($Formula)
+                $this.Pointer = $Formula.Pointer
+                $Start = $this.Pointer + 1
+            }
+            elseif ($Char -in $Null, ' ', ')' + [LogicalFormula]::OperatorSymbols.Keys) {
+                $Length = $this.Pointer - $Start
+                if ($Length -gt 0) {
+                    $Term = $Expression.SubString($Start, $Length)
+                    if ([LogicalOperatorEnum].GetEnumNames() -eq $Term) {
+                        $this.Terms.Add([LogicalOperator]::new($Term))
+                    }
+                    else {
+                        $Double = 0
+                        if ([double]::TryParse($Term, [Ref]$Double)) {
+                            $this.Terms.Add([LogicalVariable]::new($Double))
+                        }
+                        else {
+                            $this.Terms.Add([LogicalVariable]::new($Term))
+                        }
+                    }
+                }
+                if ($Char -eq ')') { return }
+                if ($Char -gt ' ') {
+                    $this.Terms.Add([LogicalOperator]::new([LogicalFormula]::OperatorSymbols($Char)))
+                }
+                $Start = $this.Pointer + 1
+            }
+            $this.Pointer++
+        }
+        if ($InString) { Throw "Missing the terminator: $InString in logical expression: $Expression" }
+        if ($SubExpression) { Throw "Missing closing ')' in logical expression: $Expression" }
+    }
+
+    LogicalFormula() {}
+    LogicalFormula ([String]$Expression) {
+        $this.GetFormula($Expression, 0)
+        if ($this.Pointer -lt $Expression.Length) {
+            Throw "Unexpected token ')' at position $($this.Pointer) in logical expression: $Expression"
+        }
+    }
+    LogicalFormula ([String]$Expression, $Start) {
+        $this.GetFormula($Expression, $Start)
+    }
+
+    Append ([LogicalOperator]$Operator, $Formula) {
+        if ($Formula -is [LogicalFormula]) {
+            if ($Formula.Terms.Count -eq 0) { return }
+            if($this.Terms.Count -eq 0) {
+                $This.Terms = $Formula.Terms
+                return
+            }
+            if ($Operator.Value -eq 'Not') { $this.Terms.Add([LogicalOperator]'And') }
+            $this.Terms.Add($Operator)
+            if ($Formula.Terms.Count -gt 1) { $this.Terms.Add($Formula) }
+            else { $this.Terms.Add($Formula.Terms[0]) }
+        }
+        elseif ($null -ne $Formula) {
+            if ($this.Terms.Count -gt 0) { $this.Terms.Add([LogicalOperator]'And') }
+            $this.Terms.Add([LogicalVariable]::new($Formula))
+        }
+    }
+    And($Formula) { $this.Append('And', $Formula) }
+    Or($Formula)  { $this.Append('Or',  $Formula) }
+    Xor($Formula) { $this.Append('Xor', $Formula) }
+
+    [Object]Find([ScriptBlock]$Predicate, [Bool]$All) {
+        $Stack = [Stack]::new()
+        $Enumerator = $this.Terms.GetEnumerator()
+        $Term = $null
+        return $(
+            while ($true) {
+                while ($Enumerator.MoveNext()) {
+                    $Term = $Enumerator.Current
+                    if ($Term -is [LogicalFormula]) {
+                        $Stack.Push($Enumerator)
+                        $Enumerator = $Term.Terms.GetEnumerator()
+                        $Term = $null
+                        continue
+                    }
+                    else {
+                        if (& $Predicate $Term) { if ($All) { $Term } else { return $Term } }
+                    }
+                }
+                if (-not $Stack.Count) { break }
+                $Enumerator = $Stack.Pop()
+            }
+        )
+    }
+
+    [bool]Evaluate($Variables) {
+        if (-not $this.Terms) { return $null -eq $Variables -or -not $Variables.Count }
+        $Enumerator = $this.Terms.GetEnumerator()
+        $Stack = [Stack]::new()
+        $Stack.Push(@{
+                Enumerator  = $Enumerator
+                Accumulator = $null
+                Operator    = $null
+                Negate      = $null
+            })
+        $Term, $Negate, $Operand, $Operator, $Accumulator = $null
+        $Score = 0
+        while ($Stack.Count -gt 0) {
+            # Accumulator = Accumulator <operation> Operand
+            # if ($Stack.Count -gt 20) { Throw 'Formula stack failsafe'}
+            $Pop = $Stack.Pop()
+            $Enumerator = $Pop.Enumerator
+            $Operator = $Pop.Operator
+            if ($null -eq $Operator) { $Operand = $Pop.Accumulator }
+            else { $Operand, $Accumulator = $Accumulator, $Pop.Accumulator }
+            $Negate = $Pop.Negate
+            $Compute = $null -notin $Operand, $Operator, $Accumulator
+            while ($Compute -or $Enumerator.MoveNext()) {
+                if ($Compute) { $Compute = $false }
+                else {
+                    $Term = $Enumerator.Current
+                    if ($Term -is [LogicalVariable]) {
+                            if ($Variables -is [ScriptBlock]) { $Operand = [Bool]$Term.Value.foreach($Variables) }
+                        elseif ($Variables -is [IDictionary]) { $Operand = [Bool]$Variables[$Term.Value] }
+                        elseif ($Variables -is [IEnumerable]) { $Operand = $Variables.Contains($Term.Value) }
+                        else { $Operand = $Variables -eq $Term.Value }
+                    }
+                    elseif ($Term -is [LogicalOperator]) {
+                        if ($Term.Value -eq 'Not') { $Negate = -not $Negate }
+                        elseif ($null -eq $Operator -and $null -ne $Accumulator) { $Operator = $Term.Value }
+                        else { throw [InvalidOperationException]"Unknown logical operator: $Term" }
+                    }
+                    elseif ($Term -is [LogicalFormula]) {
+                        $Stack.Push(@{
+                                Enumerator  = $Enumerator
+                                Accumulator = $Accumulator
+                                Operator    = $Operator
+                                Negate      = $Negate
+                            })
+                        $Accumulator, $Operator, $Negate = $null
+                        $Enumerator = $Term.Terms.GetEnumerator()
+                        continue
+                    }
+                    else { throw [InvalidOperationException]"Unknown logical term: $Term" }
+                }
+                if ($null -ne $Operand) {
+                    $Score++
+                    if ($null -eq $Accumulator -xor $null -eq $Operator) {
+                        if ($Accumulator) { throw [InvalidOperationException]"Missing operator before: $Term" }
+                        else { throw [InvalidOperationException]"Missing variable before: $Operator $Term" }
+                    }
+                    $Operand = $Operand -xor $Negate
+                    $Negate = $null
+                    if ($Operator -eq 'And') {
+                        $Operator = $null
+                        if ($Accumulator -eq $false) { break }
+                        $Accumulator = $Accumulator -and $Operand
+                    }
+                    elseif ($Operator -eq 'Or') {
+                        $Operator = $null
+                        if ($Accumulator -eq $true) { break }
+                        $Accumulator = $Accumulator -or $Operand
+                    }
+                    elseif ($Operator -eq 'Xor') {
+                        $Operator = $null
+                        $Accumulator = $Accumulator -xor $Operand
+                    }
+                    else { $Accumulator = $Operand }
+                    $Operand = $Null
+                }
+            }
+            if ($null -ne $Operator -or $null -ne $Negate) { throw [InvalidOperationException]"Missing variable after $Operator" }
+        }
+        if ($null -eq $Accumulator) { throw "The accumulator isn't defined" }
+        return $Accumulator
+    }
+
+    [String] ToString() { return $this.ToString($null) }
+    [String] ToString([IDictionary]$Extents) {
+        $StringBuilder = [System.Text.StringBuilder]::new()
+        $Stack = [Stack]::new()
+        $Enumerator = $this.Terms.GetEnumerator()
+        $Term = $null
+        while ($true) {
+            while ($Enumerator.MoveNext()) {
+                if ($Null -ne $Term) {
+                    $null = $StringBuilder.Append([ANSI]::ResetColor) # Not really necessarily
+                    $null = $StringBuilder.Append(' ')
+                }
+                $Term = $Enumerator.Current
+                if ($Term -is [LogicalVariable]) {
+                    if ($Term.Value -is [String]) { $null = $StringBuilder.Append([ANSI]::VariableColor) }
+                    else                          { $null = $StringBuilder.Append([ANSI]::NumberColor) }
+                    $null = $StringBuilder.Append($Term)
+                    if ($Extents) {
+                        $null = $StringBuilder.Append([ANSI]::EmphasisColor)
+                        $null = $StringBuilder.Append($Extents[$Term.Value])
+                    }
+                }
+                elseif ($Term -is [LogicalOperator])  {
+                    $null = $StringBuilder.Append([ANSI]::OperatorColor)
+                    $null = $StringBuilder.Append($Term)
+                }
+                else { # if ($Term -is [LogicalFormula])
+                    $null = $StringBuilder.Append([ANSI]::StringColor)
+                    $null = $StringBuilder.Append('(')
+                    $Stack.Push($Enumerator)
+                    $Enumerator = $Term.Terms.GetEnumerator()
+                    $Term = $null
+                    continue
+                }
+            }
+            if (-not $Stack.Count) {
+                $null = $StringBuilder.Append([ANSI]::ResetColor)
+                break
+            }
+            $null = $StringBuilder.Append([ANSI]::StringColor)
+            $null = $StringBuilder.Append(')')
+            $Enumerator = $Stack.Pop()
+        }
+        return $StringBuilder.ToString()
+    }
+}
 Class PSNodePath {
     hidden [PSNode[]]$Nodes
     hidden [String]$_String
@@ -226,7 +502,7 @@ Class PSNode : IComparable {
         return $Node
     }
 
-    static [PSNode] ParseInput($Object) { return [PSNode]::parseInput($Object, 0) }
+    static [PSNode] ParseInput($Object) { return [PSNode]::ParseInput($Object, 0) }
 
     static [int] Compare($Left, $Right) {
         return [ObjectComparer]::new().Compare($Left, $Right)
@@ -324,66 +600,575 @@ Class PSNode : IComparable {
     }
 
     hidden CollectNodes($NodeTable, [XdnPath]$Path, [Int]$PathIndex) {
-        $Entry = $Path.Entries[$PathIndex]
-        $NextIndex = if ($PathIndex -lt $Path.Entries.Count -1) { $PathIndex + 1 }
-        $NextEntry = if ($NextIndex) { $Path.Entries[$NextIndex] }
-        $Equals    = if ($NextEntry -and $NextEntry.Key -eq 'Equals') {
-            $NextEntry.Value
-            $NextIndex = if ($NextIndex -lt $Path.Entries.Count -1) { $NextIndex + 1 }
+        if ($PathIndex -ge $Path.Entries.Count) {
+            $NodeTable[$this.getPathName()] = $this
+            return
         }
-        switch ($Entry.Key) {
-            Root {
-                $Node = $this.RootNode
-                if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                else { $NodeTable[$Node.getPathName()] = $Node }
+        $Entry = $Path.Entries[$PathIndex]
+        if ($Entry.Key -eq 'Root') {
+            $this.RootNode.CollectNodes($NodeTable, $Path, ($PathIndex + 1))
+        }
+        elseif ($Entry.Key -eq 'Ancestor') {
+            $Node = $this
+            for($i = $Entry.Value; $i -gt 0 -and $Node.ParentNode; $i--) { $Node = $Node.ParentNode }
+            if ($i -eq 0) { $Node.CollectNodes($NodeTable, $Path, ($PathIndex + 1)) }
+        }
+        elseif ($Entry.Key -eq 'Index') {
+            if ($this -is [PSListNode] -and [Int]::TryParse($Entry.Value, [Ref]$Null)) {
+                $this.GetChildNode([Int]$Entry.Value).CollectNodes($NodeTable, $Path, ($PathIndex + 1))
             }
-            Ancestor {
-                $Node = $this
-                for($i = $Entry.Value; $i -gt 0 -and $Node.ParentNode; $i--) { $Node = $Node.ParentNode }
-                if ($i -eq 0) { # else: reached root boundary
-                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                    else { $NodeTable[$Node.getPathName()] = $Node }
-                }
-            }
-            Index {
-                if ($this -is [PSListNode] -and [Int]::TryParse($Entry.Value, [Ref]$Null)) {
-                    $Node = $this.GetChildNode([Int]$Entry.Value)
-                    if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                    else { $NodeTable[$Node.getPathName()] = $Node }
-                }
-            }
-            Default { # Child, Descendant
-                if ($this -is [PSListNode]) { # Member access enumeration
-                    foreach ($Node in $this.get_ChildNodes()) {
-                        $Node.CollectNodes($NodeTable, $Path, $PathIndex)
+        }
+        elseif ($Entry.Key -eq 'Equals') {
+            if ($this -is [PSLeafNode]) {
+                foreach ($Value in $Entry.Value) {
+                    if ($this._Value -like $Value) {
+                        $this.CollectNodes($NodeTable, $Path, ($PathIndex + 1))
+                        break
                     }
                 }
-                elseif ($this -is [PSMapNode]) {
-                    $Found = $False
-                    $ChildNodes = $this.get_ChildNodes()
-                    foreach ($Node in $ChildNodes) {
-                        if ($Entry.Value -eq $Node.Name -and (-not $Equals -or ($Node -is [PSLeafNode] -and $Equals -eq $Node._Value))) {
-                            $Found = $True
-                            if ($NextIndex) { $Node.CollectNodes($NodeTable, $Path, $NextIndex) }
-                            else { $NodeTable[$Node.getPathName()] = $Node }
-                        }
+            }
+        }
+        elseif ($this -is [PSListNode]) { # Member access enumeration
+            foreach ($Node in $this.get_ChildNodes()) {
+                $Node.CollectNodes($NodeTable, $Path, $PathIndex)
+            }
+        }
+        elseif ($this -is [PSMapNode]) {
+            $Count0 = $NodeTable.get_Count()
+            foreach ($Value in $Entry.Value) {
+                $Name = $Value._Value
+                if ($Value.ContainsWildcard()) {
+                    $CaseMatters =  $this.CaseMatters
+                    foreach ($Node in $this.ChildNodes) {
+                        if ($CaseMatters) { if ($Node.Name -cnotlike $Name) { continue } }
+                        else              { if ($Node.Name -notlike  $Name) { continue } }
+                        $Node.CollectNodes($NodeTable, $Path, ($PathIndex + 1))
                     }
-                    if (-not $Found -and $Entry.Key -eq 'Descendant') {
-                        foreach ($Node in $ChildNodes) {
-                            $Node.CollectNodes($NodeTable, $Path, $PathIndex)
-                        }
-                    }
+                }
+                elseif ($this.Contains($Name)) {
+                    $this.GetChildNode($Name).CollectNodes($NodeTable, $Path, ($PathIndex + 1))
+                }
+            }
+            if (
+                ($Entry.Key -eq 'Offspring') -or
+                ($Entry.Key -eq 'Descendant' -and $NodeTable.get_Count() -eq $Count0)
+            ) {
+                foreach ($Node in $this.get_ChildNodes()) {
+                    $Node.CollectNodes($NodeTable, $Path, $PathIndex)
                 }
             }
         }
     }
 
-    [Object] GetNode([XdnPath]$Path) {
+
+    [Object]GetNode([XdnPath]$Path) {
         $NodeTable = [system.collections.generic.dictionary[String, PSNode]]::new() # Case sensitive (case insensitive map nodes use the same name)
         $this.CollectNodes($NodeTable, $Path, 0)
         if ($NodeTable.Count -eq 0) { return @() }
         if ($NodeTable.Count -eq 1) { return $NodeTable[$NodeTable.Keys] }
         else                        { return [PSNode[]]$NodeTable.Values }
+    }
+
+    [string]ToString() {
+        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
+    }
+
+    hidden [string]get_DisplayValue() {
+        return "$([TypeColor][PSSerialize]::new($this._Value, [PSLanguageMode]'NoLanguage'))"
+    }
+}
+Class PSLeafNode : PSNode {
+
+    hidden MaxDepthReached() { } # return nothing knowing that leaf nodes terminate the path anyways
+
+    hidden PSLeafNode($Object) {
+        if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
+    }
+
+    [Int]GetHashCode($CaseSensitive) {
+        if ($Null -eq $this._Value) { return '$Null'.GetHashCode() }
+        if ($CaseSensitive) { return $this._Value.GetHashCode() }
+        else {
+            if ($this._Value -is [String]) { return $this._Value.ToUpper().GetHashCode() } # Windows PowerShell doesn't have a System.HashCode structure
+            else { return $this._Value.GetHashCode() }
+        }
+    }
+}
+Class PSCollectionNode : PSNode {
+    hidden static PSCollectionNode() { Use-ClassAccessors }
+    hidden [Dictionary[bool,int]]$_HashCode # Unlike the value HashCode, the default (bool = $false) node HashCode is case insensitive
+    hidden [Dictionary[bool,int]]$_ReferenceHashCode # if changed, recalculate the (bool = case sensitive) node's HashCode
+
+    hidden [bool]MaxDepthReached() {
+        # Check whether the max depth has been reached.
+        # Warn if it has, but suppress the warning if
+        # it took less then 5 seconds since the last
+        # time it reached the max depth.
+        $MaxDepthReached = $this.Depth -ge $this.RootNode._MaxDepth
+        if ($MaxDepthReached) {
+            if (([DateTime]::Now - $this.RootNode.MaxDepthWarningTime).TotalSeconds -gt 5) {
+                Write-Warning "$($this.Path) reached the maximum depth of $($this.RootNode._MaxDepth)."
+            }
+            $this.RootNode.MaxDepthWarningTime = [DateTime]::Now
+        }
+        return $MaxDepthReached
+    }
+
+    hidden WarnSelector ([PSCollectionNode]$Node, [String]$Name) {
+        if ($Node -is [PSListNode]) {
+            $SelectionName  = "'$Name'"
+            $CollectionType = 'list'
+        }
+        else {
+            $SelectionName  = "[$Name]"
+            $CollectionType = 'list'
+        }
+        Write-Warning "Expected $SelectionName to be a $CollectionType selector for: <Object>$($Node.Path)"
+    }
+
+    hidden [List[Ast]] GetAstSelectors ($Ast) {
+        $List = [List[Ast]]::new()
+        if ($Ast -isnot [Ast]) {
+            $Ast = [Parser]::ParseInput("`$_$Ast", [ref]$Null, [ref]$Null)
+            $Ast = $Ast.EndBlock.Statements.PipeLineElements.Expression
+        }
+        if ($Ast -is [IndexExpressionAst]) {
+            $List.AddRange($this.GetAstSelectors($Ast.Target))
+            $List.Add($Ast)
+        }
+        elseif ($Ast -is [MemberExpressionAst]) {
+            $List.AddRange($this.GetAstSelectors($Ast.Expression))
+            $List.Add($Ast)
+        }
+        elseif ($Ast.Extent.Text -ne '$_') {
+            Throw "Parse error: $($Ast.Extent.Text)"
+        }
+        return $List
+    }
+
+    [List[PSNode]]GetNodeList($Levels, [Bool]$LeafNodesOnly) {
+        $NodeList = [List[PSNode]]::new()
+        $Stack = [Stack]::new()
+        $Stack.Push($this.get_ChildNodes().GetEnumerator())
+        $Level = 1
+        While ($Stack.Count -gt 0) {
+            $Enumerator = $Stack.Pop()
+            $Level--
+            while ($Enumerator.MoveNext()) {
+                $Node = $Enumerator.Current
+                if ($Node.MaxDepthReached() -or ($Levels -ge 0 -and $Level -ge $Levels)) { break }
+                if (-not $LeafNodesOnly -or $Node -is [PSLeafNode]) { $NodeList.Add($Node) }
+                if ($Node -is [PSCollectionNode]) {
+                    $Stack.Push($Enumerator)
+                    $Level++
+                    $Enumerator = $Node.get_ChildNodes().GetEnumerator()
+                }
+            }
+        }
+        return $NodeList
+    }
+    [List[PSNode]]GetNodeList()             { return $this.GetNodeList(1, $False) }
+    [List[PSNode]]GetNodeList([Int]$Levels) { return $this.GetNodeList($Levels, $False) }
+    hidden [PSNode[]]get_DescendantNodes()  { return $this.GetNodeList(-1, $False) }
+    hidden [PSNode[]]get_LeafNodes()        { return $this.GetNodeList(-1, $True) }
+
+    Sort() { $this.Sort($Null, 0) }
+    Sort([ObjectComparison]$ObjectComparison) { $this.Sort($Null, $ObjectComparison) }
+    Sort([String[]]$PrimaryKey) { $this.Sort($PrimaryKey, 0) }
+    Sort([ObjectComparison]$ObjectComparison, [String[]]$PrimaryKey) { $this.Sort($PrimaryKey, $ObjectComparison) }
+    Sort([String[]]$PrimaryKey, [ObjectComparison]$ObjectComparison) {
+        # As the child nodes are sorted first, we just do a side-by-side node compare:
+        $ObjectComparison = $ObjectComparison -bor [ObjectComparison]'MatchMapOrder'
+        $ObjectComparison = $ObjectComparison -band (-1 - [ObjectComparison]'IgnoreListOrder')
+        $PSListNodeComparer = [PSListNodeComparer]@{ PrimaryKey = $PrimaryKey; ObjectComparison = $ObjectComparison }
+        $PSMapNodeComparer = [PSMapNodeComparer]@{ PrimaryKey = $PrimaryKey; ObjectComparison = $ObjectComparison }
+        $this.SortRecurse($PSListNodeComparer, $PSMapNodeComparer)
+    }
+
+    hidden SortRecurse([PSListNodeComparer]$PSListNodeComparer, [PSMapNodeComparer]$PSMapNodeComparer) {
+        $NodeList = $this.GetNodeList()
+        foreach ($Node in $NodeList) {
+            if ($Node -is [PSCollectionNode]) { $Node.SortRecurse($PSListNodeComparer, $PSMapNodeComparer) }
+        }
+        if ($this -is [PSListNode]) {
+            $NodeList.Sort($PSListNodeComparer)
+            if ($NodeList.Count) { $this._Value = @($NodeList.Value) } else { $this._Value = @() }
+        }
+        else { # if ($Node -is [PSMapNode])
+            $NodeList.Sort($PSMapNodeComparer)
+            $Properties = [System.Collections.Specialized.OrderedDictionary]::new([StringComparer]::Ordinal)
+            foreach($ChildNode in $NodeList) { $Properties[[Object]$ChildNode.Name] = $ChildNode.Value } # [Object] forces a key rather than an index (ArgumentOutOfRangeException)
+            if ($this -is [PSObjectNode]) { $this._Value = [PSCustomObject]$Properties } else { $this._Value = $Properties }
+        }
+    }
+}
+Class PSListNode : PSCollectionNode {
+    hidden static PSListNode() { Use-ClassAccessors }
+
+    hidden PSListNode($Object) {
+        if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
+    }
+
+    hidden [Object]get_Count() {
+        return $this._Value.get_Count()
+    }
+
+    hidden [Object]get_Names() {
+        if ($this._Value.Length) { return ,@(0..($this._Value.Length - 1)) }
+        return ,@()
+    }
+
+    hidden [Object]get_Values() {
+        return ,@($this._Value)
+    }
+
+    hidden [Object]get_CaseMatters() { return $false }
+
+    [Bool]Contains($Index) {
+       return $Index -ge 0 -and $Index -lt $this.get_Count()
+    }
+
+    [Bool]Exists($Index) {
+        return $Index -ge 0 -and $Index -lt $this.get_Count()
+    }
+
+    [Object]GetValue($Index) { return $this._Value[$Index] }
+    [Object]GetValue($Index, $Default) {
+        if (-not $This.Contains($Index)) { return $Default }
+        return $this._Value[$Index]
+    }
+
+    SetValue($Index, $Value) {
+        if ($Value -is [PSNode]) { $Value = $Value.Value }
+        $this._Value[$Index] = $Value
+    }
+
+    Add($Value) {
+        if ($Value -is [PSNode]) { $Value = $Value._Value }
+        if ($this._Value.GetType().GetMethod('Add')) { $null = $This._Value.Add($Value) }
+        else { $this._Value = ($this._Value + $Value) -as $this._Value.GetType() }
+        $this.Cache.Remove('ChildNodes')
+    }
+
+    Remove($Value) {
+        if ($Value -is [PSNode]) { $Value = $Value.Value }
+        if (-not $this.Value.Contains($Value)) { return }
+        if ($this.Value.GetType().GetMethod('Remove')) { $null = $this._value.remove($Value) }
+        else {
+            $cList = [List[Object]]::new()
+            $iList = [List[Object]]::new()
+            $ceq = $false
+            foreach ($ChildNode in $this.get_ChildNodes()) {
+                if (-not $ceq -and $ChildNode.Value -ceq $Value) { $ceq = $true } else { $cList.Add($ChildNode.Value) }
+                if (-not $ceq -and $ChildNode.Value -ine $Value)                       { $iList.Add($ChildNode.Value) }
+            }
+            if ($ceq) { $this._Value = $cList -as $this._Value.GetType() }
+            else      { $this._Value = $iList -as $this._Value.GetType() }
+        }
+        $this.Cache.Remove('ChildNodes')
+    }
+
+    RemoveAt([Int]$Index) {
+        if ($Index -lt 0 -or $Index -ge $this.Value.Count) { Throw 'Index was out of range. Must be non-negative and less than the size of the collection.' }
+        if ($this.Value.GetType().GetMethod('RemoveAt')) { $null = $this._Value.removeAt($Index) }
+        else {
+            $this._Value = $(for ($i = 0; $i -lt $this._Value.Count; $i++) {
+                if ($i -ne $index) { $this._Value[$i] }
+            }) -as $this.ValueType
+        }
+        $this.Cache.Remove('ChildNodes')
+    }
+
+    [Object]GetChildNode([Int]$Index) {
+        if ($this.MaxDepthReached()) { return @() }
+        $Count = $this._Value.get_Count()
+        if ($Index -lt -$Count -or $Index -ge $Count) { throw "The <Object>$($this.Path) doesn't contain a child index: $Index" }
+        if ($Index -lt 0) { $Index = $Count + $Index } # Negative index
+        if (-not $this.Cache.ContainsKey('ChildNode')) { $this.Cache['ChildNode'] = [Dictionary[Int,Object]]::new() }
+        if (
+            -not $this.Cache.ChildNode.ContainsKey($Index) -or
+            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Index]._Value, $this._Value[$Index])
+        ) {
+            $Node             = [PSNode]::ParseInput($this._Value[$Index])
+            $Node._Name       = $Index
+            $Node.Depth       = $this.Depth + 1
+            $Node.RootNode    = [PSNode]$this.RootNode
+            $Node.ParentNode  = $this
+            $this.Cache.ChildNode[$Index] = $Node
+        }
+        return $this.Cache.ChildNode[$Index]
+    }
+
+    hidden [Object[]]get_ChildNodes() {
+        if (-not $this.Cache.ContainsKey('ChildNodes')) {
+            $ChildNodes = for ($Index = 0; $Index -lt $this._Value.get_Count(); $Index++) { $this.GetChildNode($Index) }
+            if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
+        }
+        return $this.Cache['ChildNodes']
+    }
+
+    [Int]GetHashCode($CaseSensitive) {
+        # The hash of a list node is equal if all items match the order and the case.
+        # The primary keys and the list type are not relevant
+        if ($null -eq $this._HashCode) {
+            $this._HashCode = [Dictionary[bool,int]]::new()
+            $this._ReferenceHashCode = [Dictionary[bool,int]]::new()
+        }
+        $ReferenceHashCode = $This._value.GetHashCode()
+        if (-not $this._ReferenceHashCode.ContainsKey($CaseSensitive) -or $this._ReferenceHashCode[$CaseSensitive] -ne $ReferenceHashCode) {
+            $this._ReferenceHashCode[$CaseSensitive] = $ReferenceHashCode
+            $HashCode = '@()'.GetHashCode() # Empty lists have a common hash that is not 0
+            $Index = 0
+            foreach ($Node in $this.GetNodeList()) {
+                $HashCode = $HashCode -bxor "$Index.$($Node.GetHashCode($CaseSensitive))".GetHashCode()
+                $index++
+            }
+            $this._HashCode[$CaseSensitive] = $HashCode
+        }
+        return $this._HashCode[$CaseSensitive]
+    }
+}
+Class PSMapNode : PSCollectionNode {
+    hidden static PSMapNode() { Use-ClassAccessors }
+
+    [Int]GetHashCode($CaseSensitive) {
+        # The hash of a map node is equal if all names and items match the order and the case.
+        # The map type is not relevant
+        if ($null -eq $this._HashCode) {
+            $this._HashCode = [Dictionary[bool,int]]::new()
+            $this._ReferenceHashCode = [Dictionary[bool,int]]::new()
+        }
+        $ReferenceHashCode = $This._value.GetHashCode()
+        if (-not $this._ReferenceHashCode.ContainsKey($CaseSensitive) -or $this._ReferenceHashCode[$CaseSensitive] -ne $ReferenceHashCode) {
+            $this._ReferenceHashCode[$CaseSensitive] = $ReferenceHashCode
+            $HashCode = '@{}'.GetHashCode() # Empty maps have a common hash that is not 0
+            $Index = 0
+            foreach ($Node in $this.GetNodeList()) {
+                $Name = if ($CaseSensitive) { $Node._Name } else { $Node._Name.ToUpper() }
+                $HashCode = $HashCode -bxor "$Index.$Name=$($Node.GetHashCode())".GetHashCode()
+                $Index++
+            }
+            $this._HashCode[$CaseSensitive] = $HashCode
+        }
+        return $this._HashCode[$CaseSensitive]
+    }
+}
+Class PSDictionaryNode : PSMapNode {
+    hidden static PSDictionaryNode() { Use-ClassAccessors }
+
+    hidden PSDictionaryNode($Object) {
+        if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
+    }
+
+    hidden [Object]get_Count() {
+        return $this._Value.get_Count()
+    }
+
+    hidden [Object]get_Names() {
+        return ,$this._Value.get_Keys()
+    }
+
+    hidden [Object]get_Values() {
+        return ,$this._Value.get_Values()
+    }
+
+    hidden [Object]get_CaseMatters() { #Returns Nullable[Boolean]
+        if (-not $this.Cache.ContainsKey('CaseMatters')) {
+            $this.Cache['CaseMatters'] = $null # else $Null means that there is no key with alphabetic characters in the dictionary
+            foreach ($Key in $this._Value.Get_Keys()) {
+                if ($Key -is [String] -and $Key -match '[a-z]') {
+                    $Case = if ([Int][Char]($Matches[0]) -ge 97) { $Key.ToUpper() } else { $Key.ToLower() }
+                    $this.Cache['CaseMatters'] = -not $this.Contains($Case) -or $Case -cin $this._Value.Get_Keys()
+                    break
+                }
+            }
+        }
+        return $this.Cache['CaseMatters']
+    }
+
+    [Bool]Contains($Key) {
+        if ($this._Value.GetType().GetMethod('ContainsKey')) {
+            return $this._Value.ContainsKey($Key)
+        }
+        else {
+            return $this._Value.Contains($Key)
+        }
+    }
+    [Bool]Exists($Key) { return $this.Contains($Key) }
+
+    [Object]GetValue($Key) { return $this._Value[$Key] }
+    [Object]GetValue($Key, $Default) {
+        if (-not $This.Contains($Key)) { return $Default }
+        return $this._Value[$Key]
+    }
+
+    SetValue($Key, $Value) {
+        if ($Value -is [PSNode]) { $Value = $Value.Value }
+        $this._Value[$Key] = $Value
+        $this.Cache.Remove('ChildNodes')
+    }
+
+    Add($Key, $Value) {
+        if ($this.Contains($Key)) { Throw "Item '$Key' has already been added." }
+        if ($Value -is [PSNode]) { $Value = $Value.Value }
+        $this._Value.Add($Key, $Value)
+        $this.Cache.Remove('ChildNodes')
+    }
+
+    Remove($Key) {
+        $null = $this._Value.Remove($Key)
+        $this.Cache.Remove('ChildNodes')
+    }
+
+    hidden RemoveAt($Key) { # General method for: ChildNode.Remove() { $_.ParentNode.Remove($_.Name) }
+        if (-not $this.Contains($Key)) { Throw "Item '$Key' doesn't exist." }
+        $null = $this._Value.Remove($Key)
+        $this.Cache.Remove('ChildNodes')
+    }
+
+    [Object]GetChildNode([Object]$Key) {
+        if ($this.MaxDepthReached()) { return @() }
+        if (-not $this.Contains($Key)) { Throw "The <Object>$($this.Path) doesn't contain a child named: $Key" }
+        if (-not $this.Cache.ContainsKey('ChildNode')) {
+            # The ChildNode cache case sensitivity is based on the current dictionary population.
+            # The ChildNode cache is always ordinal, if the contained dictionary is invariant, extra entries might
+            # appear in the cache but shouldn't effect the results other than slightly slow down the performance.
+            # In other words, do not use the cache to count the entries. Custom comparers are not supported.
+            $this.Cache['ChildNode'] = if ($this.get_CaseMatters()) { [HashTable]::new() } else { @{} } # default is case insensitive
+        }
+        elseif (
+            -not $this.Cache.ChildNode.ContainsKey($Key) -or
+            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Key]._Value, $this._Value[$Key])
+        ) {
+            if($null -eq $this.get_CaseMatters()) { # If the case was undetermined, check the new key for case sensitivity
+                $this.Cache.CaseMatters = if ($Key -is [String] -and $Key -match '[a-z]') {
+                    $Case = if ([Int][Char]($Matches[0]) -ge 97) { $Key.ToUpper() } else { $Key.ToLower() }
+                    -not $this._Value.Contains($Case) -or $Case -cin $this._Value.Get_Keys()
+                }
+                if ($this.get_CaseMatters()) {
+                    $ChildNode = $this.Cache['ChildNode']
+                    $this.Cache['ChildNode'] = [HashTable]::new() # Create a new cache as it appears to be case sensitive
+                    foreach ($Name in $ChildNode.get_Keys()) { # Migrate the content
+                        $this.Cache.ChildNode[$Name] = $ChildNode[$Name]
+                    }
+                }
+            }
+        }
+        if (
+            -not $this.Cache.ChildNode.ContainsKey($Key) -or
+            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Key].Value, $this._Value[$Key])
+        ) {
+            $Node             = [PSNode]::ParseInput($this._Value[$Key])
+            $Node._Name       = $Key
+            $Node.Depth       = $this.Depth + 1
+            $Node.RootNode    = [PSNode]$this.RootNode
+            $Node.ParentNode  = $this
+            $this.Cache.ChildNode[$Key] = $Node
+        }
+        return $this.Cache.ChildNode[$Key]
+    }
+
+    hidden [Object[]]get_ChildNodes() {
+        if (-not $this.Cache.ContainsKey('ChildNodes')) {
+            $ChildNodes = foreach ($Key in $this._Value.get_Keys()) { $this.GetChildNode($Key) }
+            if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
+        }
+        return $this.Cache['ChildNodes']
+    }
+}
+Class PSObjectNode : PSMapNode {
+    hidden static PSObjectNode() { Use-ClassAccessors }
+
+    hidden PSObjectNode($Object) {
+        if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
+    }
+
+    hidden [Object]get_Count() {
+        return @($this._Value.PSObject.Properties).get_Count()
+    }
+
+    hidden [Object]get_Names() {
+        return ,$this._Value.PSObject.Properties.Name
+    }
+
+    hidden [Object]get_Values() {
+        return ,$this._Value.PSObject.Properties.Value
+    }
+
+    hidden [Object]get_CaseMatters() { return $false }
+
+    [Bool]Contains($Name) {
+        return $this._Value.PSObject.Properties[$Name]
+    }
+
+    [Bool]Exists($Name) {
+        return $this._Value.PSObject.Properties[$Name]
+    }
+
+    [Object]GetValue($Name) { return $this._Value.PSObject.Properties[$Name].Value }
+    [Object]GetValue($Name, $Default) {
+        if (-not $this.Contains($Name)) { return $Default }
+        return $this._Value[$Name]
+    }
+
+    SetValue($Name, $Value) {
+        if ($Value -is [PSNode]) { $Value = $Value.Value }
+        if ($this._Value -isnot [PSCustomObject]) {
+            $Properties = [Ordered]@{}
+            foreach ($Property in $this._Value.PSObject.Properties) { $Properties[$Property.Name] = $Property.Value }
+            $Properties[$Name] = $Value
+            $this._Value = [PSCustomObject]$Properties
+            $this.Cache.Remove('ChildNodes')
+        }
+        elseif ($this._Value.PSObject.Properties[$Name]) {
+            $this._Value.PSObject.Properties[$Name].Value = $Value
+        }
+        else {
+            $this._Value.PSObject.Properties.Add([PSNoteProperty]::new($Name, $Value))
+            $this.Cache.Remove('ChildNodes')
+        }
+    }
+
+    Add($Name, $Value) {
+        if ($this.Contains($Name)) { Throw "Item '$Name' has already been added." }
+        $this.SetValue($Name, $Value)
+    }
+
+    Remove($Name) {
+        $this._Value.PSObject.Properties.Remove($Name)
+        $this.Cache.Remove('ChildNodes')
+    }
+
+    hidden RemoveAt($Name) { # General method for: ChildNode.Remove() { $_.ParentNode.Remove($_.Name) }
+        if (-not $this.Contains($Name)) { Throw "Item '$Name' doesn't exist." }
+        $this._Value.PSObject.Properties.Remove($Name)
+        $this.Cache.Remove('ChildNodes')
+    }
+
+    [Object]GetChildNode([String]$Name) {
+        if ($this.MaxDepthReached()) { return @() }
+        if (-not $this.Contains($Name)) { Throw Throw "$($this.GetPathName('<Root>')) doesn't contain a child named: $Name"  }
+        if (-not $this.Cache.ContainsKey('ChildNode')) { $this.Cache['ChildNode'] = @{} } # Object properties are case insensitive
+        if (
+            -not $this.Cache.ChildNode.ContainsKey($Name) -or
+            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Name]._Value, $this._Value.PSObject.Properties[$Name].Value)
+        ) {
+            $Node             = [PSNode]::ParseInput($this._Value.PSObject.Properties[$Name].Value)
+            $Node._Name       = $Name
+            $Node.Depth       = $this.Depth + 1
+            $Node.RootNode    = [PSNode]$this.RootNode
+            $Node.ParentNode  = $this
+            $this.Cache.ChildNode[$Name] = $Node
+        }
+        return $this.Cache.ChildNode[$Name]
+    }
+
+    hidden [Object[]]get_ChildNodes() {
+        if (-not $this.Cache.ContainsKey('ChildNodes')) {
+            $ChildNodes = foreach ($Property in $this._Value.PSObject.Properties) { $this.GetChildNode($Property.Name) }
+            if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
+        }
+        return $this.Cache['ChildNodes']
     }
 }
 class ObjectComparer {
@@ -550,7 +1335,7 @@ class ObjectComparer {
                                 Path        = $Node2.Path + "[$Index2]"
                                 $this.Issue = 'Exists'
                                 $this.Name1 = $Null
-                                $this.Name2 = if ($Item2 -is [PSLeafNode]) { "$($Item2.Value)" } else { "[$($Item2.ValueType)]" }
+                                $this.Name2 = $Item2
                             })
                         }
                     }
@@ -563,7 +1348,7 @@ class ObjectComparer {
                             $this.Differences.Add([PSCustomObject]@{
                                 Path        = $Node1.Path + "[$Index1]"
                                 $this.Issue = 'Exists'
-                                $this.Name1 = if ($Item1 -is [PSLeafNode]) { "$($Item1.Value)" } else { "[$($Item1.ValueType)]" }
+                                $this.Name1 = $Item1
                                 $this.Name2 = $Null
                             })
                         }
@@ -671,6 +1456,14 @@ class ObjectComparer {
         if ($Mode -eq 'Compare') { throw 'Compare comparison should have returned integer.' }
         return @()
     }
+}
+class PSListNodeComparer : ObjectComparer, IComparer[Object] { # https://github.com/PowerShell/PowerShell/issues/23959
+    PSListNodeComparer () {}
+    PSListNodeComparer ([String[]]$PrimaryKey) { $this.PrimaryKey = $PrimaryKey }
+    PSListNodeComparer ([ObjectComparison]$ObjectComparison) { $this.ObjectComparison = $ObjectComparison }
+    PSListNodeComparer ([String[]]$PrimaryKey, [ObjectComparison]$ObjectComparison) { $this.PrimaryKey = $PrimaryKey; $this.ObjectComparison = $ObjectComparison }
+    PSListNodeComparer ([ObjectComparison]$ObjectComparison, [String[]]$PrimaryKey) { $this.PrimaryKey = $PrimaryKey; $this.ObjectComparison = $ObjectComparison }
+    [int] Compare ([Object]$Node1, [Object]$Node2) { return $this.CompareRecurse($Node1, $Node2, 'Compare') }
 }
 class PSMapNodeComparer : IComparer[Object] {
     [String[]]$PrimaryKey
@@ -1137,7 +1930,10 @@ Class PSSerialize {
                         $this.StringBuilder.Append(',')
                         $this.NewWord()
                     }
-                    elseif ($ExpandSingle) { $this.NewWord('') }
+                    else {
+                        if ($ExpandSingle) { $this.NewWord('') }
+                        if ($ChildNodes.Count -eq 1 -and $ChildNodes[0] -is [PSListNode]) { $this.StringBuilder.Append(',') }
+                    }
                     $this.Stringify($ChildNode)
                 }
                 $this.Offset--
@@ -1162,7 +1958,11 @@ Class PSSerialize {
                             $this.StringBuilder.Append([VariableColor](
                                 [PSKeyExpression]::new($ChildNodes[$Index].Name, [PSSerialize]::MaxKeyLength)))
                             $this.StringBuilder.Append('=')
-                            if (-not $IsSubNode -or $this.StringBuilder.Length -le [PSSerialize]::MaxKeyLength) {
+                            if (
+                                -not $IsSubNode -or
+                                $this.StringBuilder.Length -le [PSSerialize]::MaxKeyLength -or
+                                ($ChildNodes.Count -eq 1 -and $ChildNodes[$Index] -is [PSLeafNode])
+                            ) {
                                 $this.StringBuilder.Append($this.Stringify($ChildNodes[$Index]))
                             }
                             else { $this.StringBuilder.Append([Abbreviate]::Ellipses) }
@@ -1246,6 +2046,17 @@ Class ANSI {
     static [String]$InverseOff
 
     Static ANSI() {
+        # https://stackoverflow.com/questions/38045245/how-to-call-getstdhandle-getconsolemode-from-powershell
+        $MethodDefinitions = @'
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern IntPtr GetStdHandle(int nStdHandle);
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+'@
+        $Kernel32 = Add-Type -MemberDefinition $MethodDefinitions -Name 'Kernel32' -Namespace 'Win32' -PassThru
+        $hConsoleHandle = $Kernel32::GetStdHandle(-11) # STD_OUTPUT_HANDLE
+        if (-not $Kernel32::GetConsoleMode($hConsoleHandle, [ref]0)) { return }
+
         $PSReadLineOption = try { Get-PSReadLineOption -ErrorAction SilentlyContinue } catch { $null }
         if (-not $PSReadLineOption) { return }
         $ANSIType = [ANSI] -as [Type]
@@ -1284,6 +2095,23 @@ Class TextStyle {
         }
     }
 }
+Class TextColor : TextStyle { TextColor($Text, $AnsiColor) : base($Text, $AnsiColor, [ANSI]::ResetColor) {} }
+Class CommandColor : TextColor { CommandColor($Text) : base($Text, [ANSI]::CommandColor) {} }
+Class CommentColor : TextColor { CommentColor($Text) : base($Text, [ANSI]::CommentColor) {} }
+Class ContinuationPromptColor : TextColor { ContinuationPromptColor($Text) : base($Text, [ANSI]::ContinuationPromptColor) {} }
+Class DefaultTokenColor : TextColor { DefaultTokenColor($Text) : base($Text, [ANSI]::DefaultTokenColor) {} }
+Class EmphasisColor : TextColor { EmphasisColor($Text) : base($Text, [ANSI]::EmphasisColor) {} }
+Class ErrorColor : TextColor { ErrorColor($Text) : base($Text, [ANSI]::ErrorColor) {} }
+Class KeywordColor : TextColor { KeywordColor($Text) : base($Text, [ANSI]::KeywordColor) {} }
+Class MemberColor : TextColor { MemberColor($Text) : base($Text, [ANSI]::MemberColor) {} }
+Class NumberColor : TextColor { NumberColor($Text) : base($Text, [ANSI]::NumberColor) {} }
+Class OperatorColor : TextColor { OperatorColor($Text) : base($Text, [ANSI]::OperatorColor) {} }
+Class ParameterColor : TextColor { ParameterColor($Text) : base($Text, [ANSI]::ParameterColor) {} }
+Class SelectionColor : TextColor { SelectionColor($Text) : base($Text, [ANSI]::SelectionColor) {} }
+Class StringColor : TextColor { StringColor($Text) : base($Text, [ANSI]::StringColor) {} }
+Class TypeColor : TextColor { TypeColor($Text) : base($Text, [ANSI]::TypeColor) {} }
+Class VariableColor : TextColor { VariableColor($Text) : base($Text, [ANSI]::VariableColor) {} }
+Class InverseColor : TextStyle { InverseColor($Text) : base($Text, [ANSI]::InverseColor, [ANSI]::InverseOff) {} }
 class XdnName {
     hidden [Bool]$_Literal
     hidden $_IsVerbatim
@@ -1503,695 +2331,6 @@ class XdnPath {
         Use-ClassAccessors
     }
 }
-class LogicalOperator : LogicalTerm {
-    hidden [LogicalOperatorEnum]$Value
-    LogicalOperator ([LogicalOperatorEnum]$Operator) { $this.Value = $Operator }
-    LogicalOperator ([String]$Operator) { $this.Value = [LogicalOperatorEnum]$Operator }
-    [String]ToString() { return $this.Value }
-}
-class LogicalVariable : LogicalTerm {
-    hidden [Object]$Value
-    LogicalVariable ($Variable) { $this.Value = $Variable }
-    [String]ToString() {
-        if ($this.Value -is [String]) {
-            return "'$($this.Value -Replace "'", "''")'"
-        }
-        else { return $this.Value }
-    }
-}
-class LogicalFormula : LogicalTerm {
-    hidden static $OperatorSymbols = @{
-        '!' = [LogicalOperatorEnum]'Not'
-        ',' = [LogicalOperatorEnum]'And'
-        '*' = [LogicalOperatorEnum]'And'
-        '|' = [LogicalOperatorEnum]'Or'
-        '+' = [LogicalOperatorEnum]'Or'
-    }
-    hidden static [Int[]]$OperatorNameLengths
-
-    hidden [List[LogicalTerm]]$Terms = [List[LogicalTerm]]::new()
-    hidden [Int]$Pointer
-
-    GetFormula([String]$Expression, [Int]$Start) {
-        $SubExpression = $Start -gt 0
-        $InString = $null # Quote type (double - or single quoted)
-        $Escaped = $null
-        $this.Pointer = $Start
-        While ($this.Pointer -le $Expression.Length) {
-            $Char = if ($this.Pointer -lt $Expression.Length) { $Expression[$this.Pointer] }
-            if ($InString) {
-                if ($Char -eq $InString) {
-                    if ($this.Pointer + 1 -lt $Expression.Length -and $Expression[$this.Pointer + 1] -eq $InString) {
-                        $Escaped = $true
-                         $this.Pointer++
-                    }
-                    else {
-                        $Name = $Expression.SubString($Start + 1, ($this.Pointer - $Start - 1))
-                        if ($Escaped) { $Name = $Name.Replace("$InString$InString", $InString) }
-                        $this.Terms.Add([LogicalVariable]::new($Name))
-                        $InString = $Null
-                        $Start = $this.Pointer + 1
-                    }
-                }
-            }
-            elseif ('"', "'" -eq $Char) {
-                $InString = $Char
-                $Escaped = $false
-                $Start = $this.Pointer
-            }
-            elseif ($Char -eq '(') {
-                $Formula = [LogicalFormula]::new($Expression, ($this.Pointer + 1))
-                $this.Terms.Add($Formula)
-                $this.Pointer = $Formula.Pointer
-                $Start = $this.Pointer + 1
-            }
-            elseif ($Char -in $Null, ' ', ')' + [LogicalFormula]::OperatorSymbols.Keys) {
-                $Length = $this.Pointer - $Start
-                if ($Length -gt 0) {
-                    $Term = $Expression.SubString($Start, $Length)
-                    if ([LogicalOperatorEnum].GetEnumNames() -eq $Term) {
-                        $this.Terms.Add([LogicalOperator]::new($Term))
-                    }
-                    else {
-                        $Double = 0
-                        if ([double]::TryParse($Term, [Ref]$Double)) {
-                            $this.Terms.Add([LogicalVariable]::new($Double))
-                        }
-                        else {
-                            $this.Terms.Add([LogicalVariable]::new($Term))
-                        }
-                    }
-                }
-                if ($Char -eq ')') { return }
-                if ($Char -gt ' ') {
-                    $this.Terms.Add([LogicalOperator]::new([LogicalFormula]::OperatorSymbols($Char)))
-                }
-                $Start = $this.Pointer + 1
-            }
-            # elseif ($Char -le ' ' -or $Null -eq $Char) { # A space or any control code
-            #     if ($Start -lt $this.Pointer) {
-            #         $this.Terms.Add($this.GetUnquotedTerm($Expression, $Start, ($this.Pointer - $Start)))
-            #     }
-            #     $Start = $this.Pointer + 1
-            # }
-            $this.Pointer++
-        }
-        if ($InString) { Throw "Missing the terminator: $InString in logical expression: $Expression" }
-        if ($SubExpression) { Throw "Missing closing ')' in logical expression: $Expression" }
-    }
-
-    LogicalFormula ([String]$Expression) {
-        $this.GetFormula($Expression, 0)
-        if ($this.Pointer -lt $Expression.Length) {
-            Throw "Unexpected token ')' at position $($this.Pointer) in logical expression: $Expression"
-        }
-    }
-
-    LogicalFormula ([String]$Expression, $Start) {
-        $this.GetFormula($Expression, $Start)
-    }
-
-    Append ([LogicalOperator]$Operator, [LogicalFormula]$Formula) {
-        if ($Operator.Value -eq 'Not') { $this.Terms.Add([LogicalOperator]'And') }
-        $this.Terms.Add($Operator)
-        $this.Terms.AddRange($Formula.Terms)
-    }
-
-    [String] ToString() {
-        $StringBuilder = [System.Text.StringBuilder]::new()
-        $Stack = [System.Collections.Stack]::new()
-        $Enumerator = $this.Terms.GetEnumerator()
-        $Term = $null
-        while ($true) {
-            while ($Enumerator.MoveNext()) {
-                if ($Null -ne $Term) {
-                    $null = $StringBuilder.Append([ANSI]::ResetColor) # Not really necessarily
-                    $null = $StringBuilder.Append(' ')
-                }
-                $Term = $Enumerator.Current
-                if ($Term -is [LogicalVariable]) {
-                    if ($Term.Value -is [String])     { $null = $StringBuilder.Append([ANSI]::VariableColor) }
-                    else                              { $null = $StringBuilder.Append([ANSI]::NumberColor) }
-                }
-                elseif ($Term -is [LogicalOperator])  { $null = $StringBuilder.Append([ANSI]::OperatorColor) }
-                else { # if ($Term -is [LogicalFormula])
-                    $null = $StringBuilder.Append([ANSI]::StringColor)
-                    $null = $StringBuilder.Append('(')
-                    $Stack.Push($Enumerator)
-                    $Enumerator = $Term.Terms.GetEnumerator()
-                    $Term = $null
-                    continue
-                }
-                $null = $StringBuilder.Append($Term)
-            }
-            if (-not $Stack.Count) {
-                $null = $StringBuilder.Append([ANSI]::ResetColor)
-                break
-            }
-            $null = $StringBuilder.Append([ANSI]::StringColor)
-            $null = $StringBuilder.Append(')')
-            $Enumerator = $Stack.Pop()
-        }
-        return $StringBuilder.ToString()
-    }
-}
-Class PSLeafNode : PSNode {
-
-    hidden MaxDepthReached() { } # return nothing knowing that leaf nodes terminate the path anyways
-
-    hidden PSLeafNode($Object) {
-        if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
-    }
-
-    [Int]GetHashCode($CaseSensitive) {
-        if ($Null -eq $this._Value) { return '$Null'.GetHashCode() }
-        if ($CaseSensitive) { return $this._Value.GetHashCode() }
-        else {
-            if ($this._Value -is [String]) { return $this._Value.ToUpper().GetHashCode() } # Windows PowerShell doesn't have a System.HashCode structure
-            else { return $this._Value.GetHashCode() }
-        }
-    }
-
-    [string]ToString() {
-        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
-    }
-}
-Class PSCollectionNode : PSNode {
-    hidden static PSCollectionNode() { Use-ClassAccessors }
-    hidden [Dictionary[bool,int]]$_HashCode # Unlike the value HashCode, the default (bool = $false) node HashCode is case insensitive
-    hidden [Dictionary[bool,int]]$_ReferenceHashCode # if changed, recalculate the (bool = case sensitive) node's HashCode
-
-    hidden [bool]MaxDepthReached() {
-        # Check whether the max depth has been reached.
-        # Warn if it has, but suppress the warning if
-        # it took less then 5 seconds since the last
-        # time it reached the max depth.
-        $MaxDepthReached = $this.Depth -ge $this.RootNode._MaxDepth
-        if ($MaxDepthReached) {
-            if (([DateTime]::Now - $this.RootNode.MaxDepthWarningTime).TotalSeconds -gt 5) {
-                Write-Warning "$($this.Path) reached the maximum depth of $($this.RootNode._MaxDepth)."
-            }
-            $this.RootNode.MaxDepthWarningTime = [DateTime]::Now
-        }
-        return $MaxDepthReached
-    }
-
-    hidden WarnSelector ([PSCollectionNode]$Node, [String]$Name) {
-        if ($Node -is [PSListNode]) {
-            $SelectionName  = "'$Name'"
-            $CollectionType = 'list'
-        }
-        else {
-            $SelectionName  = "[$Name]"
-            $CollectionType = 'list'
-        }
-        Write-Warning "Expected $SelectionName to be a $CollectionType selector for: <Object>$($Node.Path)"
-    }
-
-    hidden [List[Ast]] GetAstSelectors ($Ast) {
-        $List = [List[Ast]]::new()
-        if ($Ast -isnot [Ast]) {
-            $Ast = [Parser]::ParseInput("`$_$Ast", [ref]$Null, [ref]$Null)
-            $Ast = $Ast.EndBlock.Statements.PipeLineElements.Expression
-        }
-        if ($Ast -is [IndexExpressionAst]) {
-            $List.AddRange($this.GetAstSelectors($Ast.Target))
-            $List.Add($Ast)
-        }
-        elseif ($Ast -is [MemberExpressionAst]) {
-            $List.AddRange($this.GetAstSelectors($Ast.Expression))
-            $List.Add($Ast)
-        }
-        elseif ($Ast.Extent.Text -ne '$_') {
-            Throw "Parse error: $($Ast.Extent.Text)"
-        }
-        return $List
-    }
-
-    [List[PSNode]]GetNodeList($Levels, [Bool]$LeafNodesOnly) {
-        $NodeList = [List[PSNode]]::new()
-        $Stack = [Stack]::new()
-        $Stack.Push($this.get_ChildNodes().GetEnumerator())
-        $Level = 1
-        While ($Stack.Count -gt 0) {
-            $Enumerator = $Stack.Pop()
-            $Level--
-            while ($Enumerator.MoveNext()) {
-                $Node = $Enumerator.Current
-                if ($Node.MaxDepthReached() -or ($Levels -ge 0 -and $Level -ge $Levels)) { break }
-                if (-not $LeafNodesOnly -or $Node -is [PSLeafNode]) { $NodeList.Add($Node) }
-                if ($Node -is [PSCollectionNode]) {
-                    $Stack.Push($Enumerator)
-                    $Level++
-                    $Enumerator = $Node.get_ChildNodes().GetEnumerator()
-                }
-            }
-        }
-        return $NodeList
-    }
-    [List[PSNode]]GetNodeList()             { return $this.GetNodeList(1, $False) }
-    [List[PSNode]]GetNodeList([Int]$Levels) { return $this.GetNodeList($Levels, $False) }
-    hidden [PSNode[]]get_DescendantNodes()  { return $this.GetNodeList(-1, $False) }
-    hidden [PSNode[]]get_LeafNodes()        { return $this.GetNodeList(-1, $True) }
-
-    Sort() { $this.Sort($Null, 0) }
-    Sort([ObjectComparison]$ObjectComparison) { $this.Sort($Null, $ObjectComparison) }
-    Sort([String[]]$PrimaryKey) { $this.Sort($PrimaryKey, 0) }
-    Sort([ObjectComparison]$ObjectComparison, [String[]]$PrimaryKey) { $this.Sort($PrimaryKey, $ObjectComparison) }
-    Sort([String[]]$PrimaryKey, [ObjectComparison]$ObjectComparison) {
-        # As the child nodes are sorted first, we just do a side-by-side node compare:
-        $ObjectComparison = $ObjectComparison -bor [ObjectComparison]'MatchMapOrder'
-        $ObjectComparison = $ObjectComparison -band (-1 - [ObjectComparison]'IgnoreListOrder')
-        $PSListNodeComparer = [PSListNodeComparer]@{ PrimaryKey = $PrimaryKey; ObjectComparison = $ObjectComparison }
-        $PSMapNodeComparer = [PSMapNodeComparer]@{ PrimaryKey = $PrimaryKey; ObjectComparison = $ObjectComparison }
-        $this.SortRecurse($PSListNodeComparer, $PSMapNodeComparer)
-    }
-
-    hidden SortRecurse([PSListNodeComparer]$PSListNodeComparer, [PSMapNodeComparer]$PSMapNodeComparer) {
-        $NodeList = $this.GetNodeList()
-        foreach ($Node in $NodeList) {
-            if ($Node -is [PSCollectionNode]) { $Node.SortRecurse($PSListNodeComparer, $PSMapNodeComparer) }
-        }
-        if ($this -is [PSListNode]) {
-            $NodeList.Sort($PSListNodeComparer)
-            if ($NodeList.Count) { $this._Value = @($NodeList.Value) } else { $this._Value = @() }
-        }
-        else { # if ($Node -is [PSMapNode])
-            $NodeList.Sort($PSMapNodeComparer)
-            $Properties = [System.Collections.Specialized.OrderedDictionary]::new([StringComparer]::Ordinal)
-            foreach($ChildNode in $NodeList) { $Properties[[Object]$ChildNode.Name] = $ChildNode.Value } # [Object] forces a key rather than an index (ArgumentOutOfRangeException)
-            if ($this -is [PSObjectNode]) { $this._Value = [PSCustomObject]$Properties } else { $this._Value = $Properties }
-        }
-    }
-}
-Class PSListNode : PSCollectionNode {
-    hidden static PSListNode() { Use-ClassAccessors }
-
-    hidden PSListNode($Object) {
-        if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
-    }
-
-    hidden [Object]get_Count() {
-        return $this._Value.get_Count()
-    }
-
-    hidden [Object]get_Names() {
-        if ($this._Value.Length) { return ,@(0..($this._Value.Length - 1)) }
-        return ,@()
-    }
-
-    hidden [Object]get_Values() {
-        return ,@($this._Value)
-    }
-
-    hidden [Object]get_CaseMatters() { return $false }
-
-    [Bool]Contains($Index) {
-       return $Index -ge 0 -and $Index -lt $this.get_Count()
-    }
-
-    [Bool]Exists($Index) {
-        return $Index -ge 0 -and $Index -lt $this.get_Count()
-    }
-
-    [Object]GetValue($Index) { return $this._Value[$Index] }
-    [Object]GetValue($Index, $Default) {
-        if (-not $This.Contains($Index)) { return $Default }
-        return $this._Value[$Index]
-    }
-
-    SetValue($Index, $Value) {
-        if ($Value -is [PSNode]) { $Value = $Value.Value }
-        $this._Value[$Index] = $Value
-    }
-
-    Add($Value) {
-        if ($Value -is [PSNode]) { $Value = $Value._Value }
-        if ($this._Value.GetType().GetMethod('Add')) { $null = $This._Value.Add($Value) }
-        else { $this._Value = ($this._Value + $Value) -as $this._Value.GetType() }
-        $this.Cache.Remove('ChildNodes')
-    }
-
-    Remove($Value) {
-        if ($Value -is [PSNode]) { $Value = $Value.Value }
-        if (-not $this.Value.Contains($Value)) { return }
-        if ($this.Value.GetType().GetMethod('Remove')) { $null = $this._value.remove($Value) }
-        else {
-            $cList = [List[Object]]::new()
-            $iList = [List[Object]]::new()
-            $ceq = $false
-            foreach ($ChildNode in $this.get_ChildNodes()) {
-                if (-not $ceq -and $ChildNode.Value -ceq $Value) { $ceq = $true } else { $cList.Add($ChildNode.Value) }
-                if (-not $ceq -and $ChildNode.Value -ine $Value)                       { $iList.Add($ChildNode.Value) }
-            }
-            if ($ceq) { $this._Value = $cList -as $this._Value.GetType() }
-            else      { $this._Value = $iList -as $this._Value.GetType() }
-        }
-        $this.Cache.Remove('ChildNodes')
-    }
-
-    RemoveAt([Int]$Index) {
-        if ($Index -lt 0 -or $Index -ge $this.Value.Count) { Throw 'Index was out of range. Must be non-negative and less than the size of the collection.' }
-        if ($this.Value.GetType().GetMethod('RemoveAt')) { $null = $this._Value.removeAt($Index) }
-        else {
-            $this._Value = $(for ($i = 0; $i -lt $this._Value.Count; $i++) {
-                if ($i -ne $index) { $this._Value[$i] }
-            }) -as $this.ValueType
-        }
-        $this.Cache.Remove('ChildNodes')
-    }
-
-    [Object]GetChildNode([Int]$Index) {
-        if ($this.MaxDepthReached()) { return @() }
-        $Count = $this._Value.get_Count()
-        if ($Index -lt -$Count -or $Index -ge $Count) { throw "The <Object>$($this.Path) doesn't contain a child index: $Index" }
-        if ($Index -lt 0) { $Index = $Count + $Index } # Negative index
-        if (-not $this.Cache.ContainsKey('ChildNode')) { $this.Cache['ChildNode'] = [Dictionary[Int,Object]]::new() }
-        if (
-            -not $this.Cache.ChildNode.ContainsKey($Index) -or
-            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Index]._Value, $this._Value[$Index])
-        ) {
-            $Node             = [PSNode]::ParseInput($this._Value[$Index])
-            $Node._Name       = $Index
-            $Node.Depth       = $this.Depth + 1
-            $Node.RootNode    = [PSNode]$this.RootNode
-            $Node.ParentNode  = $this
-            $this.Cache.ChildNode[$Index] = $Node
-        }
-        return $this.Cache.ChildNode[$Index]
-    }
-
-    hidden [Object[]]get_ChildNodes() {
-        if (-not $this.Cache.ContainsKey('ChildNodes')) {
-            $ChildNodes = for ($Index = 0; $Index -lt $this._Value.get_Count(); $Index++) { $this.GetChildNode($Index) }
-            if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
-        }
-        return $this.Cache['ChildNodes']
-    }
-
-    [Int]GetHashCode($CaseSensitive) {
-        # The hash of a list node is equal if all items match the order and the case.
-        # The primary keys and the list type are not relevant
-        if ($null -eq $this._HashCode) {
-            $this._HashCode = [Dictionary[bool,int]]::new()
-            $this._ReferenceHashCode = [Dictionary[bool,int]]::new()
-        }
-        $ReferenceHashCode = $This._value.GetHashCode()
-        if (-not $this._ReferenceHashCode.ContainsKey($CaseSensitive) -or $this._ReferenceHashCode[$CaseSensitive] -ne $ReferenceHashCode) {
-            $this._ReferenceHashCode[$CaseSensitive] = $ReferenceHashCode
-            $HashCode = '@()'.GetHashCode() # Empty lists have a common hash that is not 0
-            $Index = 0
-            foreach ($Node in $this.GetNodeList()) {
-                $HashCode = $HashCode -bxor "$Index.$($Node.GetHashCode($CaseSensitive))".GetHashCode()
-                $index++
-            }
-            $this._HashCode[$CaseSensitive] = $HashCode
-        }
-        return $this._HashCode[$CaseSensitive]
-    }
-
-    [string]ToString() {
-        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
-    }
-}
-Class PSMapNode : PSCollectionNode {
-    hidden static PSMapNode() { Use-ClassAccessors }
-
-    [Int]GetHashCode($CaseSensitive) {
-        # The hash of a map node is equal if all names and items match the order and the case.
-        # The map type is not relevant
-        if ($null -eq $this._HashCode) {
-            $this._HashCode = [Dictionary[bool,int]]::new()
-            $this._ReferenceHashCode = [Dictionary[bool,int]]::new()
-        }
-        $ReferenceHashCode = $This._value.GetHashCode()
-        if (-not $this._ReferenceHashCode.ContainsKey($CaseSensitive) -or $this._ReferenceHashCode[$CaseSensitive] -ne $ReferenceHashCode) {
-            $this._ReferenceHashCode[$CaseSensitive] = $ReferenceHashCode
-            $HashCode = '@{}'.GetHashCode() # Empty maps have a common hash that is not 0
-            $Index = 0
-            foreach ($Node in $this.GetNodeList()) {
-                $Name = if ($CaseSensitive) { $Node._Name } else { $Node._Name.ToUpper() }
-                $HashCode = $HashCode -bxor "$Index.$Name=$($Node.GetHashCode())".GetHashCode()
-                $Index++
-            }
-            $this._HashCode[$CaseSensitive] = $HashCode
-        }
-        return $this._HashCode[$CaseSensitive]
-    }
-}
-Class PSDictionaryNode : PSMapNode {
-    hidden static PSDictionaryNode() { Use-ClassAccessors }
-
-    hidden PSDictionaryNode($Object) {
-        if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
-    }
-
-    hidden [Object]get_Count() {
-        return $this._Value.get_Count()
-    }
-
-    hidden [Object]get_Names() {
-        return ,$this._Value.get_Keys()
-    }
-
-    hidden [Object]get_Values() {
-        return ,$this._Value.get_Values()
-    }
-
-    hidden [Object]get_CaseMatters() { #Returns Nullable[Boolean]
-        if (-not $this.Cache.ContainsKey('CaseMatters')) {
-            $this.Cache['CaseMatters'] = $null # else $Null means that there is no key with alphabetic characters in the dictionary
-            foreach ($Key in $this._Value.Get_Keys()) {
-                if ($Key -is [String] -and $Key -match '[a-z]') {
-                    $Case = if ([Int][Char]($Matches[0]) -ge 97) { $Key.ToUpper() } else { $Key.ToLower() }
-                    $this.Cache['CaseMatters'] = -not $this.Contains($Case) -or $Case -cin $this._Value.Get_Keys()
-                    break
-                }
-            }
-        }
-        return $this.Cache['CaseMatters']
-    }
-
-    [Bool]Contains($Key) {
-        if ($this._Value.GetType().GetMethod('ContainsKey')) {
-            return $this._Value.ContainsKey($Key)
-        }
-        else {
-            return $this._Value.Contains($Key)
-        }
-    }
-    [Bool]Exists($Key) { return $this.Contains($Key) }
-
-    [Object]GetValue($Key) { return $this._Value[$Key] }
-    [Object]GetValue($Key, $Default) {
-        if (-not $This.Contains($Key)) { return $Default }
-        return $this._Value[$Key]
-    }
-
-    SetValue($Key, $Value) {
-        if ($Value -is [PSNode]) { $Value = $Value.Value }
-        $this._Value[$Key] = $Value
-        $this.Cache.Remove('ChildNodes')
-    }
-
-    Add($Key, $Value) {
-        if ($this.Contains($Key)) { Throw "Item '$Key' has already been added." }
-        if ($Value -is [PSNode]) { $Value = $Value.Value }
-        $this._Value.Add($Key, $Value)
-        $this.Cache.Remove('ChildNodes')
-    }
-
-    Remove($Key) {
-        $null = $this._Value.Remove($Key)
-        $this.Cache.Remove('ChildNodes')
-    }
-
-    hidden RemoveAt($Key) { # General method for: ChildNode.Remove() { $_.ParentNode.Remove($_.Name) }
-        if (-not $this.Contains($Key)) { Throw "Item '$Key' doesn't exist." }
-        $null = $this._Value.Remove($Key)
-        $this.Cache.Remove('ChildNodes')
-    }
-
-    [Object]GetChildNode([Object]$Key) {
-        if ($this.MaxDepthReached()) { return @() }
-        if (-not $this.Contains($Key)) { Throw "The <Object>$($this.Path) doesn't contain a child named: $Key" }
-        if (-not $this.Cache.ContainsKey('ChildNode')) {
-            # The ChildNode cache case sensitivity is based on the current dictionary population.
-            # The ChildNode cache is always ordinal, if the contained dictionary is invariant, extra entries might
-            # appear in the cache but shouldn't effect the results other than slightly slow down the performance.
-            # In other words, do not use the cache to count the entries. Custom comparers are not supported.
-            $this.Cache['ChildNode'] = if ($this.get_CaseMatters()) { [HashTable]::new() } else { @{} } # default is case insensitive
-        }
-        elseif (
-            -not $this.Cache.ChildNode.ContainsKey($Key) -or
-            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Key]._Value, $this._Value[$Key])
-        ) {
-            if($null -eq $this.get_CaseMatters()) { # If the case was undetermined, check the new key for case sensitivity
-                $this.Cache.CaseMatters = if ($Key -is [String] -and $Key -match '[a-z]') {
-                    $Case = if ([Int][Char]($Matches[0]) -ge 97) { $Key.ToUpper() } else { $Key.ToLower() }
-                    -not $this._Value.Contains($Case) -or $Case -cin $this._Value.Get_Keys()
-                }
-                if ($this.get_CaseMatters()) {
-                    $ChildNode = $this.Cache['ChildNode']
-                    $this.Cache['ChildNode'] = [HashTable]::new() # Create a new cache as it appears to be case sensitive
-                    foreach ($Key in $ChildNode.get_Keys()) { # Migrate the content
-                        $this.Cache.ChildNode[$Key] = $ChildNode[$Key]
-                    }
-                }
-            }
-        }
-        if (
-            -not $this.Cache.ChildNode.ContainsKey($Key) -or
-            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Key].Value, $this._Value[$Key])
-        ) {
-            $Node             = [PSNode]::ParseInput($this._Value[$Key])
-            $Node._Name       = $Key
-            $Node.Depth       = $this.Depth + 1
-            $Node.RootNode    = [PSNode]$this.RootNode
-            $Node.ParentNode  = $this
-            $this.Cache.ChildNode[$Key] = $Node
-        }
-        return $this.Cache.ChildNode[$Key]
-    }
-
-    hidden [Object[]]get_ChildNodes() {
-        if (-not $this.Cache.ContainsKey('ChildNodes')) {
-            $ChildNodes = foreach ($Key in $this._Value.get_Keys()) { $this.GetChildNode($Key) }
-            if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
-        }
-        return $this.Cache['ChildNodes']
-    }
-
-    [string]ToString() {
-        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
-    }
-}
-Class PSObjectNode : PSMapNode {
-    hidden static PSObjectNode() { Use-ClassAccessors }
-
-    hidden PSObjectNode($Object) {
-        if ($Object -is [PSNode]) { $this._Value = $Object._Value } else { $this._Value = $Object }
-    }
-
-    hidden [Object]get_Count() {
-        return @($this._Value.PSObject.Properties).get_Count()
-    }
-
-    hidden [Object]get_Names() {
-        return ,$this._Value.PSObject.Properties.Name
-    }
-
-    hidden [Object]get_Values() {
-        return ,$this._Value.PSObject.Properties.Value
-    }
-
-    hidden [Object]get_CaseMatters() { return $false }
-
-    [Bool]Contains($Name) {
-        return $this._Value.PSObject.Properties[$Name]
-    }
-
-    [Bool]Exists($Name) {
-        return $this._Value.PSObject.Properties[$Name]
-    }
-
-    [Object]GetValue($Name) { return $this._Value.PSObject.Properties[$Name].Value }
-    [Object]GetValue($Name, $Default) {
-        if (-not $this.Contains($Name)) { return $Default }
-        return $this._Value[$Name]
-    }
-
-    SetValue($Name, $Value) {
-        if ($Value -is [PSNode]) { $Value = $Value.Value }
-        if ($this._Value -isnot [PSCustomObject]) {
-            $Properties = [Ordered]@{}
-            foreach ($Property in $this._Value.PSObject.Properties) { $Properties[$Property.Name] = $Property.Value }
-            $Properties[$Name] = $Value
-            $this._Value = [PSCustomObject]$Properties
-            $this.Cache.Remove('ChildNodes')
-        }
-        elseif ($this._Value.PSObject.Properties[$Name]) {
-            $this._Value.PSObject.Properties[$Name].Value = $Value
-        }
-        else {
-            Add-Member -InputObject $this._Value -Type NoteProperty -Name $Name -Value $Value
-            $this.Cache.Remove('ChildNodes')
-        }
-    }
-
-    Add($Name, $Value) {
-        if ($this.Contains($Name)) { Throw "Item '$Name' has already been added." }
-        $this.SetValue($Name, $Value)
-    }
-
-    Remove($Name) {
-        $this._Value.PSObject.Properties.Remove($Name)
-        $this.Cache.Remove('ChildNodes')
-    }
-
-    hidden RemoveAt($Name) { # General method for: ChildNode.Remove() { $_.ParentNode.Remove($_.Name) }
-        if (-not $this.Contains($Name)) { Throw "Item '$Name' doesn't exist." }
-        $this._Value.PSObject.Properties.Remove($Name)
-        $this.Cache.Remove('ChildNodes')
-    }
-
-    [Object]GetChildNode([String]$Name) {
-        if ($this.MaxDepthReached()) { return @() }
-        if (-not $this.Contains($Name)) { Throw Throw "$($this.GetPathName('<Root>')) doesn't contain a child named: $Name"  }
-        if (-not $this.Cache.ContainsKey('ChildNode')) { $this.Cache['ChildNode'] = @{} } # Object properties are case insensitive
-        if (
-            -not $this.Cache.ChildNode.ContainsKey($Name) -or
-            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Name]._Value, $this._Value.PSObject.Properties[$Name].Value)
-        ) {
-            $Node             = [PSNode]::ParseInput($this._Value.PSObject.Properties[$Name].Value)
-            $Node._Name       = $Name
-            $Node.Depth       = $this.Depth + 1
-            $Node.RootNode    = [PSNode]$this.RootNode
-            $Node.ParentNode  = $this
-            $this.Cache.ChildNode[$Name] = $Node
-        }
-        return $this.Cache.ChildNode[$Name]
-    }
-
-    hidden [Object[]]get_ChildNodes() {
-        if (-not $this.Cache.ContainsKey('ChildNodes')) {
-            $ChildNodes = foreach ($Property in $this._Value.PSObject.Properties) { $this.GetChildNode($Property.Name) }
-            #     if ($Property.Value -isnot [Reflection.MemberInfo]) { $this.GetChildNode($Property.Name) }
-            # }
-            if ($null -ne $ChildNodes) { $this.Cache['ChildNodes'] = $ChildNodes } else { $this.Cache['ChildNodes'] =  @() }
-        }
-        return $this.Cache['ChildNodes']
-    }
-
-    [string]ToString() {
-        return "$([TypeColor][PSSerialize]::new($this, [PSLanguageMode]'NoLanguage'))"
-    }
-}
-class PSListNodeComparer : ObjectComparer, IComparer[Object] { # https://github.com/PowerShell/PowerShell/issues/23959
-    PSListNodeComparer () {}
-    PSListNodeComparer ([String[]]$PrimaryKey) { $this.PrimaryKey = $PrimaryKey }
-    PSListNodeComparer ([ObjectComparison]$ObjectComparison) { $this.ObjectComparison = $ObjectComparison }
-    PSListNodeComparer ([String[]]$PrimaryKey, [ObjectComparison]$ObjectComparison) { $this.PrimaryKey = $PrimaryKey; $this.ObjectComparison = $ObjectComparison }
-    PSListNodeComparer ([ObjectComparison]$ObjectComparison, [String[]]$PrimaryKey) { $this.PrimaryKey = $PrimaryKey; $this.ObjectComparison = $ObjectComparison }
-    [int] Compare ([Object]$Node1, [Object]$Node2) { return $this.CompareRecurse($Node1, $Node2, 'Compare') }
-}
-Class TextColor : TextStyle { TextColor($Text, $AnsiColor) : base($Text, $AnsiColor, [ANSI]::ResetColor) {} }
-Class CommandColor : TextColor { CommandColor($Text) : base($Text, [ANSI]::CommandColor) {} }
-Class CommentColor : TextColor { CommentColor($Text) : base($Text, [ANSI]::CommentColor) {} }
-Class ContinuationPromptColor : TextColor { ContinuationPromptColor($Text) : base($Text, [ANSI]::ContinuationPromptColor) {} }
-Class DefaultTokenColor : TextColor { DefaultTokenColor($Text) : base($Text, [ANSI]::DefaultTokenColor) {} }
-Class EmphasisColor : TextColor { EmphasisColor($Text) : base($Text, [ANSI]::EmphasisColor) {} }
-Class ErrorColor : TextColor { ErrorColor($Text) : base($Text, [ANSI]::ErrorColor) {} }
-Class KeywordColor : TextColor { KeywordColor($Text) : base($Text, [ANSI]::KeywordColor) {} }
-Class MemberColor : TextColor { MemberColor($Text) : base($Text, [ANSI]::MemberColor) {} }
-Class NumberColor : TextColor { NumberColor($Text) : base($Text, [ANSI]::NumberColor) {} }
-Class OperatorColor : TextColor { OperatorColor($Text) : base($Text, [ANSI]::OperatorColor) {} }
-Class ParameterColor : TextColor { ParameterColor($Text) : base($Text, [ANSI]::ParameterColor) {} }
-Class SelectionColor : TextColor { SelectionColor($Text) : base($Text, [ANSI]::SelectionColor) {} }
-Class StringColor : TextColor { StringColor($Text) : base($Text, [ANSI]::StringColor) {} }
-Class TypeColor : TextColor { TypeColor($Text) : base($Text, [ANSI]::TypeColor) {} }
-Class VariableColor : TextColor { VariableColor($Text) : base($Text, [ANSI]::VariableColor) {} }
-Class InverseColor : TextStyle { InverseColor($Text) : base($Text, [ANSI]::InverseColor, [ANSI]::InverseOff) {} }
 
 #EndRegion Class
 
@@ -2390,66 +2529,66 @@ if (@(`$Invoke).Count -gt 1) { `$Output } else { ,`$Output }
 function Compare-ObjectGraph {
 <#
 .SYNOPSIS
-    Compare Object Graph
+Compare Object Graph
 
 .DESCRIPTION
-    Deep compares two Object Graph and lists the differences between them.
+Deep compares two Object Graph and lists the differences between them.
 
 .PARAMETER InputObject
-    The input object that will be compared with the reference object (see: [-Reference] parameter).
+The input object that will be compared with the reference object (see: [-Reference] parameter).
 
-    > [!NOTE]
-    > Multiple input object might be provided via the pipeline.
-    > The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
-    > To avoid a list of (root) objects to unroll, use the **comma operator**:
+> [!NOTE]
+> Multiple input object might be provided via the pipeline.
+> The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
+> To avoid a list of (root) objects to unroll, use the **comma operator**:
 
-        ,$InputObject | Compare-ObjectGraph $Reference.
+    ,$InputObject | Compare-ObjectGraph $Reference.
 
 .PARAMETER Reference
-    The reference that is used to compared with the input object (see: [-InputObject] parameter).
+The reference that is used to compared with the input object (see: [-InputObject] parameter).
 
 .PARAMETER PrimaryKey
-    If supplied, dictionaries (including PSCustomObject or Component Objects) in a list are matched
-    based on the values of the `-PrimaryKey` supplied.
+If supplied, dictionaries (including PSCustomObject or Component Objects) in a list are matched
+based on the values of the `-PrimaryKey` supplied.
 
 .PARAMETER IsEqual
-    If set, the cmdlet will return a boolean (`$true` or `$false`).
-    As soon a Discrepancy is found, the cmdlet will immediately stop comparing further properties.
+If set, the cmdlet will return a boolean (`$true` or `$false`).
+As soon a Discrepancy is found, the cmdlet will immediately stop comparing further properties.
 
 .PARAMETER MatchCase
-    Unless the `-MatchCase` switch is provided, string values are considered case insensitive.
+Unless the `-MatchCase` switch is provided, string values are considered case insensitive.
 
-    > [!NOTE]
-    > Dictionary keys are compared based on the `$Reference`.
-    > if the `$Reference` is an object (PSCustomObject or component object), the key or name comparison
-    > is case insensitive otherwise the comparer supplied with the dictionary is used.
+> [!NOTE]
+> Dictionary keys are compared based on the `$Reference`.
+> if the `$Reference` is an object (PSCustomObject or component object), the key or name comparison
+> is case insensitive otherwise the comparer supplied with the dictionary is used.
 
 .PARAMETER MatchType
-    Unless the `-MatchType` switch is provided, a loosely (inclusive) comparison is done where the
-    `$Reference` object is leading. Meaning `$Reference -eq $InputObject`:
+Unless the `-MatchType` switch is provided, a loosely (inclusive) comparison is done where the
+`$Reference` object is leading. Meaning `$Reference -eq $InputObject`:
 
-        '1.0' -eq 1.0 # $false
-        1.0 -eq '1.0' # $true (also $false if the `-MatchType` is provided)
+    '1.0' -eq 1.0 # $false
+    1.0 -eq '1.0' # $true (also $false if the `-MatchType` is provided)
 
 .PARAMETER IgnoreLisOrder
-    By default, items in a list are matched independent of the order (meaning by index position).
-    If the `-IgnoreListOrder` switch is supplied, any list in the `$InputObject` is searched for a match
-    with the reference.
+By default, items in a list are matched independent of the order (meaning by index position).
+If the `-IgnoreListOrder` switch is supplied, any list in the `$InputObject` is searched for a match
+with the reference.
 
-    > [!NOTE]
-    > Regardless the list order, any dictionary lists are matched by the primary key (if supplied) first.
+> [!NOTE]
+> Regardless the list order, any dictionary lists are matched by the primary key (if supplied) first.
 
 .PARAMETER MatchMapOrder
-    By default, items in dictionary (including properties of an PSCustomObject or Component Object) are
-    matched by their key name (independent of the order).
-    If the `-MatchMapOrder` switch is supplied, each entry is also validated by the position.
+By default, items in dictionary (including properties of an PSCustomObject or Component Object) are
+matched by their key name (independent of the order).
+If the `-MatchMapOrder` switch is supplied, each entry is also validated by the position.
 
-    > [!NOTE]
-    > A `[HashTable]` type is unordered by design and therefore, regardless the `-MatchMapOrder` switch,
-    the order of the `[HashTable]` (defined by the `$Reference`) are always ignored.
+> [!NOTE]
+> A `[HashTable]` type is unordered by design and therefore, regardless the `-MatchMapOrder` switch,
+the order of the `[HashTable]` (defined by the `$Reference`) are always ignored.
 
 .PARAMETER MaxDepth
-    The maximal depth to recursively compare each embedded property (default: 10).
+The maximal depth to recursively compare each embedded property (default: 10).
 #>
 
 [CmdletBinding(HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Compare-ObjectGraph.md')] param(
@@ -2496,43 +2635,43 @@ process {
 function ConvertFrom-Expression {
 <#
 .SYNOPSIS
-    Deserializes a PowerShell expression to an object.
+Deserializes a PowerShell expression to an object.
 
 .DESCRIPTION
-    The `ConvertFrom-Expression` cmdlet safely converts a PowerShell formatted expression to an object-graph
-    existing of a mixture of nested arrays, hash tables and objects that contain a list of strings and values.
+The `ConvertFrom-Expression` cmdlet safely converts a PowerShell formatted expression to an object-graph
+existing of a mixture of nested arrays, hash tables and objects that contain a list of strings and values.
 
 .PARAMETER InputObject
-    Specifies the PowerShell expressions to convert to objects. Enter a variable that contains the string,
-    or type a command or expression that gets the string. You can also pipe a string to ConvertFrom-Expression.
+Specifies the PowerShell expressions to convert to objects. Enter a variable that contains the string,
+or type a command or expression that gets the string. You can also pipe a string to ConvertFrom-Expression.
 
-    The **InputObject** parameter is required, but its value can be an empty string.
-    The **InputObject** value can't be `$null` or an empty string.
+The **InputObject** parameter is required, but its value can be an empty string.
+The **InputObject** value can't be `$null` or an empty string.
 
 .PARAMETER LanguageMode
-    Defines which object types are allowed for the deserialization, see: [About language modes][2]
+Defines which object types are allowed for the deserialization, see: [About language modes][2]
 
-    * Any type that is not allowed by the given language mode, will be omitted leaving a bare `[ValueType]`,
-      `[String]`, `[Array]` or `[HashTable]`.
-    * Any variable that is not `$True`, `$False` or `$Null` will be converted to a literal string, e.g. `$Test`.
+* Any type that is not allowed by the given language mode, will be omitted leaving a bare `[ValueType]`,
+    `[String]`, `[Array]` or `[HashTable]`.
+* Any variable that is not `$True`, `$False` or `$Null` will be converted to a literal string, e.g. `$Test`.
 
-    > [!Caution]
-    >
-    > In full language mode, `ConvertTo-Expression` permits all type initializers. Cmdlets, functions,
-    > CIM commands, and workflows will *not* be invoked by the `ConvertFrom-Expression` cmdlet.
-    >
-    > Take reasonable precautions when using the `Invoke-Expression -LanguageMode Full` command in scripts.
-    > Verify that the class types in the expression are safe before instantiating them. In general, it is
-    > best to design your configuration expressions with restricted or constrained classes, rather than
-    > allowing full freeform expressions.
+> [!Caution]
+>
+> In full language mode, `ConvertTo-Expression` permits all type initializers. Cmdlets, functions,
+> CIM commands, and workflows will *not* be invoked by the `ConvertFrom-Expression` cmdlet.
+>
+> Take reasonable precautions when using the `Invoke-Expression -LanguageMode Full` command in scripts.
+> Verify that the class types in the expression are safe before instantiating them. In general, it is
+> best to design your configuration expressions with restricted or constrained classes, rather than
+> allowing full freeform expressions.
 
 .PARAMETER ListAs
-    If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown
-    or denied type initializer will be converted to the given list type.
+If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown
+or denied type initializer will be converted to the given list type.
 
 .PARAMETER MapAs
-    If supplied, the Hash table literal syntax `@{ }` syntaxes without an type initializer or with an unknown
-    or denied type initializer will be converted to the given map (dictionary or object) type.
+If supplied, the Hash table literal syntax `@{ }` syntaxes without an type initializer or with an unknown
+or denied type initializer will be converted to the given map (dictionary or object) type.
 
 #>
 
@@ -2590,112 +2729,112 @@ process {
 function ConvertTo-Expression {
 <#
 .SYNOPSIS
-    Serializes an object to a PowerShell expression.
+Serializes an object to a PowerShell expression.
 
 .DESCRIPTION
-    The ConvertTo-Expression cmdlet converts (serializes) an object to a PowerShell expression.
-    The object can be stored in a variable, (.psd1) file or any other common storage for later use or to be ported
-    to another system.
+The ConvertTo-Expression cmdlet converts (serializes) an object to a PowerShell expression.
+The object can be stored in a variable, (.psd1) file or any other common storage for later use or to be ported
+to another system.
 
-    expressions might be restored to an object using the native [Invoke-Expression] cmdlet:
+expressions might be restored to an object using the native [Invoke-Expression] cmdlet:
 
-        $Object = Invoke-Expression ($Object | ConvertTo-Expression)
+    $Object = Invoke-Expression ($Object | ConvertTo-Expression)
 
-    > [!Warning]
-    > Take reasonable precautions when using the Invoke-Expression cmdlet in scripts. When using `Invoke-Expression`
-    > to run a command that the user enters, verify that the command is safe to run before running it.
-    > In general, it is best to restore your objects using [ConvertFrom-Expression].
+> [!Warning]
+> Take reasonable precautions when using the Invoke-Expression cmdlet in scripts. When using `Invoke-Expression`
+> to run a command that the user enters, verify that the command is safe to run before running it.
+> In general, it is best to restore your objects using [ConvertFrom-Expression].
 
-    > [!Note]
-    > Some object types can not be reconstructed from a simple serialized expression.
+> [!Note]
+> Some object types can not be reconstructed from a simple serialized expression.
 
 .INPUTS
-    Any. Each objects provided through the pipeline will converted to an expression. To concatenate all piped
-    objects in a single expression, use the unary comma operator,  e.g.: `,$Object | ConvertTo-Expression`
+Any. Each objects provided through the pipeline will converted to an expression. To concatenate all piped
+objects in a single expression, use the unary comma operator,  e.g.: `,$Object | ConvertTo-Expression`
 
 .OUTPUTS
-    String[]. `ConvertTo-Expression` returns a PowerShell [String] expression for each input object.
+String[]. `ConvertTo-Expression` returns a PowerShell [String] expression for each input object.
 
 .PARAMETER InputObject
-    Specifies the objects to convert to a PowerShell expression. Enter a variable that contains the objects,
-    or type a command or expression that gets the objects. You can also pipe one or more objects to
-    `ConvertTo-Expression.`
+Specifies the objects to convert to a PowerShell expression. Enter a variable that contains the objects,
+or type a command or expression that gets the objects. You can also pipe one or more objects to
+`ConvertTo-Expression.`
 
 .PARAMETER LanguageMode
-    Defines which object types are allowed for the serialization, see: [About language modes][2]
-    If a specific type isn't allowed in the given language mode, it will be substituted by:
+Defines which object types are allowed for the serialization, see: [About language modes][2]
+If a specific type isn't allowed in the given language mode, it will be substituted by:
 
-    * **`$Null`** in case of a null value
-    * **`$False`** in case of a boolean false
-    * **`$True`** in case of a boolean true
-    * **A number** in case of a primitive value
-    * **A string** in case of a string or any other **leaf** node
-    * `@(...)` for an array (**list** node)
-    * `@{...}` for any dictionary, PSCustomObject or Component (aka **map** node)
+* **`$Null`** in case of a null value
+* **`$False`** in case of a boolean false
+* **`$True`** in case of a boolean true
+* **A number** in case of a primitive value
+* **A string** in case of a string or any other **leaf** node
+* `@(...)` for an array (**list** node)
+* `@{...}` for any dictionary, PSCustomObject or Component (aka **map** node)
 
-    See the [PSNode Object Parser][1] for a detailed definition on node types.
+See the [PSNode Object Parser][1] for a detailed definition on node types.
 
 .PARAMETER ExpandDepth
-    Defines up till what level the collections will be expanded in the output.
+Defines up till what level the collections will be expanded in the output.
 
-    * A `-ExpandDepth 0` will create a single line expression.
-    * A `-ExpandDepth -1` will compress the single line by removing command spaces.
+* A `-ExpandDepth 0` will create a single line expression.
+* A `-ExpandDepth -1` will compress the single line by removing command spaces.
 
-    > [!Note]
-    > White spaces (as newline characters and spaces) will not be removed from the content
-    > of a (here) string.
+> [!Note]
+> White spaces (as newline characters and spaces) will not be removed from the content
+> of a (here) string.
 
 .PARAMETER Explicit
-    By default, restricted language types initializers are suppressed.
-    When the `Explicit` switch is set, *all* values will be prefixed with an initializer
-    (as e.g. `[Long]` and `[Array]`)
+By default, restricted language types initializers are suppressed.
+When the `Explicit` switch is set, *all* values will be prefixed with an initializer
+(as e.g. `[Long]` and `[Array]`)
 
-    > [!Note]
-    > The `-Explicit` switch can not be used in **restricted** language mode
+> [!Note]
+> The `-Explicit` switch can not be used in **restricted** language mode
 
 .PARAMETER FullTypeName
-    In case a value is prefixed with an initializer, the full type name of the initializer is used.
+In case a value is prefixed with an initializer, the full type name of the initializer is used.
 
-    > [!Note]
-    > The `-FullTypename` switch can not be used in **restricted** language mode and will only be
-    > meaningful if the initializer is used (see also the [-Explicit] switch).
+> [!Note]
+> The `-FullTypename` switch can not be used in **restricted** language mode and will only be
+> meaningful if the initializer is used (see also the [-Explicit] switch).
 
 .PARAMETER HighFidelity
-    If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
+If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
 
-    By default the fidelity of an object expression will end if:
+By default the fidelity of an object expression will end if:
 
-    1) the (embedded) object is a leaf node (see: [PSNode Object Parser][1])
-    2) the (embedded) object expression is able to round trip.
+1) the (embedded) object is a leaf node (see: [PSNode Object Parser][1])
+2) the (embedded) object expression is able to round trip.
 
-    An object is able to roundtrip if the resulted expression of the object itself or one of
-    its properties (prefixed with the type initializer) can be used to rebuild the object.
+An object is able to roundtrip if the resulted expression of the object itself or one of
+its properties (prefixed with the type initializer) can be used to rebuild the object.
 
-    The advantage of the default fidelity is that the resulted expression round trips (aka the
-    object might be rebuild from the expression), the disadvantage is that information hold by
-    less significant properties is lost (as e.g. timezone information in a `DateTime]` object).
+The advantage of the default fidelity is that the resulted expression round trips (aka the
+object might be rebuild from the expression), the disadvantage is that information hold by
+less significant properties is lost (as e.g. timezone information in a `DateTime]` object).
 
-    The advantage of the high fidelity switch is that all the information of the underlying
-    properties is shown, yet any constrained or full object type will likely fail to rebuild
-    due to constructor limitations such as readonly property.
+The advantage of the high fidelity switch is that all the information of the underlying
+properties is shown, yet any constrained or full object type will likely fail to rebuild
+due to constructor limitations such as readonly property.
 
-    > [!Note]
-    > The Object property `TypeId = [<ParentType>]` is always excluded.
+> [!Note]
+> The Object property `TypeId = [<ParentType>]` is always excluded.
 
 .PARAMETER ExpandSingleton
-    (List or map) collections nodes that contain a single item will not be expanded unless this
-    `-ExpandSingleton` is supplied.
+(List or map) collections nodes that contain a single item will not be expanded unless this
+`-ExpandSingleton` is supplied.
 
 .PARAMETER IndentSize
-    Specifies indent used for the nested properties.
+Specifies indent used for the nested properties.
 
 .PARAMETER MaxDepth
-    Specifies how many levels of contained objects are included in the PowerShell representation.
-    The default value is define by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`).
+Specifies how many levels of contained objects are included in the PowerShell representation.
+The default value is define by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`).
 
 .LINK
-    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-    [2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
 #>
 
 [Alias('cto')]
@@ -2755,45 +2894,45 @@ process {
 function Copy-ObjectGraph {
 <#
 .SYNOPSIS
-    Copy object graph
+Copy object graph
 
 .DESCRIPTION
-    Recursively ("deep") copies a object graph.
+Recursively ("deep") copies a object graph.
 
 .EXAMPLE
-    # Deep copy a complete object graph into a new object graph
+# Deep copy a complete object graph into a new object graph
 
-        $NewObjectGraph = Copy-ObjectGraph $ObjectGraph
-
-.EXAMPLE
-    # Copy (convert) an object graph using common PowerShell arrays and PSCustomObjects
-
-        $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObject
+    $NewObjectGraph = Copy-ObjectGraph $ObjectGraph
 
 .EXAMPLE
-    # Convert a Json string to an object graph with (case insensitive) ordered dictionaries
+# Copy (convert) an object graph using common PowerShell arrays and PSCustomObjects
 
-        $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
+    $PSObject = Copy-ObjectGraph $Object -ListAs [Array] -DictionaryAs PSCustomObject
+
+.EXAMPLE
+# Convert a Json string to an object graph with (case insensitive) ordered dictionaries
+
+    $PSObject = $Json | ConvertFrom-Json | Copy-ObjectGraph -DictionaryAs ([Ordered]@{})
 
 .PARAMETER InputObject
-    The input object that will be recursively copied.
+The input object that will be recursively copied.
 
 .PARAMETER ListAs
-    If supplied, lists will be converted to the given type (or type of the supplied object example).
+If supplied, lists will be converted to the given type (or type of the supplied object example).
 
 .PARAMETER DictionaryAs
-    If supplied, dictionaries will be converted to the given type (or type of the supplied object example).
-    This parameter also accepts the [`PSCustomObject`][1] types
-    By default (if the [-DictionaryAs] parameters is omitted),
-    [`Component`][2] objects will be converted to a [`PSCustomObject`][1] type.
+If supplied, dictionaries will be converted to the given type (or type of the supplied object example).
+This parameter also accepts the [`PSCustomObject`][1] types
+By default (if the [-DictionaryAs] parameters is omitted),
+[`Component`][2] objects will be converted to a [`PSCustomObject`][1] type.
 
 .PARAMETER ExcludeLeafs
-    If supplied, only the structure (lists, dictionaries, [`PSCustomObject`][1] types and [`Component`][2] types will be copied.
-    If omitted, each leaf will be shallow copied
+If supplied, only the structure (lists, dictionaries, [`PSCustomObject`][1] types and [`Component`][2] types will be copied.
+If omitted, each leaf will be shallow copied
 
 .LINK
-    [1]: https://learn.microsoft.com/dotnet/api/system.management.automation.pscustomobject "PSCustomObject Class"
-    [2]: https://learn.microsoft.com/dotnet/api/system.componentmodel.component "Component Class"
+[1]: https://learn.microsoft.com/dotnet/api/system.management.automation.pscustomobject "PSCustomObject Class"
+[2]: https://learn.microsoft.com/dotnet/api/system.componentmodel.component "Component Class"
 #>
 [Alias('Copy-Object', 'cpo')]
 [OutputType([Object[]])]
@@ -2874,100 +3013,100 @@ process {
 function Export-ObjectGraph {
 <#
 .SYNOPSIS
-    Serializes a PowerShell File or object-graph and exports it to a PowerShell (data) file.
+Serializes a PowerShell File or object-graph and exports it to a PowerShell (data) file.
 
 .DESCRIPTION
-    The `Export-ObjectGraph` cmdlet converts a PowerShell (complex) object to an PowerShell expression
-    and exports it to a PowerShell (`.ps1`) file or a PowerShell data (`.psd1`) file.
+The `Export-ObjectGraph` cmdlet converts a PowerShell (complex) object to an PowerShell expression
+and exports it to a PowerShell (`.ps1`) file or a PowerShell data (`.psd1`) file.
 
 .PARAMETER Path
-    Specifies the path to a file where `Export-ObjectGraph` exports the ObjectGraph.
-    Wildcard characters are permitted.
+Specifies the path to a file where `Export-ObjectGraph` exports the ObjectGraph.
+Wildcard characters are permitted.
 
 .PARAMETER LiteralPath
-    Specifies a path to one or more locations where PowerShell should export the object-graph.
-    The value of LiteralPath is used exactly as it's typed. No characters are interpreted as wildcards.
-    If the path includes escape characters, enclose it in single quotation marks. Single quotation marks tell
-    PowerShell not to interpret any characters as escape sequences.
+Specifies a path to one or more locations where PowerShell should export the object-graph.
+The value of LiteralPath is used exactly as it's typed. No characters are interpreted as wildcards.
+If the path includes escape characters, enclose it in single quotation marks. Single quotation marks tell
+PowerShell not to interpret any characters as escape sequences.
 
 .PARAMETER LanguageMode
-    Defines which object types are allowed for the serialization, see: [About language modes][2]
-    If a specific type isn't allowed in the given language mode, it will be substituted by:
+Defines which object types are allowed for the serialization, see: [About language modes][2]
+If a specific type isn't allowed in the given language mode, it will be substituted by:
 
-    * **`$Null`** in case of a null value
-    * **`$False`** in case of a boolean false
-    * **`$True`** in case of a boolean true
-    * **A number** in case of a primitive value
-    * **A string** in case of a string or any other **leaf** node
-    * `@(...)` for an array (**list** node)
-    * `@{...}` for any dictionary, PSCustomObject or Component (aka **map** node)
+* **`$Null`** in case of a null value
+* **`$False`** in case of a boolean false
+* **`$True`** in case of a boolean true
+* **A number** in case of a primitive value
+* **A string** in case of a string or any other **leaf** node
+* `@(...)` for an array (**list** node)
+* `@{...}` for any dictionary, PSCustomObject or Component (aka **map** node)
 
-    See the [PSNode Object Parser][1] for a detailed definition on node types.
+See the [PSNode Object Parser][1] for a detailed definition on node types.
 
 .PARAMETER ExpandDepth
-    Defines up till what level the collections will be expanded in the output.
+Defines up till what level the collections will be expanded in the output.
 
-    * A `-ExpandDepth 0` will create a single line expression.
-    * A `-ExpandDepth -1` will compress the single line by removing command spaces.
+* A `-ExpandDepth 0` will create a single line expression.
+* A `-ExpandDepth -1` will compress the single line by removing command spaces.
 
-    > [!Note]
-    > White spaces (as newline characters and spaces) will not be removed from the content
-    > of a (here) string.
+> [!Note]
+> White spaces (as newline characters and spaces) will not be removed from the content
+> of a (here) string.
 
 .PARAMETER Explicit
-    By default, restricted language types initializers are suppressed.
-    When the `Explicit` switch is set, *all* values will be prefixed with an initializer
-    (as e.g. `[Long]` and `[Array]`)
+By default, restricted language types initializers are suppressed.
+When the `Explicit` switch is set, *all* values will be prefixed with an initializer
+(as e.g. `[Long]` and `[Array]`)
 
-    > [!Note]
-    > The `-Explicit` switch can not be used in **restricted** language mode
+> [!Note]
+> The `-Explicit` switch can not be used in **restricted** language mode
 
 .PARAMETER FullTypeName
-    In case a value is prefixed with an initializer, the full type name of the initializer is used.
+In case a value is prefixed with an initializer, the full type name of the initializer is used.
 
-    > [!Note]
-    > The `-FullTypename` switch can not be used in **restricted** language mode and will only be
-    > meaningful if the initializer is used (see also the [-Explicit] switch).
+> [!Note]
+> The `-FullTypename` switch can not be used in **restricted** language mode and will only be
+> meaningful if the initializer is used (see also the [-Explicit] switch).
 
 .PARAMETER HighFidelity
-    If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
+If the `-HighFidelity` switch is supplied, all nested object properties will be serialized.
 
-    By default the fidelity of an object expression will end if:
+By default the fidelity of an object expression will end if:
 
-    1) the (embedded) object is a leaf node (see: [PSNode Object Parser][1])
-    2) the (embedded) object expression is able to round trip.
+1) the (embedded) object is a leaf node (see: [PSNode Object Parser][1])
+2) the (embedded) object expression is able to round trip.
 
-    An object is able to roundtrip if the resulted expression of the object itself or one of
-    its properties (prefixed with the type initializer) can be used to rebuild the object.
+An object is able to roundtrip if the resulted expression of the object itself or one of
+its properties (prefixed with the type initializer) can be used to rebuild the object.
 
-    The advantage of the default fidelity is that the resulted expression round trips (aka the
-    object might be rebuild from the expression), the disadvantage is that information hold by
-    less significant properties is lost (as e.g. timezone information in a `DateTime]` object).
+The advantage of the default fidelity is that the resulted expression round trips (aka the
+object might be rebuild from the expression), the disadvantage is that information hold by
+less significant properties is lost (as e.g. timezone information in a `DateTime]` object).
 
-    The advantage of the high fidelity switch is that all the information of the underlying
-    properties is shown, yet any constrained or full object type will likely fail to rebuild
-    due to constructor limitations such as readonly property.
+The advantage of the high fidelity switch is that all the information of the underlying
+properties is shown, yet any constrained or full object type will likely fail to rebuild
+due to constructor limitations such as readonly property.
 
-    > [!Note]
-    > Objects properties of type `[Reflection.MemberInfo]` are always excluded.
+> [!Note]
+> Objects properties of type `[Reflection.MemberInfo]` are always excluded.
 
 .PARAMETER ExpandSingleton
-    (List or map) collections nodes that contain a single item will not be expanded unless this
-    `-ExpandSingleton` is supplied.
+(List or map) collections nodes that contain a single item will not be expanded unless this
+`-ExpandSingleton` is supplied.
 
 .PARAMETER IndentSize
-    Specifies indent used for the nested properties.
+Specifies indent used for the nested properties.
 
 .PARAMETER MaxDepth
-    Specifies how many levels of contained objects are included in the PowerShell representation.
-    The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
+Specifies how many levels of contained objects are included in the PowerShell representation.
+The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
 
 .PARAMETER Encoding
-    Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
+Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
 
 .LINK
-    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-    [2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
 #>
 
 [Alias('Export-Object', 'epo')]
@@ -3034,161 +3173,161 @@ end {
 function Get-ChildNode {
 <#
 .SYNOPSIS
-    Gets the child nodes of an object-graph
+Gets the child nodes of an object-graph
 
 .DESCRIPTION
-    Gets the (unique) nodes and child nodes in one or more specified locations of an object-graph
-    The returned nodes are unique even if the provide list of input parent nodes have an overlap.
+Gets the (unique) nodes and child nodes in one or more specified locations of an object-graph
+The returned nodes are unique even if the provide list of input parent nodes have an overlap.
 
 .EXAMPLE
-    # Select all leaf nodes in a object graph
+# Select all leaf nodes in a object graph
 
-    Given the following object graph:
+Given the following object graph:
 
-        $Object = @{
-            Comment = 'Sample ObjectGraph'
-            Data = @(
-                @{
-                    Index = 1
-                    Name = 'One'
-                    Comment = 'First item'
-                }
-                @{
-                    Index = 2
-                    Name = 'Two'
-                    Comment = 'Second item'
-                }
-                @{
-                    Index = 3
-                    Name = 'Three'
-                    Comment = 'Third item'
-                }
-            )
-        }
+    $Object = @{
+        Comment = 'Sample ObjectGraph'
+        Data = @(
+            @{
+                Index = 1
+                Name = 'One'
+                Comment = 'First item'
+            }
+            @{
+                Index = 2
+                Name = 'Two'
+                Comment = 'Second item'
+            }
+            @{
+                Index = 3
+                Name = 'Three'
+                Comment = 'Third item'
+            }
+        )
+    }
 
-    The following example will receive all leaf nodes:
+The following example will receive all leaf nodes:
 
-        $Object | Get-ChildNode -Recurse -Leaf
+    $Object | Get-ChildNode -Recurse -Leaf
 
-        Path             Name    Depth Value
-        ----             ----    ----- -----
-        .Data[0].Comment Comment     3 First item
-        .Data[0].Name    Name        3 One
-        .Data[0].Index   Index       3 1
-        .Data[1].Comment Comment     3 Second item
-        .Data[1].Name    Name        3 Two
-        .Data[1].Index   Index       3 2
-        .Data[2].Comment Comment     3 Third item
-        .Data[2].Name    Name        3 Three
-        .Data[2].Index   Index       3 3
-        .Comment         Comment     1 Sample ObjectGraph
+    Path             Name    Depth Value
+    ----             ----    ----- -----
+    .Data[0].Comment Comment     3 First item
+    .Data[0].Name    Name        3 One
+    .Data[0].Index   Index       3 1
+    .Data[1].Comment Comment     3 Second item
+    .Data[1].Name    Name        3 Two
+    .Data[1].Index   Index       3 2
+    .Data[2].Comment Comment     3 Third item
+    .Data[2].Name    Name        3 Three
+    .Data[2].Index   Index       3 3
+    .Comment         Comment     1 Sample ObjectGraph
 
 .EXAMPLE
-    # update a property
+# update a property
 
-    The following example selects all child nodes named `Comment` at a depth of `3`.
-    Than filters the one that has an `Index` sibling with the value `2` and eventually
-    sets the value (of the `Comment` node) to: 'Two to the Loo'.
+The following example selects all child nodes named `Comment` at a depth of `3`.
+Than filters the one that has an `Index` sibling with the value `2` and eventually
+sets the value (of the `Comment` node) to: 'Two to the Loo'.
 
-        $Object | Get-ChildNode -AtDepth 3 -Include Comment |
-            Where-Object { $_.ParentNode.GetChildNode('Index').Value -eq 2 } |
-            ForEach-Object { $_.Value = 'Two to the Loo' }
+    $Object | Get-ChildNode -AtDepth 3 -Include Comment |
+        Where-Object { $_.ParentNode.GetChildNode('Index').Value -eq 2 } |
+        ForEach-Object { $_.Value = 'Two to the Loo' }
 
-        ConvertTo-Expression $Object
+    ConvertTo-Expression $Object
 
-        @{
-            Data =
-                @{
-                    Comment = 'First item'
-                    Name = 'One'
-                    Index = 1
-                },
-                @{
-                    Comment = 'Two to the Loo'
-                    Name = 'Two'
-                    Index = 2
-                },
-                @{
-                    Comment = 'Third item'
-                    Name = 'Three'
-                    Index = 3
-                }
-            Comment = 'Sample ObjectGraph'
-        }
+    @{
+        Data =
+            @{
+                Comment = 'First item'
+                Name = 'One'
+                Index = 1
+            },
+            @{
+                Comment = 'Two to the Loo'
+                Name = 'Two'
+                Index = 2
+            },
+            @{
+                Comment = 'Third item'
+                Name = 'Three'
+                Index = 3
+            }
+        Comment = 'Sample ObjectGraph'
+    }
 
-    See the [PowerShell Object Parser][1] For details on the `[PSNode]` properties and methods.
+See the [PowerShell Object Parser][1] For details on the `[PSNode]` properties and methods.
 
 .PARAMETER InputObject
-    The concerned object graph or node.
+The concerned object graph or node.
 
 .PARAMETER Recurse
-    Recursively iterates through all embedded property objects (nodes) to get the selected nodes.
-    The maximum depth of of a specific node that might be retrieved is define by the `MaxDepth`
-    of the (root) node. To change the maximum depth the (root) node needs to be loaded first, e.g.:
+Recursively iterates through all embedded property objects (nodes) to get the selected nodes.
+The maximum depth of of a specific node that might be retrieved is define by the `MaxDepth`
+of the (root) node. To change the maximum depth the (root) node needs to be loaded first, e.g.:
 
-        Get-Node <InputObject> -Depth 20 | Get-ChildNode ...
+    Get-Node <InputObject> -Depth 20 | Get-ChildNode ...
 
-    (See also: [`Get-Node`][2])
+(See also: [`Get-Node`][2])
 
-    > [!NOTE]
-    > If the [AtDepth] parameter is supplied, the object graph is recursively searched anyways
-    > for the selected nodes up till the deepest given `AtDepth` value.
+> [!NOTE]
+> If the [AtDepth] parameter is supplied, the object graph is recursively searched anyways
+> for the selected nodes up till the deepest given `AtDepth` value.
 
 .PARAMETER AtDepth
-    When defined, only returns nodes at the given depth(s).
+When defined, only returns nodes at the given depth(s).
 
-    > [!NOTE]
-    > The nodes below the `MaxDepth` can not be retrieved.
+> [!NOTE]
+> The nodes below the `MaxDepth` can not be retrieved.
 
 .PARAMETER ListChild
-    Returns the closest nodes derived from a **list node**.
+Returns the closest nodes derived from a **list node**.
 
 .PARAMETER Include
-    Returns only nodes derived from a **map node** including only the ones specified by one or more
-    string patterns defined by this parameter. Wildcard characters are permitted.
+Returns only nodes derived from a **map node** including only the ones specified by one or more
+string patterns defined by this parameter. Wildcard characters are permitted.
 
-    > [!NOTE]
-    > The [-Include] and [-Exclude] parameters can be used together. However, the exclusions are applied
-    > after the inclusions, which can affect the final output.
+> [!NOTE]
+> The [-Include] and [-Exclude] parameters can be used together. However, the exclusions are applied
+> after the inclusions, which can affect the final output.
 
 .PARAMETER Exclude
-    Returns only nodes derived from a **map node** excluding the ones specified by one or more
-    string patterns defined by this parameter. Wildcard characters are permitted.
+Returns only nodes derived from a **map node** excluding the ones specified by one or more
+string patterns defined by this parameter. Wildcard characters are permitted.
 
-    > [!NOTE]
-    > The [-Include] and [-Exclude] parameters can be used together. However, the exclusions are applied
-    > after the inclusions, which can affect the final output.
+> [!NOTE]
+> The [-Include] and [-Exclude] parameters can be used together. However, the exclusions are applied
+> after the inclusions, which can affect the final output.
 
 .PARAMETER Literal
-    The values of the [-Include] - and [-Exclude] parameters are used exactly as it is typed.
-    No characters are interpreted as wildcards.
+The values of the [-Include] - and [-Exclude] parameters are used exactly as it is typed.
+No characters are interpreted as wildcards.
 
 .PARAMETER Leaf
-    Only return leaf nodes. Leaf nodes are nodes at the end of a branch and do not have any child nodes.
-    You can use the [-Recurse] parameter with the [-Leaf] parameter.
+Only return leaf nodes. Leaf nodes are nodes at the end of a branch and do not have any child nodes.
+You can use the [-Recurse] parameter with the [-Leaf] parameter.
 
 .PARAMETER IncludeSelf
-    Includes the current node with the returned child nodes.
+Includes the current node with the returned child nodes.
 
 .PARAMETER ValueOnly
-    returns the value of the node instead of the node itself.
+returns the value of the node instead of the node itself.
 
 .PARAMETER MaxDepth
-    Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
-    The failsafe will prevent infinitive loops for circular references as e.g. in:
+Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
+The failsafe will prevent infinitive loops for circular references as e.g. in:
 
-        $Test = @{Guid = New-Guid}
-        $Test.Parent = $Test
+    $Test = @{Guid = New-Guid}
+    $Test.Parent = $Test
 
-    The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
+The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 
-    > [!Note]
-    > The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
-    > at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
+> [!Note]
+> The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
+> at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
 
 .LINK
-    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-    [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md "Get-Node"
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Get-Node.md "Get-Node"
 #>
 
 [Alias('gcn')]
@@ -3278,113 +3417,113 @@ process {
 function Get-Node {
 <#
 .SYNOPSIS
-    Get a node
+Get a node
 
 .DESCRIPTION
-    The Get-Node cmdlet gets the node at the specified property location of the supplied object graph.
+The Get-Node cmdlet gets the node at the specified property location of the supplied object graph.
 
 .EXAMPLE
-    # Parse a object graph to a node instance
+# Parse a object graph to a node instance
 
-    The following example parses a hash table to `[PSNode]` instance:
+The following example parses a hash table to `[PSNode]` instance:
 
-        @{ 'My' = 1, 2, 3; 'Object' = 'Graph' } | Get-Node
+    @{ 'My' = 1, 2, 3; 'Object' = 'Graph' } | Get-Node
 
-        PathName Name Depth Value
-        -------- ---- ----- -----
-                          0 {My, Object}
-
-.EXAMPLE
-    # select a sub node in an object graph
-
-    The following example parses a hash table to `[PSNode]` instance and selects the second (`0` indexed)
-    item in the `My` map node
-
-        @{ 'My' = 1, 2, 3; 'Object' = 'Graph' } | Get-Node My[1]
-
-        PathName Name Depth Value
-        -------- ---- ----- -----
-        My[1]       1     2     2
+    PathName Name Depth Value
+    -------- ---- ----- -----
+                        0 {My, Object}
 
 .EXAMPLE
-    # Change the price of the **PowerShell** book:
+# select a sub node in an object graph
 
-        $ObjectGraph =
-            @{
-                BookStore = @(
-                    @{
-                        Book = @{
-                            Title = 'Harry Potter'
-                            Price = 29.99
-                        }
-                    },
-                    @{
-                        Book = @{
-                            Title = 'Learning PowerShell'
-                            Price = 39.95
-                        }
-                    }
-                )
-            }
+The following example parses a hash table to `[PSNode]` instance and selects the second (`0` indexed)
+item in the `My` map node
 
-        ($ObjectGraph | Get-Node BookStore~Title=*PowerShell*..Price).Value = 24.95
-        $ObjectGraph | ConvertTo-Expression
+    @{ 'My' = 1, 2, 3; 'Object' = 'Graph' } | Get-Node My[1]
+
+    PathName Name Depth Value
+    -------- ---- ----- -----
+    My[1]       1     2     2
+
+.EXAMPLE
+# Change the price of the **PowerShell** book:
+
+    $ObjectGraph =
         @{
             BookStore = @(
                 @{
                     Book = @{
-                        Price = 29.99
                         Title = 'Harry Potter'
+                        Price = 29.99
                     }
                 },
                 @{
                     Book = @{
-                        Price = 24.95
                         Title = 'Learning PowerShell'
+                        Price = 39.95
                     }
                 }
             )
         }
 
-    for more details, see: [PowerShell Object Parser][1] and [Extended dot notation][2]
+    ($ObjectGraph | Get-Node BookStore~Title=*PowerShell*..Price).Value = 24.95
+    $ObjectGraph | ConvertTo-Expression
+    @{
+        BookStore = @(
+            @{
+                Book = @{
+                    Price = 29.99
+                    Title = 'Harry Potter'
+                }
+            },
+            @{
+                Book = @{
+                    Price = 24.95
+                    Title = 'Learning PowerShell'
+                }
+            }
+        )
+    }
+
+for more details, see: [PowerShell Object Parser][1] and [Extended dot notation][2]
 
 .PARAMETER InputObject
-    The concerned object graph or node.
+The concerned object graph or node.
 
 .PARAMETER Path
-    Specifies the path to a specific node in the object graph.
-    The path might be either:
+Specifies the path to a specific node in the object graph.
+The path might be either:
 
-    * A dot-notation (`[String]`) literal or expression (as natively used with PowerShell)
-    * A array of strings (dictionary keys or Property names) and/or integers (list indices)
-    * A `[PSNodePath]` (such as `$Node.Path`) or a `[XdnPath]` (Extended Dot-Notation) object
+* A dot-notation (`[String]`) literal or expression (as natively used with PowerShell)
+* A array of strings (dictionary keys or Property names) and/or integers (list indices)
+* A `[PSNodePath]` (such as `$Node.Path`) or a `[XdnPath]` (Extended Dot-Notation) object
 
 .PARAMETER Literal
-    If Literal switch is set, all (map) nodes in the given path are considered literal.
+If Literal switch is set, all (map) nodes in the given path are considered literal.
 
 .PARAMETER ValueOnly
-    returns the value of the node instead of the node itself.
+returns the value of the node instead of the node itself.
 
 .PARAMETER Unique
-    Specifies that if a subset of the nodes has identical properties and values,
-    only a single node of the subset should be selected.
+Specifies that if a subset of the nodes has identical properties and values,
+only a single node of the subset should be selected.
 
 .PARAMETER MaxDepth
-    Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
-    The failsafe will prevent infinitive loops for circular references as e.g. in:
+Specifies the maximum depth that an object graph might be recursively iterated before it throws an error.
+The failsafe will prevent infinitive loops for circular references as e.g. in:
 
-        $Test = @{Guid = New-Guid}
-        $Test.Parent = $Test
+    $Test = @{Guid = New-Guid}
+    $Test.Parent = $Test
 
-    The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
+The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 
-    > [!Note]
-    > The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
-    > at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
+> [!Note]
+> The `MaxDepth` is bound to the root node of the object graph. Meaning that a descendant node
+> at depth of 3 can only recursively iterated (`10 - 3 =`) `7` times.
 
 .LINK
-    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-    [2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Xdn.md "Extended dot notation"
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Xdn.md "Extended dot notation"
 #>
 
 [Alias('gn')]
@@ -3534,61 +3673,61 @@ process {
 function Import-ObjectGraph {
 <#
 .SYNOPSIS
-    Deserializes a PowerShell File or any object-graphs from PowerShell file to an object.
+Deserializes a PowerShell File or any object-graphs from PowerShell file to an object.
 
 .DESCRIPTION
-    The `Import-ObjectGraph` cmdlet safely converts a PowerShell formatted expression contained by a file
-    to an object-graph existing of a mixture of nested arrays, hash tables and objects that contain a list
-    of strings and values.
+The `Import-ObjectGraph` cmdlet safely converts a PowerShell formatted expression contained by a file
+to an object-graph existing of a mixture of nested arrays, hash tables and objects that contain a list
+of strings and values.
 
 .PARAMETER Path
-    Specifies the path to a file where `Import-ObjectGraph` imports the object-graph.
-    Wildcard characters are permitted.
+Specifies the path to a file where `Import-ObjectGraph` imports the object-graph.
+Wildcard characters are permitted.
 
 .PARAMETER LiteralPath
-    Specifies a path to one or more locations that contain a PowerShell the object-graph.
-    The value of LiteralPath is used exactly as it's typed. No characters are interpreted as wildcards.
-    If the path includes escape characters, enclose it in single quotation marks. Single quotation marks tell
-    PowerShell not to interpret any characters as escape sequences.
+Specifies a path to one or more locations that contain a PowerShell the object-graph.
+The value of LiteralPath is used exactly as it's typed. No characters are interpreted as wildcards.
+If the path includes escape characters, enclose it in single quotation marks. Single quotation marks tell
+PowerShell not to interpret any characters as escape sequences.
 
 .PARAMETER LanguageMode
-    Defines which object types are allowed for the deserialization, see: [About language modes][2]
+Defines which object types are allowed for the deserialization, see: [About language modes][2]
 
-    * Any type that is not allowed by the given language mode, will be omitted leaving a bare `[ValueType]`,
-      `[String]`, `[Array]` or `[HashTable]`.
-    * Any variable that is not `$True`, `$False` or `$Null` will be converted to a literal string, e.g. `$Test`.
+* Any type that is not allowed by the given language mode, will be omitted leaving a bare `[ValueType]`,
+    `[String]`, `[Array]` or `[HashTable]`.
+* Any variable that is not `$True`, `$False` or `$Null` will be converted to a literal string, e.g. `$Test`.
 
-    The default `LanguageMode` is `Restricted` for PowerShell Data (`psd1`) files and `Constrained` for any
-    other files, which usually concerns PowerShell (`.ps1`) files.
+The default `LanguageMode` is `Restricted` for PowerShell Data (`psd1`) files and `Constrained` for any
+other files, which usually concerns PowerShell (`.ps1`) files.
 
-    > [!Caution]
-    >
-    > In full language mode, `ConvertTo-Expression` permits all type initializers. Cmdlets, functions,
-    > CIM commands, and workflows will *not* be invoked by the `ConvertFrom-Expression` cmdlet.
-    >
-    > Take reasonable precautions when using the `Invoke-Expression -LanguageMode Full` command in scripts.
-    > Verify that the class types in the expression are safe before instantiating them. In general, it is
-    > best to design your configuration expressions with restricted or constrained classes, rather than
-    > allowing full freeform expressions.
+> [!Caution]
+>
+> In full language mode, `ConvertTo-Expression` permits all type initializers. Cmdlets, functions,
+> CIM commands, and workflows will *not* be invoked by the `ConvertFrom-Expression` cmdlet.
+>
+> Take reasonable precautions when using the `Invoke-Expression -LanguageMode Full` command in scripts.
+> Verify that the class types in the expression are safe before instantiating them. In general, it is
+> best to design your configuration expressions with restricted or constrained classes, rather than
+> allowing full freeform expressions.
 
 .PARAMETER ListAs
-    If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown or
-    denied type initializer will be converted to the given list type.
+If supplied, the array subexpression `@( )` syntaxes without an type initializer or with an unknown or
+denied type initializer will be converted to the given list type.
 
 .PARAMETER MapAs
-    If supplied, the array subexpression `@{ }` syntaxes without an type initializer or with an unknown or
-    denied type initializer will be converted to the given map (dictionary or object) type.
+If supplied, the array subexpression `@{ }` syntaxes without an type initializer or with an unknown or
+denied type initializer will be converted to the given map (dictionary or object) type.
 
-    The default `MapAs` is an (ordered) `PSCustomObject` for PowerShell Data (`psd1`) files and
-    a (unordered) `HashTable` for any other files, which usually concerns PowerShell (`.ps1`) files that
-    support explicit type initiators.
+The default `MapAs` is an (ordered) `PSCustomObject` for PowerShell Data (`psd1`) files and
+a (unordered) `HashTable` for any other files, which usually concerns PowerShell (`.ps1`) files that
+support explicit type initiators.
 
 .PARAMETER Encoding
-    Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
+Specifies the type of encoding for the target file. The default value is `utf8NoBOM`.
 
 .LINK
-    [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
-    [2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
+[1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/ObjectParser.md "PowerShell Object Parser"
+[2]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes "About language modes"
 #>
 
 [Alias('Import-Object', 'imo')]
@@ -3645,37 +3784,37 @@ end {
 function Merge-ObjectGraph {
 <#
 .SYNOPSIS
-    Merges two object graphs into one
+Merges two object graphs into one
 
 .DESCRIPTION
-    Recursively merges two object graphs into a new object graph.
+Recursively merges two object graphs into a new object graph.
 
 .PARAMETER InputObject
-    The input object that will be merged with the template object (see: [-Template] parameter).
+The input object that will be merged with the template object (see: [-Template] parameter).
 
-    > [!NOTE]
-    > Multiple input object might be provided via the pipeline.
-    > The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
-    > To avoid a list of (root) objects to unroll, use the **comma operator**:
+> [!NOTE]
+> Multiple input object might be provided via the pipeline.
+> The common PowerShell behavior is to unroll any array (aka list) provided by the pipeline.
+> To avoid a list of (root) objects to unroll, use the **comma operator**:
 
-        ,$InputObject | Compare-ObjectGraph $Template.
+    ,$InputObject | Compare-ObjectGraph $Template.
 
 .PARAMETER Template
-    The template that is used to merge with the input object (see: [-InputObject] parameter).
+The template that is used to merge with the input object (see: [-InputObject] parameter).
 
 .PARAMETER PrimaryKey
-    In case of a list of dictionaries or PowerShell objects, the PowerShell key is used to
-    link the items or properties: if the PrimaryKey exists on both the [-Template] and the
-    [-InputObject] and the values are equal, the dictionary or PowerShell object will be merged.
-    Otherwise (if the key can't be found or the values differ), the complete dictionary or
-    PowerShell object will be added to the list.
+In case of a list of dictionaries or PowerShell objects, the PowerShell key is used to
+link the items or properties: if the PrimaryKey exists on both the [-Template] and the
+[-InputObject] and the values are equal, the dictionary or PowerShell object will be merged.
+Otherwise (if the key can't be found or the values differ), the complete dictionary or
+PowerShell object will be added to the list.
 
-    It is allowed to supply multiple primary keys where each primary key will be used to
-    check the relation between the [-Template] and the [-InputObject].
+It is allowed to supply multiple primary keys where each primary key will be used to
+check the relation between the [-Template] and the [-InputObject].
 
 .PARAMETER MaxDepth
-    The maximal depth to recursively compare each embedded node.
-    The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
+The maximal depth to recursively compare each embedded node.
+The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
 #>
 
 [Alias('Merge-Object', 'mgo')]
@@ -3771,10 +3910,10 @@ The schema object has the following major features:
 
 * Independent of the object notation (as e.g. [Json (JavaScript Object Notation)][2] or [PowerShell Data Files][3])
 * Each test node is at the same level as the input node being validated
-* Complex node requirements (as mutual exclusive nodes) might be selected using a logical formula
+* Complex node Conditions (as mutual exclusive nodes) might be selected using a logical formula
 
 .EXAMPLE
-#Test whether a `$Person` object meats the schema requirements.
+#Test whether a `$Person` object meats the schema Conditions.
 
     $Person = [PSCustomObject]@{
         FirstName = 'John'
@@ -3845,62 +3984,249 @@ If set, the cmdlet will stop at the first invalid node and return the test resul
 
 .PARAMETER Elaborate
 
-If set, the cmdlet will return the test result object for all tested nodes, even if they are valid
+If set, the cmdlet will return the test result object for all nodes, even if they are valid
 or ruled out in a possible list node branch selection.
 
-.PARAMETER AssertTestPrefix
+.PARAMETER AssertPrefix
 
-The prefix used to identify the assert test nodes in the schema object. By default, the prefix is `AssertTestPrefix`.
+The prefix used to identify the Assert nodes in the schema object. By default, the prefix is `@`.
 
 .PARAMETER MaxDepth
 
-The maximal depth to recursively test each embedded node.
+The Maximum depth to recursively test each embedded node.
 The default value is defined by the PowerShell object node parser (`[PSNode]::DefaultMaxDepth`, default: `20`).
 
 .LINK
     [1]: https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/SchemaObject.md "Schema object definitions"
-
 #>
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'ContainsOptionalTests', Justification = 'https://github.com/PowerShell/PSScriptAnalyzer/issues/1163')]
 [Alias('Test-Object', 'tso')]
-[CmdletBinding(DefaultParameterSetName = 'ResultList', HelpUri='https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Test-ObjectGraph.md')][OutputType([String])] param(
-
-    [Parameter(ParameterSetName='ValidateOnly', Mandatory = $true, ValueFromPipeLine = $True)]
-    [Parameter(ParameterSetName='ResultList', Mandatory = $true, ValueFromPipeLine = $True)]
+[CmdletBinding(DefaultParameterSetName = 'ResultList', HelpUri = 'https://github.com/iRon7/ObjectGraphTools/blob/main/Docs/Test-ObjectGraph.md')][OutputType([String])]
+param(
+    [Parameter(Mandatory = $true, ValueFromPipeLine = $True)]
     $InputObject,
 
-    [Parameter(ParameterSetName='ValidateOnly', Mandatory = $true, Position = 0)]
-    [Parameter(ParameterSetName='ResultList', Mandatory = $true, Position = 0)]
+    [Parameter(Mandatory = $true, Position = 0)]
     $SchemaObject,
 
-    [Parameter(ParameterSetName='ValidateOnly')]
+    [Parameter(ParameterSetName = 'ValidateOnly')]
     [Switch]$ValidateOnly,
 
-    [Parameter(ParameterSetName='ResultList')]
+    [Parameter(ParameterSetName = 'ResultList')]
     [Switch]$Elaborate,
 
-    [Parameter(ParameterSetName='ValidateOnly')]
-    [Parameter(ParameterSetName='ResultList')]
-    [ValidateNotNullOrEmpty()][String]$AssertTestPrefix = 'AssertTestPrefix',
+    [ValidateNotNullOrEmpty()][String]$AssertPrefixNodeName = 'AssertPrefix',
 
-    [Parameter(ParameterSetName='ValidateOnly')]
-    [Parameter(ParameterSetName='ResultList')]
     [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
 )
 
 begin {
 
-    $Script:Yield = {
-        $Name = "$Args" -Replace '\W'
-        $Value = Get-Variable -Name $Name -ValueOnly -ErrorAction SilentlyContinue
-        if ($Value) { "$args" }
-    }
-
-    $Script:Ordinal = @{$false = [StringComparer]::OrdinalIgnoreCase; $true = [StringComparer]::Ordinal }
+    $Script:UniqueCollections = @{}
 
     # The maximum schema object depth is bound by the input object depth (+1 one for the leaf test definition)
     $SchemaNode = [PSNode]::ParseInput($SchemaObject, ($MaxDepth + 2)) # +2 to be safe
-    $Script:AssertPrefix = if ($SchemaNode.Contains($AssertTestPrefix)) { $SchemaNode.Value[$AssertTestPrefix] } else { '@' }
+    $Script:AssertPrefix = if ($SchemaNode.Contains($AssertPrefixNodeName)) { $SchemaNode.Value[$AssertPrefixNodeName] } else { '@' }
+
+    class CheckBox {
+        [Nullable[Bool]]$NullableBool
+
+        CheckBox([Nullable[Bool]]$NullableBool) { $this.NullableBool = $NullableBool }
+
+        [string] ToString() {
+            return $(
+                switch ($this.NullableBool) {
+                    $null { [CommandColor][InverseColor]'[?]' }
+                    $false { [ErrorColor][InverseColor]'[X]' }
+                    $true { [VariableColor][InverseColor]'[V]' }
+                }
+            )
+        }
+    }
+
+    class Permutations : IEnumerator {
+        # This class enumerates all permutations of $n elements that Permutation over $i containers
+
+        [int[]] $Element
+        [List[int][]] $Container
+
+        Permutations([int]$ElementCount, [int]$ContainerCount) {
+            $this.Element = [int[]]::new($ElementCount)
+            $this.Container = [List[int][]]::new($ContainerCount)
+        }
+
+        [object]get_Current() {
+            if ($null -eq $this.Container[0]) { return @() }
+            return $this.Container
+        }
+
+        [bool] MoveNext() {
+            if ($this.Element.Count -eq 0 -or $this.Container.Count -eq 0) { return $false }
+            if ($null -eq $this.Container[0]) {
+                # First iteration
+                $this.Container[0] = [List[int]] (0..($this.Element.Count - 1))
+                for ($i = 1; $i -lt $this.Container.Count; $i++) { $this.Container[$i] = [List[int]]::new() }
+                return $true
+            }
+            $n = 0
+            while ($n -lt $this.Element.Count) {
+                $i = $this.Element[$n] # Container index
+                if (-not $this.Container[$i].Remove($n)) { throw "Container $i ($($this.Container[$i])) doesn't contain $n." }
+                $Carry = ++$i -ge $this.Container.Count
+                if ($Carry) { $i = 0 }
+                $this.Element[$n] = $i
+                $this.Container[$i].Add($n)
+                if (-not $Carry) { return $true }
+                $n++
+            }
+            $this.Reset()
+            return $false
+        }
+
+        [List[int][]] Copy() {
+            $Copy = [List[int][]]::new($this.Container.Count)
+            for ($i = 0; $i -lt $this.Container.Count; $i++) {
+                $Copy[$i] = [List[int]]::new($this.Container[$i])
+            }
+            return $Copy
+        }
+
+        [void] Reset() {
+            $this.Element.Clear()
+            $this.Container.Clear()
+        }
+
+        [void] Dispose() {}
+    }
+
+    class Permutation : Permutations , IEnumerator[int] {
+        Permutation([int]$ElementCount, [int]$ContainerCount) : base($ElementCount, $ContainerCount) {}
+        [Int]get_Current() { return $this }
+        [string]ToString() {
+            return $(
+                foreach ($Indices in $this.Container) {
+                    $Indices -join ','
+                }
+            ) -join '|'
+        }
+    }
+
+    class TestStage {
+        static [Bool]$Debug
+
+        [PSNode]$ObjectNode
+        [Bool]$Report
+        [Bool]$Elaborate
+        [Int]$Depth
+        [TestStage]$ParentStage
+        [Bool]$Passed = $true
+        [Nullable[Bool]]$CaseSensitive
+        [Int]$FailCount
+        [List[Object]]$Results
+
+        TestStage([PSNode]$ObjectNode, [Bool]$Elaborate, [Bool]$Report, [int]$Depth) {
+            if ($Elaborate -and -not $Report) { throw "Can't elaborate in validate-only mode" }
+            $this.ObjectNode = $ObjectNode
+            $this.Elaborate = $Elaborate
+            $this.Report = $Report
+            $this.Depth = $Depth
+            if ([TestStage]::Debug) { $this.WriteDebug($null, $null) }
+        }
+
+        [TestStage]Create([PSNode]$Node, [bool]$Scan) {
+            $TestStage = [TestStage]::new($Node, $this.Elaborate, $this.Report, ($this.Depth + 1))
+            $TestStage.ParentStage = $this.ParentStage
+            $TestStage.CaseSensitive = $this.CaseSensitive
+            if (-not $this.Report) { return $TestStage } # Validate mode: output no results
+            # if ($this.Elaborate) { return $TestStage } # Elaborate mode: output all results
+            if ($Scan) { $TestStage.Results = [List[Object]]::new() } # (Re)start scan stage
+            elseif ($this.Results -is [IList]) { $TestStage.Results = $this.Results } # Add scan results to parent
+            return $TestStage
+        }
+
+        hidden WriteDebug($TestNode, [String]$Issue) {
+            $Indent = ' ' * ($this.Depth * 2)
+            $Line = (Get-PSCallStack).Where({ $_.Command }, 'First').ScriptLineNumber
+            $Prompt = if ($this.Report) { 'Report' } else { 'Validate' }
+            if ($null -ne $this.Results) { $Prompt += '(Scan)' }
+            $Node = $this.ObjectNode
+            if ($TestNode -is [PSNode]) {
+                Write-Host "$Indent$($Line):$Prompt>$($Node)?$($TestNode.Name)=$TestNode" ([CheckBox]$this.passed) $Issue
+            }
+            elseif ($Issue) {
+                Write-Host "$Indent$($Line):$Prompt>$($Node.Path)=$Issue"
+            }
+            else {
+                Write-Host "$Indent$($Line):$Prompt>$($Node.Path)=$Node"
+            }
+        }
+
+        [Object]Check([PSNode]$TestNode, [String]$Issue, [Bool]$Passed) {
+            if (-not $Passed) {
+                $this.Passed = $false
+                $this.FailCount++
+            }
+            if ([TestStage]::Debug) { $this.WriteDebug($TestNode, $Issue) }
+            if (-not $this.Elaborate -and ($Passed -or -not $this.Report)) { return @() }
+            $Result = [PSCustomObject]@{
+                ObjectNode = $this.ObjectNode
+                SchemaNode = $TestNode
+                Valid      = $Passed
+                Issue      = $Issue
+            }
+            $Result.PSTypeNames.Insert(0, 'TestResult')
+            if ($null -eq $this.Results) { return $Result }
+            $this.Results.Add($Result)
+            return @() # return nothing (enumerable null)
+        }
+
+        [Object]AddResults ([List[Object]]$Results) {
+            if (-not $Results) { return @() }
+            if ($null -eq $this.Results) { return $Results }
+            $this.Results.AddRange($Results)
+            return @()
+        }
+
+        hidden [String]GroupDesignate($Stages, $TestIndex, $Permutation) {
+            return $(
+                if ($Permutation[$TestIndex].Count -eq 0) { [CheckBox]::new($false) }
+                else {
+                    foreach ($NodeIndex in $Permutation[$TestIndex]) {
+                        $Check = if ($Stages[$NodeIndex] -and $Stages[$NodeIndex].ContainsKey($TestIndex)) {
+                            $Stages[$NodeIndex][$TestIndex].Passed
+                        }
+                        "$($this.ObjectNode.ChildNodes[$NodeIndex])$([CheckBox]::new($Check))"
+                    }
+                }
+            ) -join ','
+        }
+
+        [iDictionary]GetDesignates ($Stages, $SubTests, $Permutation, $TestPassed) {
+            $Dictionary = [Dictionary[String, String]]::new()
+            for ($TestIndex = 0; $TestIndex -lt $Permutation.Count; $TestIndex++) {
+                $Name = $SubTests[$TestIndex].Name
+                $Dictionary[$Name] = [CheckBox]::new($TestPassed[$TestIndex]).ToString() + '=' +
+                $this.GroupDesignate($Stages, $TestIndex, $Permutation)
+            }
+            return $Dictionary
+        }
+
+        [iList]ListDesignates ($Stages, $SubTests, $Permutation, $TestPassed) {
+            return @(
+                for ($TestIndex = 0; $TestIndex -lt $Permutation.Count; $TestIndex++) {
+                    if ($TestPassed.ContainsKey($TestIndex)) { continue }
+                    $SubTests[$TestIndex].Name +
+                    [CheckBox]::new($TestPassed[$TestIndex]).ToString() + '=' +
+                    $this.GroupDesignate($Stages, $TestIndex, $Permutation)
+                }
+            )
+        }
+
+        [String]Casing() { if ($this.CaseSensitive) { return '(case sensitive) ' } else { return '' } }
+    }
+
+    [TestStage]::Debug = $DebugPreference -in 'Stop', 'Continue', 'Inquire'
 
     function StopError($Exception, $Id = 'TestNode', $Category = [ErrorCategory]::SyntaxError, $Object) {
         if ($Exception -is [ErrorRecord]) { $Exception = $Exception.Exception }
@@ -3908,656 +4234,678 @@ begin {
         $PSCmdlet.ThrowTerminatingError([ErrorRecord]::new($Exception, $Id, $Category, $Object))
     }
 
-    function SchemaError($Message, $ObjectNode, $SchemaNode, $Object = $SchemaObject) {
+    function SchemaError($Message, $SchemaNode) {
         $Exception = [ArgumentException]"$([String]$SchemaNode) $Message"
-        $Exception.Data.Add('ObjectNode', $ObjectNode)
-        $Exception.Data.Add('SchemaNode', $SchemaNode)
-        StopError -Exception $Exception -Id 'SchemaError' -Category InvalidOperation -Object $Object
+        StopError -Exception $Exception -Id 'SchemaError' -Category InvalidOperation -Object $SchemaNode
     }
 
-    $Script:Tests = @{
+    $Script:Asserts = @{
         Description      = 'Describes the test node'
-        References       = 'Contains a list of assert references'
-        Type             = 'The node or value is of type'
-        NotType          = 'The node or value is not type'
-        CaseSensitive    = 'The (descendant) node are considered case sensitive'
-        Required         = 'The node is required'
-        Unique           = 'The node is unique'
-
-        Minimum          = 'The value is greater than or equal to'
-        ExclusiveMinimum = 'The value is greater than'
-        ExclusiveMaximum = 'The value is less than'
-        Maximum          = 'The value is less than or equal to'
-
-        MinimumLength    = 'The value length is greater than or equal to'
-        Length           = 'The value length is equal to'
-        MaximumLength    = 'The value length is less than or equal to'
-
-        MinimumCount     = 'The node count is greater than or equal to'
-        Count            = 'The node count is equal to'
-        MaximumCount     = 'The node count is less than or equal to'
-
-        Like             = 'The value is like'
-        Match            = 'The value matches'
-        NotLike          = 'The value is not like'
-        NotMatch         = 'The value not matches'
+        References       = 'Contains a list of Assert references'
+        CaseSensitive    = 'The (descendant) nodes are considered case sensitive'
+        Unique           = '_ObjectValue_ is unique'
 
         Ordered          = 'The nodes are in order'
-        RequiredNodes    = 'The node contains the nodes'
-        AllowExtraNodes  = 'Allow extra nodes'
+        AnyName          = 'Any map name is allowed'
+        Requires         = 'The node requirement is met'
+
+        Optional         = 'The map node is optional'
+        Count            = 'The list node exists _SchemaValue_ times'
+        MinimumCount     = 'The list node exists at least _SchemaValue_ times'
+        MaximumCount     = 'The list node exists at most _SchemaValue_ times'
+
+        Type             = '_ObjectValue_ is of type _SchemaValue_'
+        NotType          = '_ObjectValue_ is not type _SchemaValue_'
+
+        Minimum          = '_ObjectValue_ is greater than or equal to _SchemaValue_'
+        ExclusiveMinimum = '_ObjectValue_ is greater than _SchemaValue_'
+        ExclusiveMaximum = '_ObjectValue_ is less than _SchemaValue_'
+        Maximum          = '_ObjectValue_ is less than or equal to _SchemaValue_'
+
+        MinimumLength    = '_ObjectValue_ length is greater than or equal to _SchemaValue_'
+        Length           = '_ObjectValue_ length is equal to _SchemaValue_'
+        MaximumLength    = '_ObjectValue_ length is less than or equal to _SchemaValue_'
+
+        Like             = '_ObjectValue_ is like _SchemaValue_'
+        Match            = '_ObjectValue_ matches _SchemaValue_'
+        NotLike          = '_ObjectValue_ is not like _SchemaValue_'
+        NotMatch         = '_ObjectValue_ not matches _SchemaValue_'
     }
 
     $At = @{}
-    $Tests.Get_Keys().Foreach{ $At[$_] = "$($AssertPrefix)$_" }
+    $Asserts.Get_Keys().Foreach{ $At[$_] = "$($Script:AssertPrefix)$_" }
 
-    function ResolveReferences($Node) {
-        if ($Node.Cache.ContainsKey('TestReferences')) { return }
-
-    }
-
-    function GetReference($LeafNode) {
-        $TestNode = $LeafNode.ParentNode
-        $References = if ($TestNode) {
-            if (-not $TestNode.Cache.ContainsKey('TestReferences')) {
-                $Stack = [Stack]::new()
-                while ($true) {
-                    $ParentNode = $TestNode.ParentNode
-                    if ($ParentNode -and -not $ParentNode.Cache.ContainsKey('TestReferences')) {
-                        $Stack.Push($TestNode)
-                        $TestNode = $ParentNode
-                        continue
+    function GetLink($LeafNode) {
+        # A test node with a string value is a reference to another node
+        # described in a ancestor @Reference map node
+        $ParentNode = $LeafNode.ParentNode
+        if (-not $ParentNode.Cache.ContainsKey('@References')) {
+            $Stack = [Stack]::new()
+            while ($ParentNode -and -not $ParentNode.Cache.ContainsKey('@References')) {
+                $Stack.Push($ParentNode)
+                $ParentNode = $ParentNode.ParentNode
+            }
+            $References = if ($ParentNode -and $ParentNode.Cache.ContainsKey('@References')) { $ParentNode.Cache['@References'] } else { @{} }
+            while ($Stack.Count) {
+                $ParentNode = $Stack.Pop()
+                if ($ParentNode.Contains($At.References)) {
+                    $Inherit = $References
+                    $RefNode = $ParentNode.GetChildNode($At.References)
+                    if ($RefNode -is [PSMapNode]) {
+                        $Ordinal = if ($RefNode.CaseMatters) { [StringComparer]::Ordinal } else { [StringComparer]::OrdinalIgnoreCase }
+                        $References = [HashTable]::new($Ordinal)
+                        foreach ($Node in $RefNode.ChildNodes) { $References[$Node.Name] = $Node }
                     }
-                    $RefNode = if ($TestNode.Contains($At.References)) { $TestNode.GetChildNode($At.References) }
-                    $TestNode.Cache['TestReferences'] = [HashTable]::new($Ordinal[[Bool]$RefNode.CaseMatters])
-                    if ($RefNode) {
-                        foreach ($ChildNode in $RefNode.ChildNodes) {
-                            if (-not $TestNode.Cache['TestReferences'].ContainsKey($ChildNode.Name)) {
-                                $TestNode.Cache['TestReferences'][$ChildNode.Name] = $ChildNode
-                            }
-                        }
-                    }
-                    $ParentNode = $TestNode.ParentNode
-                    if ($ParentNode) {
-                        foreach ($RefName in $ParentNode.Cache['TestReferences'].get_Keys()) {
-                            if (-not $TestNode.Cache['TestReferences'].ContainsKey($RefName)) {
-                                $TestNode.Cache['TestReferences'][$RefName] = $ParentNode.Cache['TestReferences'][$RefName]
-                            }
-                        }
-                    }
-                    if ($Stack.Count -eq 0) { break }
-                    $TestNode = $Stack.Pop()
-                }
-            }
-            $TestNode.Cache['TestReferences']
-        } else { @{} }
-        if ($References.Contains($LeafNode.Value)) {
-            $AssertNode.Cache['TestReferences'] = $References
-            $References[$LeafNode.Value]
-        }
-        else { SchemaError "Unknown reference: $LeafNode" $ObjectNode $LeafNode }
-    }
-
-    function MatchNode (
-        [PSNode]$ObjectNode,
-        [PSNode]$TestNode,
-        [Switch]$ValidateOnly,
-        [Switch]$Elaborate,
-        [Switch]$Ordered,
-        [Nullable[Bool]]$CaseSensitive,
-        [Switch]$MatchAll,
-        $MatchedNames
-    ) {
-        $Violates = $null
-        $Name = $TestNode.Name
-
-        $ChildNodes = $ObjectNode.ChildNodes
-        if ($ChildNodes.Count -eq 0) { return }
-
-        $AssertNode = if ($TestNode -is [PSCollectionNode]) { $TestNode } else { GetReference $TestNode }
-
-        if ($ObjectNode -is [PSMapNode] -and $TestNode.NodeOrigin -eq 'Map') {
-            if ($ObjectNode.Contains($Name)) {
-                $ChildNode = $ObjectNode.GetChildNode($Name)
-                if ($Ordered -and $ChildNodes.IndexOf($ChildNode) -ne $TestNodes.IndexOf($TestNode)) {
-                    $Violates = "The node $Name is not in order"
-                }
-            } else { $ChildNode = $false }
-        }
-        elseif ($ChildNodes.Count -eq 1) { $ChildNode = $ChildNodes[0] }
-        elseif ($Ordered) {
-            $NodeIndex = $TestNodes.IndexOf($TestNode)
-            if ($NodeIndex -ge $ChildNodes.Count) {
-                $Violates = "Expected at least $($TestNodes.Count) (ordered) nodes"
-            }
-            $ChildNode = $ChildNodes[$NodeIndex]
-        }
-        else { $ChildNode = $null }
-
-        if ($Violates) {
-            if (-not $ValidateOnly) {
-                $Output = [PSCustomObject]@{
-                    ObjectNode = $ObjectNode
-                    SchemaNode = $AssertNode
-                    Valid      = -not $Violates
-                    Issue      = $Violates
-                }
-                $Output.PSTypeNames.Insert(0, 'TestResult')
-                $Output
-            }
-            return
-        }
-        if ($ChildNode -is [PSNode]) {
-            $Issue = $Null
-            $TestParams = @{
-                ObjectNode     = $ChildNode
-                SchemaNode     = $AssertNode
-                Elaborate      = $Elaborate
-                CaseSensitive  = $CaseSensitive
-                ValidateOnly   = $ValidateOnly
-                RefInvalidNode = [Ref]$Issue
-            }
-            TestNode @TestParams
-            if (-not $Issue) { $null = $MatchedNames.Add($ChildNode.Name) }
-        }
-        elseif ($null -eq $ChildNode) {
-            $SingleIssue = $Null
-            foreach ($ChildNode in $ChildNodes) {
-                if ($MatchedNames.Contains($ChildNode.Name)) { continue }
-                $Issue = $Null
-                $TestParams = @{
-                    ObjectNode     = $ChildNode
-                    SchemaNode     = $AssertNode
-                    Elaborate      = $Elaborate
-                    CaseSensitive  = $CaseSensitive
-                    ValidateOnly   = $true
-                    RefInvalidNode = [Ref]$Issue
-                }
-                TestNode @TestParams
-                if($Issue) {
-                    if ($Elaborate) { $Issue }
-                    elseif (-not $ValidateOnly -and $MatchAll) {
-                        if ($null -eq $SingleIssue) { $SingleIssue = $Issue } else { $SingleIssue = $false }
+                    else { SchemaError "The reference node should be a map node" $RefNode }
+                    foreach ($Key in $Inherit.get_Keys()) {
+                        if (-not $References.ContainsKey($Key)) { $References[$Key] = $Inherit[$Key] }
                     }
                 }
-                else {
-                    $null = $MatchedNames.Add($ChildNode.Name)
-                    if (-not $MatchAll) { break }
-                }
+                $ParentNode.Cache['@References'] = $References
             }
-            if ($SingleIssue) { $SingleIssue }
         }
-        elseif ($ChildNode -eq $false) { $AssertResults[$Name] = $false }
-        else { throw "Unexpected return reference: $ChildNode" }
+        $Reference = $ParentNode.Cache['@References'][$LeafNode.Value]
+        if ($Reference) { $Reference } else { SchemaError "Unknown reference: $LeafNode" $LeafNode }
     }
 
     function TestNode (
-        [PSNode]$ObjectNode,
-        [PSNode]$SchemaNode,
-        [Switch]$Elaborate,             # if set, include the failed test results in the output
-        [Nullable[Bool]]$CaseSensitive, # inherited the CaseSensitivity frm the parent node if not defined
-        [Switch]$ValidateOnly,          # if set, stop at the first invalid node
-        $RefInvalidNode                 # references the first invalid node
+        [TestStage]$TestStage,
+        [PSCollectionNode]$SchemaNode
     ) {
-        $CallStack = Get-PSCallStack
-        # if ($CallStack.Count -gt 20) { Throw 'Call stack failsafe' }
-        if ($DebugPreference -in 'Stop', 'Continue', 'Inquire') {
-            $Caller = $CallStack[1]
-            Write-Host "$([ParameterColor]'Caller (line: $($Caller.ScriptLineNumber))'):" $Caller.InvocationInfo.Line.Trim()
-            Write-Host "$([ParameterColor]'ObjectNode:')" $ObjectNode.Path "$ObjectNode"
-            Write-Host "$([ParameterColor]'SchemaNode:')" $SchemaNode.Path "$SchemaNode"
-            Write-Host "$([ParameterColor]'ValidateOnly:')" ([Bool]$ValidateOnly)
-        }
-        if ($SchemaNode -is [PSListNode] -and $SchemaNode.Count -eq 0) { return } # Allow any node
+        $ObjectNode = $TestStage.ObjectNode
+        if ($ObjectNode -is [PSLeafNode]) { $SubNodes = @() } else { $SubNodes = $ObjectNode.ChildNodes }
+        if ($SchemaNode -is [PSListNode] -and $SchemaNode.Count -eq 0) { return } # @() = Allow any node, @{} = Deny any node
 
         $AssertValue = $ObjectNode.Value
-        $RefInvalidNode.Value = $null
 
         # Separate the assert nodes from the schema subnodes
-        $AssertNodes = [Ordered]@{} # $AssertNodes{<Assert Test name>] = $ChildNodes.@<Assert Test name>
+        $ExtraTest, $Condition, $Ordered, $CaseMatters, $Ordinal = $null
+        $CaseMatters = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.CaseMatters }
+        $Ordinal = if ($CaseMatters) { [StringComparer]::Ordinal } else { [StringComparer]::OrdinalIgnoreCase }
+        $SubTests = [OrderedDictionary]::new($Ordinal)
+        $AssertNodes = [Ordered]@{} # $AssertNodes[<Assert Test name>] = $SubNodes.@<Assert Test name>
         if ($SchemaNode -is [PSMapNode]) {
-            $TestNodes = [List[PSNode]]::new()
             foreach ($Node in $SchemaNode.ChildNodes) {
-                if ($Null -eq $Node.Parent -and $Node.Name -eq $AssertTestPrefix) { continue }
-                if ($Node.Name.StartsWith($AssertPrefix)) {
-                    $TestName = $Node.Name.SubString($AssertPrefix.Length)
-                    if ($TestName -notin $Tests.Keys) { SchemaError "Unknown assert: '$($Node.Name)'" $ObjectNode $SchemaNode }
+                if ($Null -eq $Node.ParentNode.ParentNode -and $Node.Name -eq $AssertPrefixNodeName) { continue }
+                if ($Node.Name -is [String] -and $Node.Name.StartsWith($Script:AssertPrefix)) {
+                    $TestName = $Node.Name.SubString($Script:AssertPrefix.Length)
+                    if ($TestName -notin $Asserts.Keys) { SchemaError "Unknown Assert: '$TestName'" $SchemaNode }
                     $AssertNodes[$TestName] = $Node
                 }
-                else { $TestNodes.Add($Node) }
+                else {
+                    $SubTests[[Object]$Node.Name] = if ($Node -is [PSLeafNode]) { GetLink $Node } else { $Node }
+                }
             }
         }
-        elseif ($SchemaNode -is [PSListNode]) { $TestNodes = $SchemaNode.ChildNodes }
-        else { $TestNodes = @() }
+        elseif ($SchemaNode -is [PSListNode]) {
+            foreach ($Node in $SchemaNode.ChildNodes) { $SubTests[[Object]$Node.Name] = $Node }
+        }
 
-        if ($AssertNodes.Contains('CaseSensitive')) { $CaseSensitive = [Nullable[Bool]]$AssertNodes['CaseSensitive'] }
-        $AllowExtraNodes = if ($AssertNodes.Contains('AllowExtraNodes')) { $AssertNodes['AllowExtraNodes'] }
+        if ($AssertNodes.Contains('CaseSensitive')) { $TestStage.CaseSensitive = $AssertNodes['CaseSensitive'] }
 
-#Region Node validation
-
-        $RefInvalidNode.Value = $false
-        $MatchedNames = [HashSet[Object]]::new()
-        $AssertResults = $Null
+        $LeafTest = $false
         foreach ($TestName in $AssertNodes.get_Keys()) {
-            $AssertNode = $AssertNodes[$TestName]
-            $Criteria = $AssertNode.Value
-            $Violates = $null # is either a boolean ($true if invalid) or a string with what was expected
-            if ($TestName -eq 'Description') { $Null }
-            elseif ($TestName -eq 'References') { }
+
+            $TestNode = $AssertNodes[$TestName]
+            $TestValue = $TestNode.Value
+
+            #Region Node Asserts
+
+            if ($TestName -in 'Description', 'References', 'Optional', 'Count', 'MinimumCount', 'MaximumCount') {
+                continue
+            }
+            elseif ($TestName -eq 'CaseSensitive') {
+                if ($null -ne $TestValue -and $TestValue -isnot [Bool]) {
+                    SchemaError "The case sensitivity value should be a boolean: $TestValue" $SchemaNode
+                }
+                continue
+            }
+            elseif ($TestName -eq 'Ordered') {
+                if ($TestValue -is [Bool]) { $Ordered = [Bool]$TestValue }
+                else { SchemaError "The ordered assert should be a boolean" $SchemaNode }
+                if ($ObjectNode -isnot [PSCollectionNode]) {
+                    $TestStage.Check($TestNode, "The $ObjectNode is not a collection node", $false)
+                }
+                continue
+            }
+            elseif ($TestName -eq 'AnyName') {
+                $ExtraTest = $TestNode
+                if (-not $SubTests) { [OrderedDictionary]::new() }
+                continue
+            }
+            elseif ($TestName -eq 'Requires') {
+                if ($Ordered) { SchemaError "A ordered collection cannot have a Requires assert" $SchemaNode }
+                if ($ObjectNode -is [PSCollectionNode]) {
+                    $Condition = [LogicalFormula]::new()
+                    $TestValue.foreach{ $Condition.And([LogicalFormula]$_) } # 'a or b', 'c or d' --> 'a or b and (c or d)'
+                }
+                else { $TestStage.Check($TestNode, "The node $ObjectNode is not a collection node", $false) }
+                continue
+            }
             elseif ($TestName -in 'Type', 'notType') {
-                $FoundType = foreach ($TypeName in $Criteria) {
+                $TypeName = $null
+                $FoundType = foreach ($TypeName in $TestValue) {
                     if ($TypeName -in $null, 'Null', 'Void') {
                         if ($null -eq $AssertValue) { $true; break }
                     }
-                    elseif ($TypeName -is [Type]) { $Type = $TypeName } else {
-                        $Type = $TypeName -as [Type]
-                        if (-not $Type) {
-                            SchemaError "Unknown type: $TypeName" $ObjectNode $SchemaNode
-                        }
+                    else {
+                        $Type = if ($TypeName -is [Type]) { $TypeName } else { $TypeName -as [Type] }
+                        if (-not $Type) { SchemaError "Unknown type: $TypeName" $TypeName }
+                        if ($ObjectNode -is $Type -or $AssertValue -is $Type) { $true; break }
                     }
-                    if ($ObjectNode -is $Type -or $AssertValue -is $Type) { $true; break }
                 }
                 $Not = $TestName.StartsWith('Not', 'OrdinalIgnoreCase')
-                if ($null -eq $FoundType -xor $Not) { $Violates = "The node or value is $(if (!$Not) { 'not ' })of type $AssertNode" }
-            }
-            elseif ($TestName -eq 'CaseSensitive') {
-                if ($null -ne $Criteria -and $Criteria -isnot [Bool]) {
-                    SchemaError "The case sensitivity value should be a boolean: $Criteria" $ObjectNode $SchemaNode
+                if ($null -eq $FoundType -xor $Not) {
+                    $DisplayType = $([TypeColor][PSSerialize]::new($TypeName, [PSLanguageMode]'NoLanguage'))
+                    $TestStage.Check($TestNode, "$($ObjectNode.DisplayValue) is $(if (!$Not) { 'not ' })of type $DisplayType", $false)
                 }
             }
             elseif ($TestName -in 'Minimum', 'ExclusiveMinimum', 'ExclusiveMaximum', 'Maximum') {
-                if ($null -eq $AllowExtraNodes) { $AllowExtraNodes = $true }
+                $LeafTest = $true
                 $ValueNodes = if ($ObjectNode -is [PSCollectionNode]) { $ObjectNode.ChildNodes } else { @($ObjectNode) }
+                if (-not $ValueNodes) { $TestStage.Check($TestNode, "The node $ObjectNode is empty", $false) }
                 foreach ($ValueNode in $ValueNodes) {
                     $Value = $ValueNode.Value
                     if ($Value -isnot [String] -and $Value -isnot [ValueType]) {
-                        $Violates = "The value '$Value' is not a string or value type"
+                        $TestStage.Check($TestNode, "The $ObjectNode is not a string or value type", $false)
                     }
                     elseif ($TestName -eq 'Minimum') {
                         $IsValid =
-                            if     ($CaseSensitive -eq $true)  { $Criteria -cle $Value }
-                            elseif ($CaseSensitive -eq $false) { $Criteria -ile $Value }
-                            else                               { $Criteria -le  $Value }
+                        if ($TestStage.CaseSensitive -eq $true) { $TestValue -cle $Value }
+                        elseif ($TestStage.CaseSensitive -eq $false) { $TestValue -ile $Value }
+                        else { $TestValue -le $Value }
                         if (-not $IsValid) {
-                            $Violates = "The $(&$Yield '(case sensitive) ')value $Value is less or equal than $AssertNode"
+                            $TestStage.Check($TestNode, "The value $($ObjectNode.DisplayValue) is $($TestStage.Casing())less or equal than $TestValue", $false)
                         }
                     }
                     elseif ($TestName -eq 'ExclusiveMinimum') {
                         $IsValid =
-                            if     ($CaseSensitive -eq $true)  { $Criteria -clt $Value }
-                            elseif ($CaseSensitive -eq $false) { $Criteria -ilt $Value }
-                            else                               { $Criteria -lt  $Value }
+                        if ($TestStage.CaseSensitive -eq $true) { $TestValue -clt $Value }
+                        elseif ($TestStage.CaseSensitive -eq $false) { $TestValue -ilt $Value }
+                        else { $TestValue -lt $Value }
                         if (-not $IsValid) {
-                            $Violates = "The $(&$Yield '(case sensitive) ')value $Value is less than $AssertNode"
+                            $TestStage.Check($TestNode, "The value $($ObjectNode.DisplayValue) is $($TestStage.Casing())less than $TestValue", $false)
                         }
                     }
                     elseif ($TestName -eq 'ExclusiveMaximum') {
                         $IsValid =
-                            if     ($CaseSensitive -eq $true)  { $Criteria -cgt $Value }
-                            elseif ($CaseSensitive -eq $false) { $Criteria -igt $Value }
-                            else                               { $Criteria -gt  $Value }
+                        if ($TestStage.CaseSensitive -eq $true) { $TestValue -cgt $Value }
+                        elseif ($TestStage.CaseSensitive -eq $false) { $TestValue -igt $Value }
+                        else { $TestValue -gt $Value }
                         if (-not $IsValid) {
-                            $Violates = "The $(&$Yield '(case sensitive) ')value $Value is greater than $AssertNode"
+                            $TestStage.Check($TestNode, "The value $($ObjectNode.DisplayValue) is $($TestStage.Casing())greater than $TestValue", $false)
                         }
                     }
-                    else { # if ($TestName -eq 'Maximum') {
+                    else {
+                        # if ($TestName -eq 'Maximum') {
                         $IsValid =
-                            if     ($CaseSensitive -eq $true)  { $Criteria -cge $Value }
-                            elseif ($CaseSensitive -eq $false) { $Criteria -ige $Value }
-                            else                               { $Criteria -ge  $Value }
+                        if ($TestStage.CaseSensitive -eq $true) { $TestValue -cge $Value }
+                        elseif ($TestStage.CaseSensitive -eq $false) { $TestValue -ige $Value }
+                        else { $TestValue -ge $Value }
                         if (-not $IsValid) {
-                            $Violates = "The $(&$Yield '(case sensitive) ')value $Value is greater than $AssertNode"
+                            $TestStage.Check($TestNode, "The value $($ObjectNode.DisplayValue) is $($TestStage.Casing())greater or equal than $TestValue)", $false)
                         }
                     }
-                    if ($Violates) { break }
+                    if (-not $TestStage.Passed) { break }
                 }
             }
-
             elseif ($TestName -in 'MinimumLength', 'Length', 'MaximumLength') {
-                if ($null -eq $AllowExtraNodes) { $AllowExtraNodes = $true }
+                $LeafTest = $true
                 $ValueNodes = if ($ObjectNode -is [PSCollectionNode]) { $ObjectNode.ChildNodes } else { @($ObjectNode) }
+                if (-not $ValueNodes) { $TestStage.Check($TestNode, "The node $ObjectNode is empty", $false) }
                 foreach ($ValueNode in $ValueNodes) {
                     $Value = $ValueNode.Value
                     if ($Value -isnot [String] -and $Value -isnot [ValueType]) {
-                        $Violates = "The value '$Value' is not a string or value type"
+                        $TestStage.Check($TestNode, "The $ObjectNode is not a string or value type", $false)
                         break
                     }
                     $Length = "$Value".Length
                     if ($TestName -eq 'MinimumLength') {
-                        if ($Length -lt $Criteria) {
-                            $Violates = "The string length of '$Value' ($Length) is less than $AssertNode"
+                        if ($Length -lt $TestValue) {
+                            $TestStage.Check($TestNode, "The string length of $($ObjectNode.DisplayValue) ($Length) is less than $TestValue", $false)
                         }
                     }
                     elseif ($TestName -eq 'Length') {
-                        if ($Length -ne $Criteria) {
-                            $Violates = "The string length of '$Value' ($Length) is not equal to $AssertNode"
+                        if ($Length -ne $TestValue) {
+                            $TestStage.Check($TestNode, "The string length of $($ObjectNode.DisplayValue) ($Length) is not equal to $TestValue", $false)
                         }
                     }
-                    else { # if ($TestName -eq 'MaximumLength') {
-                        if ($Length -gt $Criteria) {
-                            $Violates = "The string length of '$Value' ($Length) is greater than $AssertNode"
+                    else {
+                        # if ($TestName -eq 'MaximumLength') {
+                        if ($Length -gt $TestValue) {
+                            $TestStage.Check($TestNode, "The string length of $($ObjectNode.DisplayValue) ($Length) is greater than $TestValue", $false)
                         }
                     }
-                    if ($Violates) { break }
+                    if (-not $TestStage.Passed) { break }
                 }
             }
 
             elseif ($TestName -in 'Like', 'NotLike', 'Match', 'NotMatch') {
-                if ($null -eq $AllowExtraNodes) { $AllowExtraNodes = $true }
+                $LeafTest = $true
                 $Negate = $TestName.StartsWith('Not', 'OrdinalIgnoreCase')
-                $Match  = $TestName.EndsWith('Match', 'OrdinalIgnoreCase')
+                $Match = $TestName.EndsWith('Match', 'OrdinalIgnoreCase')
                 $ValueNodes = if ($ObjectNode -is [PSCollectionNode]) { $ObjectNode.ChildNodes } else { @($ObjectNode) }
+                if (-not $ValueNodes) { $TestStage.Check($TestNode, "The node $ObjectNode is empty", $false) }
                 foreach ($ValueNode in $ValueNodes) {
                     $Value = $ValueNode.Value
                     if ($Value -isnot [String] -and $Value -isnot [ValueType]) {
-                        $Violates = "The value '$Value' is not a string or value type"
+                        $TestStage.Check($TestNode, "$ObjectNode is not a string or value type", $false)
                         break
                     }
                     $Found = $false
-                    foreach ($AnyCriteria in $Criteria) {
+                    $Criteria = $null
+                    foreach ($Criteria in $TestValue) {
                         $Found = if ($Match) {
-                            if     ($true -eq $CaseSensitive)  { $Value -cMatch $AnyCriteria }
-                            elseif ($false -eq $CaseSensitive) { $Value -iMatch $AnyCriteria }
-                            else                               { $Value -Match  $AnyCriteria }
+                            if ($true -eq $TestStage.CaseSensitive) { $Value -cmatch $Criteria }
+                            elseif ($false -eq $TestStage.CaseSensitive) { $Value -imatch $Criteria }
+                            else { $Value -match $Criteria }
                         }
-                        else { # if ($TestName.EndsWith('Link', 'OrdinalIgnoreCase')) {
-                            if     ($true -eq $CaseSensitive)  { $Value -cLike  $AnyCriteria }
-                            elseif ($false -eq $CaseSensitive) { $Value -iLike  $AnyCriteria }
-                            else                               { $Value -Like   $AnyCriteria }
+                        else {
+                            if ($true -eq $TestStage.CaseSensitive) { $Value -clike $Criteria }
+                            elseif ($false -eq $TestStage.CaseSensitive) { $Value -ilike $Criteria }
+                            else { $Value -like $Criteria }
                         }
                         if ($Found) { break }
                     }
                     $IsValid = $Found -xor $Negate
                     if (-not $IsValid) {
-                        $Not = if (-Not $Negate) { ' not' }
-                        $Violates =
-                            if ($Match) { "The $(&$Yield '(case sensitive) ')value $Value does$not match $AssertNode" }
-                            else        { "The $(&$Yield '(case sensitive) ')value $Value is$not like $AssertNode" }
+                        $Not = if (-not $Negate) { ' not' }
+                        $DisplayCriteria = $([TypeColor][PSSerialize]::new($Criteria, [PSLanguageMode]'NoLanguage'))
+                        if ($Match) { $TestStage.Check($TestNode, "The value $($ObjectNode.DisplayValue) does$not $($TestStage.Casing())match $DisplayCriteria", $false) }
+                        else { $TestStage.Check($TestNode, "The value $($ObjectNode.DisplayValue) is$not $($TestStage.Casing())like $DisplayCriteria", $false) }
                     }
                 }
             }
-
-            elseif ($TestName -in 'MinimumCount', 'Count', 'MaximumCount') {
-                if ($ObjectNode -isnot [PSCollectionNode]) {
-                    $Violates = "The node $ObjectNode is not a collection node"
-                }
-                elseif ($TestName -eq 'MinimumCount') {
-                    if ($ChildNodes.Count -lt $Criteria) {
-                        $Violates = "The node count ($($ChildNodes.Count)) is less than $AssertNode"
-                    }
-                }
-                elseif ($TestName -eq 'Count') {
-                    if ($ChildNodes.Count -ne $Criteria) {
-                        $Violates = "The node count ($($ChildNodes.Count)) is not equal to $AssertNode"
-                    }
-                }
-                else { # if ($TestName -eq 'MaximumCount') {
-                    if ($ChildNodes.Count -gt $Criteria) {
-                        $Violates = "The node count ($($ChildNodes.Count)) is greater than $AssertNode"
-                    }
-                }
-            }
-
-            elseif ($TestName -eq 'Required') { }
-            elseif ($TestName -eq 'Unique' -and $Criteria) {
+            elseif ($TestName -eq 'Unique') {
+                if (-not $TestValue) { continue }
                 if (-not $ObjectNode.ParentNode) {
-                    SchemaError "The unique assert can't be used on a root node" $ObjectNode $SchemaNode
+                    SchemaError "The unique Assert can't be used on a root node" $SchemaNode
                 }
-                if ($Criteria -eq $true) { $UniqueCollection = $ObjectNode.ParentNode.ChildNodes }
-                elseif ($Criteria -is [String]) {
-                    if (-not $UniqueCollections.Contains($Criteria)) {
-                        $UniqueCollections[$Criteria] = [List[PSNode]]::new()
+                if ($TestValue -eq $true) { $UniqueCollection = $ObjectNode.ParentNode.ChildNodes }
+                elseif ($TestValue -is [String]) {
+                    if (-not $Script:UniqueCollections.Contains($TestValue)) {
+                        $Script:UniqueCollections[$TestValue] = [List[PSNode]]::new()
                     }
-                    $UniqueCollection = $UniqueCollections[$Criteria]
+                    $UniqueCollection = $Script:UniqueCollections[$TestValue]
                 }
-                else { SchemaError "The unique assert value should be a boolean or a string" $ObjectNode $SchemaNode }
-                $ObjectComparer = [ObjectComparer]::new([ObjectComparison][Int][Bool]$CaseSensitive)
+                else { SchemaError "The unique assert value should be a boolean or a string" $SchemaNode }
+                $ObjectComparer = [ObjectComparer]::new([ObjectComparison][Int][Bool]$TestStage.CaseSensitive)
                 foreach ($UniqueNode in $UniqueCollection) {
                     if ([object]::ReferenceEquals($ObjectNode, $UniqueNode)) { continue } # Self
                     if ($ObjectComparer.IsEqual($ObjectNode, $UniqueNode)) {
-                        $Violates = "The node is equal to the node: $($UniqueNode.Path)"
+                        $TestStage.Check($TestNode, "The $($ObjectNode.DisplayValue) is equal to the node: $($UniqueNode.Path)", $false)
                         break
                     }
                 }
-                if ($Criteria -is [String]) { $UniqueCollection.Add($ObjectNode) }
+                if ($TestValue -is [String]) { $UniqueCollection.Add($ObjectNode) }
             }
-            elseif ($TestName -eq 'AllowExtraNodes') {}
-            elseif ($TestName -in 'Ordered', 'RequiredNodes') {
-                if ($ObjectNode -isnot [PSCollectionNode]) {
-                    $Violates = "The '$($AssertNode.Name)' is not a collection node"
-                }
-            }
-            else { SchemaError "Unknown assert node: $TestName" $ObjectNode $SchemaNode }
+            else { SchemaError "Unhandled Assert: $TestName" $TestNode }
 
-            if ($DebugPreference -in 'Stop', 'Continue', 'Inquire') {
-                if (-not $Violates) { Write-Host -ForegroundColor Green "Valid: $TestName $Criteria" }
-                else { Write-Host -ForegroundColor Red "Invalid: $TestName $Criteria" }
-            }
+            #EndRegion Node Asserts
 
-            if ($Violates -or $Elaborate) {
-                $Issue =
-                    if ($Violates -is [String]) { $Violates }
-                    elseif ($Criteria -eq $true) { $($Tests[$TestName]) }
-                    else { "$($Tests[$TestName] -replace 'The value ', "The value $ObjectNode ") $AssertNode" }
-                $Output = [PSCustomObject]@{
-                    ObjectNode = $ObjectNode
-                    SchemaNode = $SchemaNode
-                    Valid      = -not $Violates
-                    Issue      = $Issue
-                }
-                $Output.PSTypeNames.Insert(0, 'TestResult')
-                if ($Violates) {
-                    $RefInvalidNode.Value = $Output
-                    if ($ValidateOnly) { return }
-                }
-                if (-not $ValidateOnly -or $Elaborate) { <# Write-Output #> $Output }
+            if (-not $TestStage.Passed) { return } # Already issued
+            if ([TestStage]::Debug -or $TestStage.Elaborate) {
+                $Issue = $Asserts[$TestName] -replace '\b_ObjectValue_\b', $ObjectNode.DisplayValue -replace '\b_SchemaValue_\b', $TestNode.DisplayValue
+                $TestStage.Check($TestNode, $Issue, $true)
             }
         }
 
-#EndRegion Node validation
+        if ($LeafTest) { return } # No child nodes to test
 
-        if ($Violates) { return }
+        #Region SubTests
 
-#Region Required nodes
-
-        $ChildNodes = $ObjectNode.ChildNodes
-
-        if ($TestNodes.Count -and -not $AssertNodes.Contains('Type')) {
-            if ($SchemaNode -is [PSListNode] -and $ObjectNode -isnot [PSListNode]) {
-                $Violates = "The node $ObjectNode is not a list node"
-            }
-            if ($SchemaNode -is [PSMapNode] -and $ObjectNode -isnot [PSMapNode]) {
-                $Violates = "The node $ObjectNode is not a map node"
-            }
+        if (-not $SubTests.Count) {
+            if ($Condition) { SchemaError "Expected a test node for each requirement" $SchemaNode }
+            if (-not $SubNodes) { return }
         }
+        $FailCount = $TestStage.FailCount
+        $CaseMatters = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.CaseMatters }
+        $Ordinal = if ($CaseMatters) { [StringComparer]::Ordinal } else { [StringComparer]::OrdinalIgnoreCase }
 
-        if (-Not $Violates) {
-            $RequiredNodes = $AssertNodes['RequiredNodes']
-            $CaseSensitiveNames = if ($ObjectNode -is [PSMapNode]) { $ObjectNode.CaseMatters }
-            $AssertResults = [HashTable]::new($Ordinal[[Bool]$CaseSensitiveNames])
+        $Required = if ($null -eq $Condition) { [LogicalFormula]::new() }
+        $RequiredNames = [HashSet[String]]::new($Ordinal)
+        if ($Condition) { $Condition.Find({ $Args[0] -is [LogicalVariable] }, $true).foreach{ $null = $RequiredNames.Add($_.Value) } }
 
-            if ($RequiredNodes) { $RequiredList = [List[Object]]$RequiredNodes.Value } else { $RequiredList = [List[Object]]::new() }
-            foreach ($TestNode in $TestNodes) {
-                $AssertNode = if ($TestNode -is [PSCollectionNode]) { $TestNode } else { GetReference $TestNode }
-                if ($AssertNode -is [PSMapNode] -and $AssertNode.GetValue($At.Required)) { $RequiredList.Add($TestNode.Name) }
+        $ContainsOptionalTests = $false
+        $TestIndices = [Dictionary[string, int]]::new($Ordinal)
+        $MinimumCount = [Dictionary[int, int]]::new()
+        $MaximumCount = [Dictionary[int, int]]::new()
+        $TestIndex = 0
+        foreach ($TestName in $SubTests.get_Keys()) {
+            #$TestName is the reference name, $SubTest.Name is the actual name of the test
+            $SubTest = $SubTests[$TestIndex]
+            $TestIndices[$SubTest.Name] = $TestIndex
+            $Optional = $SubTest.GetValue($At.Optional, $null)
+            $Count = $SubTest.GetValue($At.Count, $null)
+            $Minimum = $SubTest.GetValue($At.MinimumCount, $null)
+            $Maximum = $SubTest.GetValue($At.MaximumCount, $null)
+            if ($Optional -and ($Count -or $Minimum)) {
+                SchemaError "The Optional (for maps) and (Minimum)Count (for lists) asserts are mutual exclusive" $SubTest
             }
+            elseif ($Count -and ($Minimum -or $Maximum)) {
+                SchemaError "The count and MinimumCount/MaximumCount asserts are mutual exclusive" $SubTest
+            }
+            if ($null -ne $Optional) {
+                if ($null -ne ($Bool = $Optional -as [Bool])) {
+                    $MinimumCount[$TestIndex] = 1 - $Bool
+                }
+                else { SchemaError "The Optional assert should be a boolean type" $SubTest }
+            }
+            if ($null -ne $Count) {
+                if ($null -ne ($Int = $Count -as [UInt32])) {
+                    $MinimumCount[$TestIndex] = $int
+                    $MaximumCount[$TestIndex] = $int
+                }
+                else { SchemaError "The MinimumCount assert should be a positive integer type" $SubTest }
+            }
+            if ($null -ne $Minimum) {
+                if ($null -ne ($Int = $Minimum -as [UInt32])) {
+                    $MinimumCount[$TestIndex] = $int
+                }
+                else { SchemaError "The MinimumCount assert should be a positive integer type" $SubTest }
+            }
+            if ($null -ne $Maximum) {
+                if ($null -ne ($Int = $Maximum -as [UInt32])) {
+                    $MaximumCount[$TestIndex] = $int
+                }
+                else { SchemaError "The MaximumCount assert should be a positive integer type" $SubTest }
+            }
+            if ($MinimumCount.ContainsKey($TestIndex)) {
+                if ($MinimumCount[$TestIndex]) {
+                    if ($Required) { $Required.And($TestName) }
+                    elseif ($RequiredNames.Add($TestName)) { $Condition.And($TestName) }
+                }
+                elseif ($Condition) { SchemaError "Required tests cannot be optional" $SubTest }
+            }
+            elseif ($Required) {
+                $MinimumCount[$TestIndex] = 1
+                if ($RequiredNames.Add($TestName)) { $Required.And($TestName) }
+            }
+            elseif ($Condition) { $MinimumCount[$TestIndex] = 1 }
 
-            foreach ($Requirement in $RequiredList) {
-                $LogicalFormula = [LogicalFormula]$Requirement
-                $Enumerator = $LogicalFormula.Terms.GetEnumerator()
-                $Stack = [Stack]::new()
-                $Stack.Push(@{
-                    Enumerator  = $Enumerator
-                    Accumulator = $null
-                    Operator    = $null
-                    Negate      = $null
-                })
-                $Term, $Operand, $Accumulator = $null
-                While ($Stack.Count -gt 0) {
-                    # Accumulator = Accumulator <operation> Operand
-                    # if ($Stack.Count -gt 20) { Throw 'Formula stack failsafe'}
-                    $Pop         = $Stack.Pop()
-                    $Enumerator  = $Pop.Enumerator
-                    $Operator    = $Pop.Operator
-                    if ($null -eq $Operator) { $Operand = $Pop.Accumulator }
-                    else { $Operand, $Accumulator = $Accumulator, $Pop.Accumulator }
-                    $Negate      = $Pop.Negate
-                    $Compute = $null -notin $Operand, $Operator, $Accumulator
-                    while ($Compute -or $Enumerator.MoveNext()) {
-                        if ($Compute) { $Compute = $false}
-                        else {
-                            $Term = $Enumerator.Current
-                            if ($Term -is [LogicalVariable]) {
-                                $Name = $Term.Value
-                                if (-not $AssertResults.ContainsKey($Name)) {
-                                    if (-not $SchemaNode.Contains($Name)) {
-                                        SchemaError "Unknown test node: $Term" $ObjectNode $SchemaNode
-                                    }
-                                    $MatchCount0 = $MatchedNames.Count
-                                    $MatchParams = @{
-                                        ObjectNode    = $ObjectNode
-                                        TestNode      = $SchemaNode.GetChildNode($Name)
-                                        Elaborate     = $Elaborate
-                                        ValidateOnly  = $ValidateOnly
-                                        Ordered       = $AssertNodes['Ordered']
-                                        CaseSensitive = $CaseSensitive
-                                        MatchAll      = $false
-                                        MatchedNames  = $MatchedNames
-                                    }
-                                    MatchNode @MatchParams
-                                    $AssertResults[$Name] = $MatchedNames.Count -gt $MatchCount0
-                                }
-                                $Operand = $AssertResults[$Name]
-                            }
-                            elseif ($Term -is [LogicalOperator]) {
-                                if ($Term.Value -eq 'Not') { $Negate = -Not $Negate }
-                                elseif ($null -eq $Operator -and $null -ne $Accumulator) { $Operator = $Term.Value }
-                                else { SchemaError "Unexpected operator: $Term" $ObjectNode $SchemaNode }
-                            }
-                            elseif ($Term -is [LogicalFormula]) {
-                                $Stack.Push(@{
-                                    Enumerator  = $Enumerator
-                                    Accumulator = $Accumulator
-                                    Operator    = $Operator
-                                    Negate      = $Negate
-                                })
-                                $Accumulator, $Operator, $Negate = $null
-                                $Enumerator  = $Term.Terms.GetEnumerator()
-                                continue
-                            }
-                            else { SchemaError "Unknown logical operator term: $Term" $ObjectNode $SchemaNode }
+            if ($MinimumCount.ContainsKey($TestIndex)) {
+                $ContainsOptionalTests = $MinimumCount[$TestIndex] -eq 1
+            }
+            else { $MinimumCount[$TestIndex] = 0 }
+            $TestIndex++
+        }
+        if ($Condition) { $Required = $Condition }
+        # else { $Required.Find({ $Args[0] -is [LogicalVariable] }, $true).foreach{ $null = $RequiredNames.Add($_.Value) } }
+        if ($Ordered) {
+            if ($SubNodes.Count -lt $SubTests.Count) {
+                $TestStage.Check($SchemaNode, "There are less than $($SubTests.Count) (ordered) child nodes", $false)
+                return
+            }
+            elseif ($SubNodes.Count -gt $SubTests.Count -and -not $ExtraTest) {
+                $TestStage.Check($SchemaNode, "There are more than $($SubTests.Count) (ordered) child nodes", $false)
+                return
+            }
+            if ($ObjectNode -is [PSMapNode] -and $SchemaNode -is [PSMapNode]) {
+                for ($Index = 0; $Index -lt $SubTests.Count; $Index++) {
+                    $NodeName = $SubNodes[$Index].Name
+                    $TestName = $SubTests[$Index].Name
+                    $EqualName = if ($CaseMatters) { $TestName -ceq $NodeName } else { $TestName -ieq $NodeName }
+                    if (-not $EqualName) {
+                        $TestStage.Check($SchemaNode, "Node #$Index ($([PSSerialize]$SubNodes[$Index].Name)) is not $([PSSerialize]$Name)", $false)
+                        return
+                    }
+                }
+            }
+            for ($Index = 0; $Index -lt $SubTests.Count; $Index++) {
+                $SubNode = $SubNodes[$Index]
+                $SubTest = $SubTests[$Index]
+                $ChildStage = $TestStage.Create($SubNode, $false)
+                TestNode $ChildStage $SubTest
+                if (-not $ChildStage.Passed) { $TestStage.Passed = $false }
+                # if (-not $ChildStage.Passed -and -not $TestStage.Report) { return }
+            }
+            while ($Index -lt $SubNodes.Count) { # Test the rest of the sub nodes against the $ExtraTest
+                $SubNode = $SubNodes[$Index]
+                $ChildStage = $TestStage.Create($SubNode, $false)
+                TestNode $ChildStage $ExtraTest
+                if (-not $ChildStage.Passed) { $TestStage.Passed = $false }
+                # if (-not $ChildStage.Passed -and -not $TestStage.Report) { return }
+                $Index++
+            }
+            return
+        }
+        elseif ($ObjectNode -is [PSMapNode] -and $SchemaNode -is [PSMapNode]) {
+            if ($SubNodes.Count -gt $SubTests.Count -and -not $ExtraTest) {
+                foreach ($ChildNode in $SubNodes) {
+                    if ($SubTests.Contains($ChildNode.Name)) { continue }
+                    $TestStage.Check($SchemaNode, "Node $([PSSerialize]$ChildNode.Name) is denied", $false)
+                }
+                return
+            }
+            if ($SubNodes) { $Names = $SubNodes.Name } else { $Names = @() }
+            if ($Required.Terms -and -not $Required.Evaluate($Names)) {
+                $TestStage.Check($SchemaNode, "The requirement { $Required } is not met", $false)
+                return
+            }
+            foreach ($ChildNode in $SubNodes) {
+                if ($SubTests.Contains($ChildNode.Name)) { $SubTest = $SubTests[[Object]$ChildNode.Name] }
+                elseif ($ExtraTest) { $SubTest = $ExtraTest }
+                else {
+                    $TestStage.Check($SchemaNode, "Node $([PSSerialize]$ChildNode.Name) is denied", $false)
+                    continue
+                }
+                $ChildStage = $TestStage.Create($ChildNode, $false)
+                TestNode $ChildStage $SubTest
+                if (-not $ChildStage.Passed) { $TestStage.Passed = $false }
+            }
+            return
+        }
+        # (unordered) $ObjectNode -is [PSListNode] -or $SchemaNode -is [PSListNode]
+        if ($ExtraTest) { $SubTests[[Object]'@AnyName'] = $ExtraTest } # The ExtraTest is just an optional test for a list
+        if ($SubTests.count -eq 1 -and $Required.Terms.count -le 1) {
+            # Single test (no scanning required)
+            $SubTest = $SubTests[0]
+            if ($SubNodes.Count -lt $MinimumCount[0]) {
+                $TestStage.Check($SubTest, "The node $ObjectNode contains less than $($MinimumCount[0]) child nodes", $false)
+                return
+            }
+            if ($MaximumCount.ContainsKey(0) -and $SubNodes.Count -gt $MaximumCount[0]) {
+                $TestStage.Check($SubTest, "The node $ObjectNode contains more than $($MaximumCount[0]) child nodes", $false)
+                return
+            }
+            foreach ($ChildNode in $SubNodes) {
+                $ChildStage = $TestStage.Create($ChildNode, $false)
+                TestNode $ChildStage $SubTest
+                $TestStage.Passed = $ChildStage.Passed
+                if (-not $ChildStage.Passed -and -not $TestStage.Report) { return } # Validate only
+            }
+            return
+        }
+        $Stages = [Object[]]::new($SubNodes.Count)
+        $TestStage.Passed = $false
+        $Best = $null
+        foreach ($Permutation in [Permutation]::new($SubNodes.Count, $SubTests.Count)) {
+            $Score = 0
+            $TestPassed = [Dictionary[Int, Bool]]::new()
+            $UsedNodes = [HashSet[Int]]::new()
+            $RequiredPassed = if ($Required.Terms) {
+                $Required.Evaluate({
+                        $TestIndex = $TestIndices[$_]
+                        if ($null -eq $TestIndex) { return $true } # Might happen at maxdepth
+                        $SubTest = $SubTests[$TestIndex]
+                        $Indices = $Permutation[$TestIndex]
+                        $OutsideBounds = if ($Indices.Count -lt $MinimumCount[$TestIndex]) {
+                            $Indices.Count - $MinimumCount[$TestIndex]
                         }
-                        if ($null -ne $Operand) {
-                            if ($null -eq $Accumulator -xor $null -eq $Operator) {
-                                if ($Accumulator) { SchemaError "Missing operator before: $Term" $ObjectNode $SchemaNode }
-                                else { SchemaError "Missing variable before: $Operator $Term" $ObjectNode $SchemaNode }
-                            }
-                            $Operand = $Operand -Xor $Negate
-                            $Negate = $null
-                            if ($Operator -eq 'And') {
-                                $Operator = $null
-                                if ($Accumulator -eq $false -and -not $AllowExtraNodes) { break }
-                                $Accumulator = $Accumulator -and $Operand
-                            }
-                            elseif ($Operator -eq 'Or') {
-                                $Operator = $null
-                                if ($Accumulator -eq $true -and -not $AllowExtraNodes) { break }
-                                $Accumulator = $Accumulator -Or $Operand
-                            }
-                            elseif ($Operator -eq 'Xor') {
-                                $Operator = $null
-                                $Accumulator = $Accumulator -xor $Operand
-                            }
-                            else { $Accumulator = $Operand }
-                            $Operand = $Null
+                        elseif ($MaximumCount.ContainsKey($TestIndex) -and $Indices.Count -gt $MaximumCount[$TestIndex]) {
+                            $MaximumCount[$TestIndex] - $Indices.Count
                         }
+                        if ($OutsideBounds) {
+                            $Score -= $OutsideBounds
+                            if (-not $TestStage.Report) { return $false } # Validate only
+                            # if (-not $TestPassed.ContainsKey($TestIndex)) { return $false }
+                            foreach ($NodeIndex in $Indices) {
+                                # Add score based on what is known
+                                if (-not $Stages[$NodeIndex]) { continue }
+                                if (-not $Stages[$NodeIndex].ContainsKey($TestIndex)) { continue }
+                                $Stage = $Stages[$NodeIndex][$TestIndex]
+                                if ($Stage.Passed) { $Score++ } else { $Score -= 2 + $Stage.FailCount }
+                            }
+                            return $false
+                        }
+                        if (-not $TestPassed.ContainsKey($TestIndex)) {
+                            $TestPassed[$TestIndex] = $false # $MaximumCount[$TestIndex] -eq 0
+                        }
+                        foreach ($NodeIndex in $Indices) {
+                            # A logical variable might refer to multiple child nodes
+                            if (-not $Stages[$NodeIndex]) { $Stages[$NodeIndex] = [Dictionary[int, TestStage]]::new() }
+                            if (-not $Stages[$NodeIndex].ContainsKey($TestIndex)) {
+                                $ChildNode = $SubNodes[$NodeIndex]
+                                $Stages[$NodeIndex][$TestIndex] = $TestStage.Create($ChildNode, $true)
+                                TestNode $Stages[$NodeIndex][$TestIndex] $SubTest
+                            }
+                            $Stage = $Stages[$NodeIndex][$TestIndex]
+                            if ($Stage.Passed) { $Score++ } else { $Score -= 2 + $Stage.FailCount; return $false } # All child nodes need to fulfill the test
+                            $null = $UsedNodes.Add($NodeIndex)
+
+                        }
+                        $Score += 1 + $Indices.Count
+                        $TestPassed[$TestIndex] = $true
+                        return $true
+                    })
+            }
+            else { $true }
+            $NodesLeft = $SubNodes.Count - $UsedNodes.Count
+            $TestsLeft = $SubTests.Count - $TestPassed.Count
+            $OptionalPassed = if (-not $RequiredPassed) { $false }
+                elseif ($TestPassed.Count -eq 0) { $false }
+                elseif ($NodesLeft -and $TestsLeft) { $null } # else: one or both are zero
+                elseif (-not $NodesLeft) { $true }
+                elseif (-not $ContainsOptionalTests) { $false }
+                elseif (-not $TestsLeft) { $false }
+            # $TestOptional = if ($RequiredPassed -and $NodesLeft) {
+            #     if ($TestsLeft) { $ContainsOptionalTests } else { $RequiredPassed = $false }
+            # }
+            # $OptionalPassed = $null
+            # if ($TestOptional) {
+            if ($null -eq $OptionalPassed) {
+                for ($TestIndex = 0; $TestIndex -lt $SubTests.Count; $TestIndex++) {
+                    if ($TestPassed.ContainsKey($TestIndex)) { continue }
+                    if ($MinimumCount[$TestIndex]) { continue } # not optional (handled in condition evaluation)
+                    $Indices = $Permutation[$TestIndex]
+                    if ($MaximumCount.ContainsKey($TestIndex) -and $Indices.Count -gt $MaximumCount[$TestIndex]) {
+                        $Score -= $Indices.Count - $MaximumCount[$TestIndex]
+                        if (-not $TestStage.Report) { break } # Validate only
+                        foreach ($NodeIndex in $Indices) {
+                            # Add score based on what is known
+                            if (-not $Stages[$NodeIndex]) { continue }
+                            if (-not $Stages[$NodeIndex].ContainsKey($TestIndex)) { continue }
+                            $Stage = $Stages[$NodeIndex][$TestIndex]
+                            if ($Stage.Passed) { $Score++ } else { $Score -= 2 + $Stage.FailCount }
+                        }
+                        $OptionalPassed = $false
+                        break
                     }
-                    if ($null -ne $Operator -or $null -ne $Negate) {
-                        SchemaError "Missing variable after $Operator" $ObjectNode $SchemaNode
+                    foreach ($NodeIndex in $Indices) {
+                        if (-not $Stages[$NodeIndex]) { $Stages[$NodeIndex] = [Dictionary[int, TestStage]]::new() }
+                        if (-not $Stages[$NodeIndex].ContainsKey($TestIndex)) {
+                            $ChildNode = $SubNodes[$NodeIndex]
+                            $Stages[$NodeIndex][$TestIndex] = $TestStage.Create($ChildNode, $true)
+                            TestNode $Stages[$NodeIndex][$TestIndex] $SubTests[$TestIndex]                                           # $SubTest ???
+                        }
+                        $Stage = $Stages[$NodeIndex][$TestIndex]
+                        $OptionalPassed = $Stage.Passed
+                        if ($OptionalPassed) { $Score++ } else { $Score -= 2 + $Stage.FailCount; break } # All (optional) child nodes need to fulfill the test
                     }
+                    if ($OptionalPassed -eq $false) { break }
+                    $Score += 1 + $Indices.Count
                 }
-                if ($Accumulator -eq $False) {
-                    $Violates = "The required node condition $LogicalFormula is not met"
-                    break
+            }
+            else { $Score -= $NodesLeft }
+            if ($null -eq $OptionalPassed) { $OptionalPassed = $true }
+
+            if ([TestStage]::Debug) {
+                $Better = if (-not $Best -or $Score -gt $Best['Score']) { '(best)' }
+                $Designates = $TestStage.GetDesignates($Stages, $SubTests, $Permutation, $TestPassed)
+                $TestStage.WriteDebug($null, "$([ParameterColor]'Required')$([CheckBox]::new($RequiredPassed)):$($Required.ToString($Designates)) $([ParameterColor]""Score:$Score $Better"")")
+                if ($TestsLeft -and $NodesLeft) {
+                    $Designates = $TestStage.ListDesignates($Stages, $SubTests, $Permutation, $TestPassed) -join ','
+                    $TestStage.WriteDebug($null, "$([ParameterColor]'Optional')$([CheckBox]::new($OptionalPassed)):$Designates")
+                }
+            }
+            $TestStage.Passed = $RequiredPassed -and $OptionalPassed
+            # $TestStage.Passed = $RequiredPassed -and $OptionalPassed
+            if ($TestStage.Passed) { break }
+            if (-not $Best -or $Score -gt $Best['Score']) {
+                # Capture the highest score with the least amount of issues
+                if (-not $Best) { $Best = @{} }
+                $Best['Score'] = $Score
+                $Best['TestPassed'] = [Dictionary[Int, Bool]]::new($TestPassed)
+                $Best['Permutation'] = $foreach.Copy()
+            }
+        }
+        # if ([TestStage]::Debug) {
+        #     $ScoreFail = [ParameterColor]"(Score:$($Best['Score']))"
+        #     $Designates = $TestStage.GetDesignates($Stages, $SubTests, $Best['Permutation'], $Best['TestPassed'])
+        #     $TestStage.WriteDebug($null, "Selected$([CheckBox]::new($RequiredPassed)):$($Required.ToString($Designates)) $ScoreFail")
+        # }
+        if ($TestStage.Elaborate) {
+            for ($NodeIndex = 0; $NodeIndex -lt $SubNodes.Count; $NodeIndex++) {
+                if (-not $Stages[$NodeIndex]) { continue }
+                foreach ($Stage in $Stages[$NodeIndex].get_Values()) {
+                    $TestStage.AddResults($Stage.Results)
                 }
             }
         }
-
-#EndRegion Required nodes
-
-#Region Optional nodes
-
-        if (-not $Violates) {
-
-            foreach ($TestNode in $TestNodes) {
-                if ($MatchedNames.Count -ge $ChildNodes.Count) { break }
-                if ($AssertResults.Contains($TestNode.Name)) { continue }
-                $MatchCount0 = $MatchedNames.Count
-                $MatchParams = @{
-                    ObjectNode    = $ObjectNode
-                    TestNode      = $TestNode
-                    Elaborate     = $Elaborate
-                    ValidateOnly  = $ValidateOnly
-                    Ordered       = $AssertNodes['Ordered']
-                    CaseSensitive = $CaseSensitive
-                    MatchAll      = -not $AllowExtraNodes
-                    MatchedNames  = $MatchedNames
-                }
-                MatchNode @MatchParams
-                if ($AllowExtraNodes -and $MatchedNames.Count -eq $MatchCount0) {
-                    $Violates = "When extra nodes are allowed, the node $ObjectNode should be accepted"
-                    break
-                }
-                $AssertResults[$TestNode.Name] = $MatchedNames.Count -gt $MatchCount0
-            }
-
-            if (-not $AllowExtraNodes -and $MatchedNames.Count -lt $ChildNodes.Count) {
-                $Count = 0; $LastName = $Null
-                $Names = foreach ($Name in $ChildNodes.Name) {
-                    if ($MatchedNames.Contains($Name)) { continue }
-                    if ($Count++ -lt 4) {
-                        if ($ObjectNode -is [PSListNode]) { [CommandColor]$Name }
-                            else { [StringColor][PSKeyExpression]::new($Name, [PSSerialize]::MaxKeyLength)}
+        elseif ($TestStage.Passed) { return }
+        elseif ($Best) {
+            $Permutation = $Best['Permutation']
+            for ($TestIndex = 0; $TestIndex -lt $Permutation.Count; $TestIndex++) {
+                $Indices = $Permutation[$TestIndex]
+                if ($Indices.Count -lt $MinimumCount[$TestIndex]) {
+                    if ($MinimumCount[$TestIndex] -eq 1) {
+                        $TestStage.Check($SchemaNode, "The requirement $([LogicalVariable]$SubTests[$TestIndex].Name) is missing", $false)
                     }
-                    else { $LastName = $Name }
+                    else {
+                        $TestStage.Check($SchemaNode, "$([LogicalVariable]$SubTests[$TestIndex].Name) occurred less than $($MinimumCount[$TestIndex]) times", $false)
+                    }
                 }
-                $Violates = "The following nodes are not accepted: $($Names -join ', ')"
-                if ($LastName) {
-                    $LastName = if ($ObjectNode -is [PSListNode]) { [CommandColor]$LastName }
-                        else { [StringColor][PSKeyExpression]::new($LastName, [PSSerialize]::MaxKeyLength) }
-                    $Violates += " .. $LastName"
+                if ($MaximumCount.ContainsKey($TestIndex) -and $Indices.Count -gt $MaximumCount[$TestIndex]) {
+                    $TestStage.Check($SchemaNode, "$([LogicalVariable]$SubTests[$TestIndex].Name) occurred more than $($MaximumCount[$TestIndex]) times", $false)
+                }
+                foreach ($NodeIndex in $Indices) {
+                    if ($null -eq $Stages[$NodeIndex] -or $null -eq $Stages[$NodeIndex][$TestIndex]) { continue }
+                    $Results = $Stages[$NodeIndex][$TestIndex].Results
+                    if (-not $Results -or $Results.Count -eq 0) { continue }
+                    $TestStage.AddResults($Results)
+                    $TestStage.FailCount += $Results.Count
                 }
             }
         }
-
-#EndRegion Optional nodes
-
-        if ($Violates -or $Elaborate) {
-            $Output = [PSCustomObject]@{
-                ObjectNode = $ObjectNode
-                SchemaNode = $SchemaNode
-                Valid      = -not $Violates
-                Issue      = if ($Violates) { $Violates } else { 'All the child nodes are valid'}
-            }
-            $Output.PSTypeNames.Insert(0, 'TestResult')
-            if ($Violates) { $RefInvalidNode.Value = $Output }
-            if (-not $ValidateOnly -or $Elaborate) { <# Write-Output #> $Output }
+        if (-not $TestStage.Passed -and $FailCount -eq $TestStage.FailCount) {
+            # Presumably concerns a negative requirement
+            # $Not = if ($TestStage.Passed) { ' not' }
+            $TestStage.Check($SchemaNode, "$ObjectNode is not accepted", $TestStage.Passed)
+            # if (-not $Best) {
+            #     $TestStage.Check($SchemaNode, "$ObjectNode nodes did$Not pass", $TestStage.Passed)
+            # }
+            # elseif ($Best['TestPassed'].Count) {
+            #     foreach ($TestIndex in $Best['TestPassed'].get_Keys()) {
+            #         if ($Best['TestPassed'][$TestIndex]) { continue }
+            #         $TestStage.Check($SchemaNode, "The requirement $([LogicalVariable]$SubTests[$TestIndex].Name) has$Not met", $false)
+            #     }
+            # }
+            # else {
+            #     for ($NodeIndex = 0; $NodeIndex -lt $SubNodes.Count; $NodeIndex++) {
+            #         if ($UsedNodes.Contains($NodeIndex)) { continue }
+            #         $TestStage.Check($SchemaNode, "$($SubNodes[$NodeIndex]) is$Not accepted", $false)
+            #     }
+            # }
         }
+        #EndRegion SubTests
     }
 }
 
 process {
     $ObjectNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
-    $Script:UniqueCollections = @{}
-    $Invalid = $Null
-    $TestParams = @{
-        ObjectNode     = $ObjectNode
-        SchemaNode     = $SchemaNode
-        Elaborate     = $Elaborate
-        ValidateOnly   = $ValidateOnly
-        RefInvalidNode = [Ref]$Invalid
-    }
-    TestNode @TestParams
-    if ($ValidateOnly) { -not $Invalid }
+    $TestStage = [TestStage]::new($ObjectNode, $Elaborate, (-not $ValidateOnly), 0)
+    TestNode $TestStage $SchemaNode
+    if ($ValidateOnly) { $TestStage.Passed }
 }
 }
 
@@ -4565,22 +4913,22 @@ process {
 
 #Region Alias
 
-Set-Alias -Name 'ConvertFrom-Expression' -Value 'cfe'
-Set-Alias -Name 'Copy-ObjectGraph' -Value 'Copy-Object'
-Set-Alias -Name 'Copy-ObjectGraph' -Value 'cpo'
-Set-Alias -Name 'ConvertTo-Expression' -Value 'cto'
-Set-Alias -Name 'Export-ObjectGraph' -Value 'epo'
-Set-Alias -Name 'Export-ObjectGraph' -Value 'Export-Object'
-Set-Alias -Name 'Get-ChildNode' -Value 'gcn'
-Set-Alias -Name 'Get-Node' -Value 'gn'
-Set-Alias -Name 'Import-ObjectGraph' -Value 'imo'
-Set-Alias -Name 'Import-ObjectGraph' -Value 'Import-Object'
-Set-Alias -Name 'Merge-ObjectGraph' -Value 'Merge-Object'
-Set-Alias -Name 'Merge-ObjectGraph' -Value 'mgo'
-Set-Alias -Name 'Get-SortObjectGraph' -Value 'Sort-ObjectGraph'
-Set-Alias -Name 'Get-SortObjectGraph' -Value 'sro'
-Set-Alias -Name 'Test-ObjectGraph' -Value 'Test-Object'
-Set-Alias -Name 'Test-ObjectGraph' -Value 'tso'
+Set-Alias -Name 'cfe' -Value 'ConvertFrom-Expression'
+Set-Alias -Name 'Copy-Object' -Value 'Copy-ObjectGraph'
+Set-Alias -Name 'cpo' -Value 'Copy-ObjectGraph'
+Set-Alias -Name 'cto' -Value 'ConvertTo-Expression'
+Set-Alias -Name 'epo' -Value 'Export-ObjectGraph'
+Set-Alias -Name 'Export-Object' -Value 'Export-ObjectGraph'
+Set-Alias -Name 'gcn' -Value 'Get-ChildNode'
+Set-Alias -Name 'gn' -Value 'Get-Node'
+Set-Alias -Name 'imo' -Value 'Import-ObjectGraph'
+Set-Alias -Name 'Import-Object' -Value 'Import-ObjectGraph'
+Set-Alias -Name 'Merge-Object' -Value 'Merge-ObjectGraph'
+Set-Alias -Name 'mgo' -Value 'Merge-ObjectGraph'
+Set-Alias -Name 'Sort-ObjectGraph' -Value 'Get-SortObjectGraph'
+Set-Alias -Name 'sro' -Value 'Get-SortObjectGraph'
+Set-Alias -Name 'Test-Object' -Value 'Test-ObjectGraph'
+Set-Alias -Name 'tso' -Value 'Test-ObjectGraph'
 
 #EndRegion Alias
 

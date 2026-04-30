@@ -177,7 +177,7 @@ class ObjectComparer {
                                 Path        = $Node2.Path + "[$Index2]"
                                 $this.Issue = 'Exists'
                                 $this.Name1 = $Null
-                                $this.Name2 = if ($Item2 -is [PSLeafNode]) { "$($Item2.Value)" } else { "[$($Item2.ValueType)]" }
+                                $this.Name2 = $Item2
                             })
                         }
                     }
@@ -190,7 +190,7 @@ class ObjectComparer {
                             $this.Differences.Add([PSCustomObject]@{
                                 Path        = $Node1.Path + "[$Index1]"
                                 $this.Issue = 'Exists'
-                                $this.Name1 = if ($Item1 -is [PSLeafNode]) { "$($Item1.Value)" } else { "[$($Item1.ValueType)]" }
+                                $this.Name1 = $Item1
                                 $this.Name2 = $Null
                             })
                         }

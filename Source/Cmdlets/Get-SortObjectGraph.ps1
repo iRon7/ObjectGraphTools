@@ -1,5 +1,3 @@
-using module .\..\..\..\ObjectGraphTools
-
 <#
 .SYNOPSIS
     Sort an object graph

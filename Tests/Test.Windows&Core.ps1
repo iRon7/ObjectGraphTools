@@ -3,7 +3,7 @@ $Expression = {
     $Version = $PSVersionTable.PSVersion
     Import-Module $TestFolder\.. -Force
     Get-ChildItem -Path $TestFolder -Filter *.Tests.ps1 |
-    ForEach-Object { 
+    ForEach-Object {
         $InformationRecord = . $_.FullName *>&1
         foreach ($Message in $InformationRecord.MessageData.Message) {
             if ($Message -match '^\S*\[\+\]') {
@@ -12,7 +12,7 @@ $Expression = {
             }
             elseif ($Message -match '^\S*\[-\]([^\r\n]*)') {
                 Write-Host -NoNewline "$Version "
-                Write-Host -ForegroundColor Red "$($_.BaseName) $($Matches[1])"
+                Write-Host -BackgroundColor Red "$($_.BaseName) $($Matches[1])"
             }
         }
     }

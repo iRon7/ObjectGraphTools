@@ -2,14 +2,20 @@
 
 using module ..\..\ObjectGraphTools
 
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object', Justification = 'False positive')]
-param()
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'False positive')]
+param([alias("Path")]$PrototypePath)
 
 Describe 'Get-ChildNode' {
 
     BeforeAll {
 
         Set-StrictMode -Version Latest
+
+        if ($PrototypePath) {
+            $Content = Get-Content -Raw -LiteralPath $PrototypePath
+            $CommandName = [io.path]::GetFileNameWithoutExtension($PSCommandPath) -replace '\.Tests$'
+            Mock $CommandName ([ScriptBlock]::Create($Content))
+        }
 
         $Object = @{
             Comment = 'Sample ObjectGraph'
@@ -35,10 +41,11 @@ Describe 'Get-ChildNode' {
 
     Context 'Existence Check' {
 
-        It 'Help' {
-            Get-Node -? | Out-String -Stream | Should -Contain SYNOPSIS
+        It 'Help' -Skip:$($null -ne $PrototypePath) {
+            Test-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
         }
     }
+
 
     Context 'Basic selection' {
 
@@ -196,6 +203,14 @@ Describe 'Get-ChildNode' {
             $LeafNode = $Object | Get-ChildNode Comment
             $Output = $LeafNode | Get-ChildNode 3>&1
             $Output.where{$_ -is [System.Management.Automation.WarningRecord]}.Message | Should -BeLike  '*is a leaf node*'
+        }
+    }
+
+    Context 'Issues' {
+
+        It "#133 Get-ChildNode Name -Recurse -AtDepth doesn't work as expected" {
+            $Object = @{ Name = @{ Name = @{ Name = @{ Name = @{ Name = 1 } } } } }
+            $Object | Get-ChildNode Name -AtDepth 3 | Should -not -BeNullOrEmpty
         }
     }
 }

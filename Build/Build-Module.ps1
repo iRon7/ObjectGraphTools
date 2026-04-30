@@ -1,17 +1,24 @@
-<#
-.SYNOPSIS
-    Module Builder
-
-.DESCRIPTION
-    Module Builder
-
+<#PSScriptInfo
+.VERSION 0.1.1
+.GUID 19631007-c6ce-4a9f-a32c-dc87fdc8c1ff
+.AUTHOR Ronald Bode (iRon)
+.DESCRIPTION Build a new module file.
+.COMPANYNAME PowerSnippets.com
+.COPYRIGHT Ronald Bode (iRon)
+.TAGS PowerShell Build Module PSM1
+.LICENSEURI https://github.com/iRon7/Build-Module/LICENSE
+.PROJECTURI https://github.com/iRon7/Build-Module
+.ICONURI https://raw.githubusercontent.com/iRon7/Build-Module/master/Build-Module.png
+.EXTERNALMODULEDEPENDENCIES
+.REQUIREDSCRIPTS
+.EXTERNALSCRIPTDEPENDENCIES
+.RELEASENOTES
+.PRIVATEDATA
 #>
-
-#Requires -Version 7.4
-#Requires -Modules @{ ModuleName="Microsoft.PowerShell.PSResourceGet"; RequiredVersion="1.0.6" }
 
 using namespace System.Collections
 using namespace System.Collections.Generic
+using namespace System.Collections.Specialized
 using namespace System.Collections.ObjectModel
 using namespace System.IO
 using namespace System.Link
@@ -19,38 +26,344 @@ using namespace System.Text
 using NameSpace System.Management.Automation
 using NameSpace System.Management.Automation.Language
 
+<#
+.SYNOPSIS
+Module Builder
+
+.DESCRIPTION
+Build a new module (`.psm1`) file from a folder containing PowerShell scripts (`.ps1` files) and other resources.
+
+This module builder doesn't take care of the module manifest (`.psd1` file), but it simply builds the module file
+from the scripts and resources in the specified folder while taking of the following:
+
+* Merging the statements (e.g. `#Requires` and `using` statements)
+* Preventing duplicates and collisions (e.g. duplicate function names)
+* Ordering the statements based on their dependencies (e.g. classes inheritance)
+* Formatting the output.
+* Automatically exporting variables, functions, cmdlets, aliases and types.
+
+It doesn't touch any module settings defined in the module manifest (`.psd1` file), such as the module Version,
+NestedModules and ScripsToProcess. The only requirement is that the following settings are **not** defined
+(or commented out):
+
+* ~~FunctionsToExport = @()~~
+* ~~VariablesToExport = @()~~
+* ~~AliasesToExport = @()~~
+
+These particular settings are automatically generated based on the cmdlets, variables and aliases defined in the
+source scripts and eventually handled by the module (`.psm1`) file.
+
+The general consensus behind this module builder is that the module author defines the items that should be
+**loaded** (imported) by putting them in the module source folder and shouldn't be concerned with *invoking*
+(dot-sourcing) any scripts knowing that this could lead to similar concerns as using the [`Invoke-Expression`]
+cmdlet especially when working in a team. See also [https://github.com/PowerShell/PowerShell/issues/18740].
+
+This means that this module builder will only accept specific statements (blocks) and reject (with a warning) on
+statements that require any invocation which potentially could lead to conflicts with other functions and types.
+
+Anything that concerns a dynamic preparation of the module should be done by a specific module manifest setting
+or scripted in the `ScriptsToProcess` setting of the module manifest.
+
+## Accepted Statements
+
+The accepted statements might be divided into different files and (sub)folders using any file name or folder name
+with the exception of functions that need to be exported as cmdlets.
+
+The accepted statement types are categorized and loaded in the following order:
+* [Requirements]
+* [using statements]
+* [enum types]
+* [Classes]
+* [Variables assignments]
+* [(private) Functions]
+* [(public) Cmdlets]
+* [Aliases]
+* [Format files]
+
+### Requirements
+
+The module builder will merge the `#Requires` statements from the source scripts and will add them to the top of
+the module file.
+
+#### #Required -Version
+
+If multiple `#required -version` statements are found, the highest version will be used.
+
+#### #Required -PSEdition
+
+If conflicting `#required -PSEdition` statements are found, a merge conflict exception is thrown.
+
+#### #Required -Modules
+
+If multiple `#required -Modules` statements are found, the module names will be merged and the highest version
+
+#### #Required -RunAsAdministrator
+
+If set in any script, the module builder will add the `#Requires -RunAsAdministrator` statement to the top of the
+module file.
+
+> [!TIP]
+> Consider to make your function [self-elevating](https://stackoverflow.com/q/60209449/1701026).
+
+### Using statements
+
+In general `using` statements are merged and added to the module file except for the `using module` with will be
+rejected and a warning will be shown.
+
+#### using namespace <.NET-namespace>
+
+The module builder will use the full namespace name and added or merged them accordingly.
+
+#### using module <module-name>
+
+The module builder will reject this statement and will suggest to use the module manifest instead.
+
+#### using assembly <assembly-name>
+
+The module builder will reformat the assembly path and merge the assembly names and add them to module file.
+
+### Enum types
+
+`Enum` and `Flags` types are reformatted using the explicit item value and added or merged them accordingly.
+
+> [!NOTE]
+> All types are [automatically added to the TypeAccelerators list][2] to make sure they are publicly available.
+
+### Classes
+
+`Class` definitions are sorted based on any derived (custom) class dependency and added or accordingly.
+If conflicting there are multiple classes with the same name a merge conflict exception is thrown unless the
+content of the class is exactly the same.
+
+> [!NOTE]
+> All types are [automatically added to the TypeAccelerators list][2] to make sure they are publicly available.
+
+> [!WARNING]
+> PowerShell classes do have some known [limitation][3] and know [issues][4] that might cause problems when using
+> a module builder. For example, when dividing classes that are depended of each other over multiple files would
+> lead to "*Unable to find type [<typename>]*" in the "PROBLEMS" tab. The only solution is to put these classes
+> in the same file or neglect the specific problem.
+
+### Variables assignments
+
+The module builder will merge the variable assignments and add export them when the module is loaded.
+
+> [!TIP]
+> For variables that are dynamically assigned during module load time, consider to use the `ScriptsToProcess`
+> setting in the module manifest instead or define the variable during the concerned function or class execution.
+
+### (Private) Functions
+
+Any function that is defined in the source scripts will be added to the module file as a private function.
+Meaning the function will not be exported by the module builder and will not be available to the user
+when the module is loaded. The function will only be available to other functions in the module file.
+To export a function as a cmdlet, the function needs to be defined in a script file with the `.ps1` extension,
+see: [(public) cmdlets].
+
+### (Public) cmdlets
+
+Any (public) function that needs to be exported by the module builder is called a [cmdlets][5] in this design.
+The module builder will recognize any PowerShell script file (`.ps1`) that contains a `param` block and will treat
+it as a cmdlet. The name of the script file will be used as the cmdlet name. Any `Required` or `Using` statement
+will be merged and added to the module file.
+
+This module builder design enforces the use of advanced functions and prevents coincidentally interfering with
+other cmdlets or other items in the module framework. See also [Add `ScriptsToInclude` to the Module Manifest][4].
+
+#### Cmdlet Prototype Pester testing
+
+This concept facilitates troubleshooting and testing prototypes without (re)building a new module:
+
+    #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.5.0"}
+
+    using module MyModule
+
+    param([alias("Path")]$PrototypePath)
+
+    Describe 'Test-Object' {
+
+        BeforeAll {
+
+            if ($PrototypePath) {
+                $Content = Get-Content -Raw -LiteralPath $PrototypePath
+                $CommandName = [io.path]::GetFileNameWithoutExtension($PSCommandPath) -replace '\.Tests$'
+                Mock $CommandName ([ScriptBlock]::Create($Content))
+            }
+        }
+
+        ...
+
+Testing a prototype:
+
+    . Tests\MyCmdlet.Tests.ps1 Source\Cmdlets\MyCmdlet.ps1
+
+
+### Aliases
+
+This module builder only supports aliases for (public) cmdlets (exported functions). A cmdlet alias might be set
+using the [Alias Attribute Declaration][6], this will export the alias when the module is loaded.
+
+> [!NOTE]
+> The [Set-Alias] command statement is rejected as aliases should be avoided for private functions as they can
+> make code difficult to read, understand and impact availability (see: [AvoidUsingCmdletAliases][7]).
+
+### Format files
+
+The module builder will accept PowerShell format files (`.ps1xml`) and will merge the view definitions.
+For more details on formatting views, see: [about Types.ps1xml][8].
+
+## Rejected Statements
+
+In general, any statement that requires any invocation (dot-sourcing) is rejected by the module builder.
+This includes any native cmdlet (and is not limited to) the following specific statements:
+
+### Install-Module
+
+The [Install-Module] cmdlet is rejected along with other cmdlet commands, to specify scripts that run in the
+module's session state, use the `NestedModules` manifest setting.
+
+### Install-Module
+
+The [New-Type] cmdlet is rejected along with other cmdlet commands, to load any assembly or type definitions
+written in a different language than PowerShell, use the `RequiredAssemblies` manifest setting or the
+`ScriptsToProcess` manifest setting for any dynamic or conditional loading. Or consider to load the required
+type just-in-time while executing the depended class or cmdlet.
+
+.EXAMPLE
+# (Re)build a new module file
+
+Build a new module file from the scripts in the `.\Scripts` folder and save it to `.\MyModule.psm1`.
+
+    Build-Module -SourceFolder .\Scripts -ModulePath .\MyModule.psm1
+
+.PARAMETERS SourceFolder
+
+The source folder containing the PowerShell scripts and resources to build the module from.
+
+.PARAMETERS ModulePath
+
+The path to the module file to create.
+
+> [!WARNING]
+> The module file will be overwritten if it already exists.
+
+.PARAMETERS Depth
+
+The depth of the source folder structure to search for scripts and resources. Default is `1`.
+
+.LINK
+[1]: https://learn.microsoft.com/powershell/scripting/developer/cmdlet/cmdlet-overview "cmdlet overview"
+[2]: https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_classes#exporting-classes-with-type-accelerators "Exporting classes with type accelerators"
+[3]: https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_classes#limitations "Class limitations"
+[4]: https://github.com/PowerShell/PowerShell/issues/6652 "Various PowerShell Class Issues"
+[5]: https://github.com/PowerShell/PowerShell/issues/24253 "Add ScriptsToInclude to the Module Manifest"
+[6]: https://learn.microsoft.com/powershell/scripting/developer/cmdlet/alias-attribute-declaration "Alias Attribute Declaration"
+[7]: https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidusingcmdletaliases "Avoid using cmdlet aliases"
+[8]: https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_types.ps1xml "about Types.ps1xml"
+#>
+
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseShouldProcessForStateChangingFunctions', '', Scope = 'function', Target = '')]
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseApprovedVerbs', '', Scope = 'function', Target = '')]
 param(
     [Parameter(Mandatory = $true, ValueFromPipeline = $true)][String]$SourceFolder,
-
     [Parameter(Mandatory = $true)][String]$ModulePath,
-
-    [Int]$Depth = 1,
-
-    [Switch]$KeepExistingSettings
+    [Int]$Depth = 1
 )
 
 Begin {
+    $ErrorActionPreference = "Stop"
 
     $Script:SourcePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($SourceFolder)
 
-    function Use-Script([Alias('Name')][String]$ScriptName, [Alias('Version')][Version]$ScriptVersion) {
-        $Command = Get-Command $ScriptName -ErrorAction SilentlyContinue
-        if (
-            -not $Command -and
-            -not ($ScriptVersion -and (Get-PSScriptFileInfo $Command.Source).Version -lt $ScriptVersion) -and
-            -not (Install-Script $ScriptName -MinimumVersion $ScriptVersion -PassThru)
-        ) {
-            $MissingVersion = if ($ScriptVersion) { " version $ScriptVersion" }
-            $ErrorRecord = [ErrorRecord]::new(
-                "Missing command: '$ScriptName'$MissingVersion.",
-                'MissingScript', 'InvalidArgument', $ScriptName
-            )
-            $PSCmdlet.ThrowTerminatingError($ErrorRecord)
+    function Sort-Topological { # https://github.com/iRon7/Sort-Topological
+        [CmdletBinding()][OutputType([List[Object]])]Param(
+            [Parameter(ValueFromPipeline = $True, Mandatory = $True)]$InputObject,
+            [Parameter(Position = 0, Mandatory = $True)][Alias('DependencyName')]$EdgeName,
+            [Parameter(Position = 1)][Alias('NameId')][String]$IdName
+        )
+
+        begin {
+            function Throw-Error($ErrorRecord) { $PSCmdlet.ThrowTerminatingError($ErrorRecord) }
+
+            Function FormatId ($Vertex) {
+                if ($Vertex -is [ValueType] -or $Vertex -is [String]) { $Value = $Vertex }
+                elseif (@($_.PSObject.Properties.Name).Contains($IdName)) { $Value = $_.PSObject.Properties[$IdName].Value }
+                else { return "[$(@($List).IndexOf($Vertex))]" }
+                if ($Value -is [String]) { """$Value""" } else { $Value }
+            }
+
+            if ($EdgeName -is [ScriptBlock]) { # Prevent code injection
+                $Ast = [System.Management.Automation.Language.Parser]::ParseInput($EdgeName, [ref]$null, [ref]$null)
+                $Expression = $Ast.EndBlock.Statements.PipelineElements.Expression
+                While ($Expression -is [MemberExpressionAst] -and $Expression.Member -is [StringConstantExpressionAst]) {
+                    $Expression = $Expression.Expression
+                }
+                if ($Expression -isnot [VariableExpressionAst] -or $Expression.VariablePath.UserPath -notin '_', 'PSItem') {
+                    $Message = "The { $Expression } expression should contain safe path."
+                    Throw-Error ([ErrorRecord]::new($Message, 'InvalidIdExpression', 'InvalidArgument', $Expression))
+                }
+            }
+            elseif ($Null -ne $IdName -and $IdName -isnot [String]) { $IdName = "$IdName" }
+        }
+
+        Process {
+            $ById = $Null
+            $Sorted = [List[Object]]::new()
+            if ($Input) { $List = $Input } else { $List = $InputObject }
+            if ($List -isnot [iEnumerable]) { return $List }
+            $EdgeCount = 0
+            while ($Sorted.get_Count() -lt $List.get_Count()) {
+                $Stack = [Stack]::new()
+                $Enumerator = $List.GetEnumerator()
+                while ($Enumerator.MoveNext()) {
+                    $Vertex = $Enumerator.Current
+                    if($Sorted.Contains($Vertex)) { continue }
+                    $Edges = [List[Object]]::new()
+                    if ($EdgeName -is [ScriptBlock]) { $Edges = $Vertex.foreach($EdgeName).where{ $Null -ne $_ } }
+                    else { $Edges = $Vertex.PSObject.Properties[$EdgeName].Value }
+                    if ($Null -eq $Edges) { $Edges = @() } elseif ($Edges -isnot [iList]) { $Edges = @($Edges) }
+                    if ($Null -eq $ById -and $Edges.Count -gt 0) {
+                        if ($Edges[0] -is [ValueType] -or $Edges[0] -is [String]) {
+                            if (-not $IdName) {
+                                $Message = 'Dependencies by id require the IdName parameter.'
+                                Throw-Error ([ErrorRecord]::new($Message, 'MissingIdName', 'InvalidArgument', $Vertex))
+                            }
+                            $ById = @{}
+                            foreach ($Item in $List) { $ById[$Item.PSObject.Properties[$IdName].Value] = $Item }
+                        } else { $ById = $False }
+                    }
+                    if ($ById) {
+                        $Ids = $Edges; $Edges = [List[Object]]::new()
+                        foreach ($Id in $Ids) {
+                            if ($Null -eq $Id) { } elseif ($ById.contains($Id)) { $Edges.Add($ById[$Id]) }
+                            else {
+                                $Message = "Unknown vertex id: $(FormatId $Id)."
+                                Write-Error ([ErrorRecord]::new($Message, 'UnknownVertex', 'InvalidArgument', $Vertex))
+                            }
+
+                        }
+                    }
+                    if ($Stack.Count -gt 0 -or $Edges.Count -eq $EdgeCount) {
+                        $At = if ($Stack.Count -gt 0) { @($Stack.Current).IndexOf($Vertex) + 1 }
+                        $Stack.Push($Enumerator)
+                        if ($At -gt 0) {
+                            $Message = "Circular dependency: $((@($Stack)[0..$At].Current).foreach{ FormatId $_ } -Join ', ')."
+                            Throw-Error ([ErrorRecord]::new($Message, 'CircularDependency', 'InvalidArgument', $Vertex))
+                        }
+                        $Enumerator = $Edges.GetEnumerator()
+                    }
+                }
+                if ($Stack.Count -gt 0) {
+                    $Enumerator = $Stack.Pop()
+                    $Vertex = $Enumerator.Current
+                    if ($Vertex -is [ValueType] -or $Vertex -is [String]) { $Vertex = $ById[$Vertex] }
+                    if (-not $Sorted.Contains($Vertex)) { $Sorted.Add($Vertex) }
+                }
+                else { $EdgeCount++ }
+            }
+            $Sorted
         }
     }
-
-    Use-Script -Name Use-ClassAccessors
-    Use-Script -Name Sort-Topological -Version 0.1.2
 
     function New-LocationMessage([String]$Message, [String]$FilePath, $Target) {
         if ($Message -like '*.' -and $Message -notlike '*..') { $Message = $Message.Remove($Message.Length - 1) }
@@ -75,7 +388,7 @@ Begin {
         $Id       = if ($ErrorRecord -is [ErrorRecord]) { $ErrorRecord.FullyQualifiedErrorId } else { 'ModuleBuildError' }
         $Category = if ($ErrorRecord -is [ErrorRecord]) { $ErrorRecord.CategoryInfo.Category } else { 'ParserError' }
 
-        $Message = New-LocationMessage $ErrorRecord $FilePath $Extent
+        $Message = New-LocationMessage -Message $ErrorRecord -FilePath $FilePath -Target $Extent
         [ErrorRecord]::new($Message, $Id, $Category, $Module)
     }
 
@@ -98,11 +411,9 @@ Begin {
     class Omission: Exception { Omission([string]$Message): base ($Message) {} }
 
     class ModuleRequirements {
-        static ModuleRequirements() { Use-ClassAccessors }
-
         [Version]$Version
         [String]$PSEdition
-        [Ordered]$Modules = @{}
+        [OrderedDictionary]$Modules = [OrderedDictionary]::new([StringComparer]::InvariantCultureIgnoreCase)
         [Bool]$RunAsAdministrator
 
         hidden [String[]]get_Values() {
@@ -188,8 +499,6 @@ Begin {
     }
 
     class ModuleUsingStatements {
-        static ModuleUsingStatements() { Use-ClassAccessors }
-
         [HashSet[String]]$Namespace = [HashSet[String]]::new([StringComparer]::InvariantCultureIgnoreCase)
         [HashSet[String]]$Assembly  = [HashSet[String]]::new([StringComparer]::InvariantCultureIgnoreCase)
 
@@ -221,10 +530,9 @@ Begin {
 
     class ModuleBuilder {
         static [String]$Tab = '    ' # Used for indenting cmdlet contents
-        static ModuleBuilder() { Use-ClassAccessors } # Doesn't work with Pester (and classes in process blocks?)
 
         [string] $Path
-        [String] get_Name()   { return [Path]::GetFileNameWithoutExtension($this.Path) }
+        [String] $Name
 
         ModuleBuilder($Path) {
             $FullPath = [Path]::GetFullPath($Path)
@@ -234,15 +542,19 @@ Begin {
                 $this.Path = [Path]::Combine($FullPath, "$([Path]::GetFileName($Path)).psm1")
             }
             else { Throw "The module path '$Path' is not a folder or doesn't have a '.psm1' extension." }
+            $this.Name = [Path]::GetFileNameWithoutExtension($this.Path)
         }
 
         [String]GetRelativePath([String]$Path) {
-            $RelativePath = Resolve-Path -Path $Path -RelativeBasePath ([Path]::GetDirectoryName($this.Path)) -Relative
-            if ($RelativePath.StartsWith('.\')) { $RelativePath = $RelativePath.SubString(2) }
+            $ToPath   = $Path -split '[\\\/]'
+            $BasePath = [Path]::GetDirectoryName($this.Path) -split '[\\\/]'
+            for ($i = 0; $i -lt $BasePath.Length; $i++) { if ($ToPath[$i] -ne $BasePath[$i]) { break } }
+            $RelativePath = '..\' * ($BasePath.Length - $i)
+            $RelativePath += $ToPath[$i..($ToPath.Length - 1)] -join [IO.Path]::DirectorySeparatorChar
             return $RelativePath
         }
 
-        hidden [Ordered]$Sections = [Ordered]@{}
+        hidden [OrderedDictionary]$Sections = [OrderedDictionary]::new([StringComparer]::InvariantCultureIgnoreCase)
 
         AddRequirement([ScriptRequirements]$Requires) {
             if (-not $this.Sections['Requires']) { $this.Sections['Requires'] = [ModuleRequirements]::new() }
@@ -255,7 +567,9 @@ Begin {
             }
         }
         hidden AddStatement([String]$SectionName, [String]$StatementId, $Definition) {
-            if (-not $this.Sections[$SectionName]) { $this.Sections[$SectionName] = [Ordered]@{} }
+            if (-not $this.Sections[$SectionName]) {
+                $this.Sections[$SectionName] = [OrderedDictionary]::new([StringComparer]::InvariantCultureIgnoreCase)
+            }
             try { $this.CheckDuplicate($SectionName, $StatementId, $Definition) } catch { throw }
             $this.Sections[$SectionName][$StatementId] = $Definition
         }
@@ -287,10 +601,10 @@ Begin {
                     else { throw [Omission]"Rejected type (use manifest instead)." }
                 }
                 AssignmentStatementAst {
-                    $Name = $Statement.Left.VariablePath.UserPath
+                    $VariableName = $Statement.Left.VariablePath.UserPath
                     $Expression = $Statement.Right.Extent.Text
-                    if ($Name -eq 'Null' ) { throw [Omission]'Rejected assignment to $Null.' }
-                    try { $this.AddStatement('Variable', $Name, $Expression) } catch { throw }
+                    if ($VariableName -eq 'Null' ) { throw [Omission]'Rejected assignment to $Null.' }
+                    try { $this.AddStatement('Variable', $VariableName, $Expression) } catch { throw }
                 }
                 FunctionDefinitionAst {
                     try { $this.AddStatement('Function', $Statement.Name, $Statement) } catch { throw }
@@ -325,7 +639,9 @@ Begin {
                         if ($Token.Type -eq 'String') {
                             $this.AddStatement('Alias', $Token.Content, $Name)
                             $AliasExists = Get-Alias $Token.Content -ErrorAction SilentlyContinue
-                            if ($AliasExists) { Write-Warning "The alias '$($Token.Content)' ($($AliasExists.ResolvedCommand)) already exists." }
+                            if ($AliasExists -and  $AliasExists.Source -ne $this.Name) {
+                                 Write-Warning "The alias '$($Token.Content)' ($($AliasExists.ResolvedCommand)) already exists."
+                            }
                         }
                         elseif ($Token.Type -eq 'Operator' -and $Token.Content -eq ',') { <# continue #> }
                         elseif ($Token.Type -eq 'GroupEnd') { $AliasGroupToken = $null }
@@ -346,7 +662,9 @@ Begin {
         }
         AddFormat($SourceFile) {
             $RelativePath = $this.GetRelativePath($SourceFile)
-            if (-not $this.Sections['Format']) { $this.Sections['Format'] = [Ordered]@{} }
+            if (-not $this.Sections['Format']) {
+                $this.Sections['Format'] = [OrderedDictionary]::new([StringComparer]::InvariantCultureIgnoreCase)
+            }
             $Xml = [xml](get-Content $SourceFile)
             foreach ($Name in $Xml.Configuration.ViewDefinitions.View.Name) {
                 if ($this.Sections['Format'].Contains($Name)) { throw [Collision]"Merge conflict with format '$Name'" }
@@ -403,13 +721,13 @@ Begin {
                     if (-not $Aliases.ContainsKey($Name)) { $Aliases[$Name] = [List[String]]::new() }
                     $Aliases[$Name].Add($S.Alias[$Name])
                 }
-                $Statements = foreach ($Name in $Aliases.Keys) { "Set-Alias -Name '$($Aliases[$Name])' -Value '$Name'" }
+                $Statements = foreach ($Name in $Aliases.Keys) { "Set-Alias -Name '$Name' -Value '$($Aliases[$Name])'" }
                 $this.AppendRegion('Alias', $Statements)
             }
             if ($S.Contains('Format')) { # https://github.com/PowerShell/PowerShell/issues/17345
                 # if (-not (Get-FormatData -ErrorAction Ignore $etsTypeName)) {
                 # See: https://stackoverflow.com/a/67991167/1701026
-                $Files = [Ordered]@{}
+                $Files = [OrderedDictionary]::new([StringComparer]::InvariantCultureIgnoreCase)
                 foreach ($Name in $S.Format.get_Keys()) {
                     $FileName = $S.Format[$Name]
                     if (-not $S.Format.Contains($FileName)) { $Files[$FileName] = [List[String]]::new() }
@@ -481,15 +799,15 @@ $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
         }
     }
 
-    function Select-Statements($Statements, $SourceFile) {
+    function Select-Statement($Statements, $SourceFile) {
         if (-Not $Statements) { return }
         foreach ($Statement in $Statements) {
             try {
                 if ($Statement -is [ScriptRequirements]) { $Module.AddRequirement($Statement) }
                 else { $Module.AddStatement($Statement) }
             }
-            catch [Collision] { $PSCmdlet.ThrowTerminatingError((New-ModuleError $_ $Module $SourceFile $Statement)) }
-            catch [Omission] { New-LocationMessage $_ $SourceFile $Statement | Write-Warning }
+            catch [Collision] { $PSCmdlet.ThrowTerminatingError((New-ModuleError -ErrorRecord $_ -Module $Module -FilePath $SourceFile -Extent $Statement)) }
+            catch [Omission] { New-LocationMessage -Message $_ -FilePath $SourceFile -Target $Statement | Write-Warning }
         }
     }
 
@@ -508,10 +826,10 @@ process {
             .ps1 {
                 $Content = Get-Content -Raw $SourceFile.FullName
                 $Ast = [Parser]::ParseInput($Content, [ref]$Null, [ref]$Null)
-                Select-Statements $Ast.ScriptRequirements $RelativePath
-                Select-Statements $Ast.UsingStatements $RelativePath
+                Select-Statement $Ast.ScriptRequirements $RelativePath
+                Select-Statement $Ast.UsingStatements $RelativePath
                 if ($Ast.ParamBlock) { $Module.AddCmdlet($SourceFile.BaseName, $Content) }
-                else { Select-Statements $Ast.EndBlock.Statements $RelativePath }
+                else { Select-Statement $Ast.EndBlock.Statements $RelativePath }
             }
             .ps1xml {
                 $Module.AddFormat($SourceFile)

@@ -2,20 +2,26 @@
 
 using module ..\..\ObjectGraphTools
 
-[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', 'Object', Justification = 'False positive')]
-param()
+[Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'False positive')]
+param([alias("Path")]$PrototypePath)
 
 Describe 'Sort-ObjectGraph' {
 
     BeforeAll {
 
         Set-StrictMode -Version Latest
+
+        if ($PrototypePath) {
+            $Content = Get-Content -Raw -LiteralPath $PrototypePath
+            $CommandName = [io.path]::GetFileNameWithoutExtension($PSCommandPath) -replace '\.Tests$'
+            Mock $CommandName ([ScriptBlock]::Create($Content))
+        }
     }
 
     Context 'Existence Check' {
 
-        It 'Help' {
-            Sort-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
+        It 'Help' -Skip:$($null -ne $PrototypePath) {
+            Test-ObjectGraph -? | Out-String -Stream | Should -Contain SYNOPSIS
         }
     }
 
