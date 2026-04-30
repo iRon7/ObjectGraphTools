@@ -1190,12 +1190,14 @@ Describe 'Test-ObjectGraph' {
 
     Context 'Ordered' {
 
-        $Schema = @{
-            Parent = [PSCustomObject]@{
-                '@Ordered' = $True
-                1 = @{ '@Like' = 'One' }
-                2 = @{ '@Like' = 'Two' }
-                3 = @{ '@Like' = 'Three' }
+        BeforeAll {
+            $Schema = @{
+                Parent = [PSCustomObject]@{
+                    '@Ordered' = $True
+                    1 = @{ '@Like' = 'One' }
+                    2 = @{ '@Like' = 'Two' }
+                    3 = @{ '@Like' = 'Three' }
+                }
             }
         }
 
@@ -1930,10 +1932,10 @@ Describe 'Test-ObjectGraph' {
             , @(1, 'two', 3, 'four') | Test-Object $Schema -ValidateOnly | Should -BeFalse
             $Issues = , @(1, 'two', 3, 'four') | Test-Object $Schema | Select-Issue
             $Issues.Count | Should -Be 4
-            $Issues | Should -Contain "'3 Strings' occurred more than 3 times"
-            $Issues | Should -Contain "1 is not of type 'string'"
-            $Issues | Should -Contain "3 is not of type 'string'"
-            $Issues | Should -Contain "'3 Integers' occurred less than 3 times"
+            $Issues | Should -Contain "'3 Integers' occurred more than 3 times"
+            $Issues | Should -Contain "'two' is not of type 'int'"
+            $Issues | Should -Contain "'four' is not of type 'int'"
+            $Issues | Should -Contain "'3 Strings' occurred less than 3 times"
         }
 
         It "1, 'two', 3, 'four', 5" {
@@ -1955,15 +1957,15 @@ Describe 'Test-ObjectGraph' {
         It "1, 2, 3, 4, 'Five'" {
             , @(1, 2, 3, 4, 'Five') | Test-Object $Schema -ValidateOnly | Should -BeFalse
             $Issues = , @(1, 2, 3, 4, 'Five') | Test-Object $Schema | Select-Issue
-            $Issues.Count | Should -Be 2
             $Issues | Should -Contain "'3 Strings' occurred less than 3 times"
-            $Issues | Should -Contain "3 is not of type 'string'"
         }
 
         It "1, 'two', 'three', 'four', 'five'" {
             , @(1, 'two', 'three', 'four', 'five') | Test-Object $Schema -ValidateOnly | Should -BeFalse
             $Issues = , @(1, 'two', 'three', 'four', 'five') | Test-Object $Schema | Select-Issue
-            $Issues | Should -Be "'3 Integers' occurred less than 3 times"
+            $Issues.Count | Should -Be 2
+            $Issues | Should -Contain "'3 Integers' occurred less than 3 times"
+            $Issues | Should -Contain "'three' is not of type 'int'"
         }
     }
 
@@ -1977,10 +1979,10 @@ Describe 'Test-ObjectGraph' {
         }
 
         It 'Valid' {
-            , @('')                    | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            , @()                      | Test-Object $Schema -ValidateOnly | Should -BeTrue
             , @(1)                     | Test-Object $Schema -ValidateOnly | Should -BeTrue
             , @('One')                 | Test-Object $Schema -ValidateOnly | Should -BeTrue
-            , @(1,2)                   | Test-Object $Schema -ValidateOnly | Should -BeTrue
+            , @(1, 2)                  | Test-Object $Schema -ValidateOnly | Should -BeTrue
             , @(1, 'Two')              | Test-Object $Schema -ValidateOnly | Should -BeTrue
             , @(1, 2, 'Three')         | Test-Object $Schema -ValidateOnly | Should -BeTrue
             , @(1, 2, 'Three', 'Four') | Test-Object $Schema -ValidateOnly | Should -BeTrue

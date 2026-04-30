@@ -2,8 +2,9 @@
 
 ### Definition
 
-A schema object is a PowerShell object used by the [`Test-Object`][1] cmdlet to validate any PowerShell - or
-.Net object. The schema object has the following major features:
+A schema object is an object-graph imported from a object notation as Json (JavaScript Object Notation) which is
+used by the [`Test-Object`][1] cmdlet to validate any PowerShell - or .Net object. The schema object has the
+following major features:
 
 * Independent of the object notation (as e.g. [Json (JavaScript Object Notation)][2] or [PowerShell Data Files][3])
 * Each test node is at the same level as the input node being validated
@@ -11,8 +12,8 @@ A schema object is a PowerShell object used by the [`Test-Object`][1] cmdlet to 
 
 ## Test nodes
 
-Each recursive test node in the schema object describes the input node at the same level in the input object.
-There are two types of test nodes items:
+Each (embedded) test node in the schema object describes the accepted input node at the same level in the input
+object. There are two types of test nodes:
 1. Assert nodes
 2. Child nodes
 
@@ -47,7 +48,12 @@ to validate the **value** input node.
 
 > [!TIP]
 > Validating a **input list node** with a **test mapping node**, might come at hand when defining a list of
-> required nodes (see: the [`@RequiredNodes`](#@RequiredNodes) assert node).
+> required nodes (see: the [`@Requires`](#@Requires) assert node).
+
+> [!TIP]
+> Using a descriptive name for the test (map) node to describe an input list node might help the user to
+> understand the expected input object structure, as e.g.:
+> `'Maximal 2 Integers' = @{ '@Type' = [Int]; '@MaximumCount' = 2 }`
 
 > [!NOTE]
 > Validating a **input mapping node** with a **test list node** isn't possible as a **test list node** can't
@@ -60,33 +66,52 @@ to validate the **value** input node.
 ## Assert nodes
 
 The list of existing assert nodes is limited to:
-* `AssertPrefix`
-* `@Description`
 * `@References`
+* `@Description`
+* `@CaseSensitive`
+* `@Unique`
+* `@Ordered`
+* `@AnyName`
+* `@Requires`
+* `@Optional`
+* `@Count`
+* `@MinimumCount`
+* `@MaximumCount`
 * `@Type`
 * `@NotType`
-* `@CaseSensitive`
-* `@Required`
-* `@Unique`
+* `@Minimum`
+* `@ExclusiveMinimum`
 * `@ExclusiveMaximum`
 * `@Maximum`
-* `@ExclusiveMinimum`
-* `@Minimum`
 * `@MinimumLength`
 * `@Length`
 * `@MaximumLength`
-* `@MinimumCount`
-* `@Count`
-* `@MaximumCount`
 * `@Like`
 * `@Match`
 * `@NotLike`
 * `@NotMatch`
-* `@Ordered`
-* `@RequiredNodes`
-* `@AllowExtraNodes`
 
 * Each assert node describes or constrains the allowed opposite input object node or value as follows:
+
+### `Description`
+
+Defines the Description of the test node and has no further meaning.
+
+| Name        | @Description            |
+| ----------- | ----------------------- |
+| Description | Describes the test node |
+| Type        | `String`                |
+| Default     |                         |
+| Applies to  | Test node               |
+
+#### Schema description example:
+
+```PowerShell
+@{
+    '@Description' = 'A simple schema object'
+    TestNode = @{ '@Description' = 'A simple child test node'; '@Type' = 'String' }
+}
+```
 
 ### `AssertPrefix`
 
@@ -99,6 +124,16 @@ further defines any child nodes in the schema object branch (see [child nodes](#
 > the test node prefix for all other assert nodes. The name of this "assert node" directive might be overruled
 > by the `Test-Object -AssertPrefix` cmdlet parameter.
 
+#### Schema AssertPrefix example:
+
+```PowerShell
+@{
+    '@AssertPrefix' = '_'
+    _Description = 'A simple schema object'
+    TestNode = @{ _Description = 'A simple child test node'; _Type = 'String' }
+}
+```
+
 | Name        | AssertPrefix                              |
 | ----------- | --------------------------------------------- |
 | Description | Defines the assert prefix of each assert node |
@@ -106,16 +141,8 @@ further defines any child nodes in the schema object branch (see [child nodes](#
 | Default     | `"@"`                                         |
 | Applies to  | Assert test name                              |
 
-### `Description`
 
-Defines the Description of the test node and has no further meaning.
 
-| Name        | @Description            |
-| ----------- | ----------------------- |
-| Description | Describes the test node |
-| Type        | `String`                |
-| Default     |                         |
-| Applies to  | Test node               |
 
 ### `References`
 
@@ -152,6 +179,22 @@ This example shows a schema object with an `Id` and  `Address` reference:
 | Type        | `PSMapNode`                          |
 | Default     |                                      |
 | Applies to  | Test child node                      |
+
+### `CaseSensitive`
+
+When set, the current node and any decedent node values are considered case sensitive.
+
+> [!NOTE]
+> This only applies to the _value_ of the nodes that are validated against `@ExclusiveMaximum`, `@Maximum`,
+> `@ExclusiveMinimum`, `@Minimum`, `@Like`, `@Match`, `@NotLike` `@NotMatch` or `@Unique` values.
+> The case sensitivity of dictionary key (or property name) is determined by the comparer of the test node
+> dictionary.
+
+### `Unique`
+
+When set to `$true`, the specific node *value* should be unique to its sibling nodes.
+When the criteria of the `@Unique` assert node is a string, the value of the node is added to the pool
+(defined by the criteria) of nodes and should be unique to all the node that are already in the concerned pool.
 
 ### `Type`
 
@@ -199,15 +242,6 @@ A `$null` or an empty value might be defined as `$null`, `[null]` (`'null'`) or 
 | Default     |                                  |
 | Applies to  | Value or node                    |
 
-### `CaseSensitive`
-
-When set, the current node and any decedent node values are considered case sensitive.
-
-> [!NOTE]
-> This only applies to the value of the nodes that are validated against `@ExclusiveMaximum`, `@Maximum`,
-> `@ExclusiveMinimum`, `@Minimum`, `@Like`, `@Match`, `@NotLike` `@NotMatch` or `@Unique` values.
-> The case sensitivity of dictionary key name is determined by the comparer of the test node dictionary.
-
 #### Example:
 
 ```PowerShell
@@ -243,12 +277,6 @@ assert node, the specific required nodes are added (`and`) to the required nodes
 | Type        | `Bool`               |
 | Default     | `False` (optional)   |
 | Applies to  | Node                 |
-
-### `Unique`
-
-When set to `$true`, the specific node *value* should be unique to its sibling nodes.
-When the criteria of the `@Unique` assert node is a string, the value of the node is added to the pool
-(defined by the criteria) of nodes and should be unique to all the node that are already in the concerned pool.
 
 #### Unique collection example:
 All the server name (`'Server'`) should not reappear in either the `EnabledServers` or `DisabledServers` lists:

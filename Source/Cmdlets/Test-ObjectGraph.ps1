@@ -727,8 +727,10 @@ begin {
                 $MinimumCount[$TestIndex] = 1
                 if ($RequiredNames.Add($TestName)) { $Required.And($TestName) }
             }
-            elseif ($MinimumCount.ContainsKey($TestIndex)) {
-                $ContainsOptionalTests = $MinimumCount[$TestIndex] -eq 0
+            elseif ($Condition) { $MinimumCount[$TestIndex] = 1 }
+
+            if ($MinimumCount.ContainsKey($TestIndex)) {
+                $ContainsOptionalTests = $MinimumCount[$TestIndex] -eq 1
             }
             else { $MinimumCount[$TestIndex] = 0 }
             $TestIndex++
@@ -750,7 +752,7 @@ begin {
                     $TestName = $SubTests[$Index].Name
                     $EqualName = if ($CaseMatters) { $TestName -ceq $NodeName } else { $TestName -ieq $NodeName }
                     if (-not $EqualName) {
-                        $TestStage.Check($SchemaNode, "Node #$Index ($([PSSerialize]$SubNodes[$Index].Name)) was not $([PSSerialize]$Name)", $false)
+                        $TestStage.Check($SchemaNode, "Node #$Index ($([PSSerialize]$SubNodes[$Index].Name)) is not $([PSSerialize]$Name)", $false)
                         return
                     }
                 }
@@ -760,13 +762,15 @@ begin {
                 $SubTest = $SubTests[$Index]
                 $ChildStage = $TestStage.Create($SubNode, $false)
                 TestNode $ChildStage $SubTest
-                if (-not $ChildStage.Passed -and -not $TestStage.Report) { return }
+                if (-not $ChildStage.Passed) { $TestStage.Passed = $false }
+                # if (-not $ChildStage.Passed -and -not $TestStage.Report) { return }
             }
-            while ($Index -lt $SubNodes.Count) {
+            while ($Index -lt $SubNodes.Count) { # Test the rest of the sub nodes against the $ExtraTest
                 $SubNode = $SubNodes[$Index]
                 $ChildStage = $TestStage.Create($SubNode, $false)
                 TestNode $ChildStage $ExtraTest
-                if (-not $ChildStage.Passed -and -not $TestStage.Report) { return }
+                if (-not $ChildStage.Passed) { $TestStage.Passed = $false }
+                # if (-not $ChildStage.Passed -and -not $TestStage.Report) { return }
                 $Index++
             }
             return
@@ -827,53 +831,59 @@ begin {
             $UsedNodes = [HashSet[Int]]::new()
             $RequiredPassed = if ($Required.Terms) {
                 $Required.Evaluate({
-                    $TestIndex = $TestIndices[$_]
-                    if ($null -eq $TestIndex) { return $true } # Might happen at maxdepth
-                    $SubTest = $SubTests[$TestIndex]
-                    $Indices = $Permutation[$TestIndex]
-                    $OutsideBounds = if ($Indices.Count -lt $MinimumCount[$TestIndex]) {
-                        $Indices.Count - $MinimumCount[$TestIndex]
-                    }
-                    elseif ($MaximumCount.ContainsKey($TestIndex) -and $Indices.Count -gt $MaximumCount[$TestIndex]) {
-                       $MaximumCount[$TestIndex] - $Indices.Count
-                    }
-                    if ($OutsideBounds) {
-                        $Score -= $OutsideBounds
-                        if (-not $TestStage.Report) { return $false } # Validate only
-                        # if (-not $TestPassed.ContainsKey($TestIndex)) { return $false }
-                        foreach ($NodeIndex in $Indices) { # Add score based on what is known
-                            if (-not $Stages[$NodeIndex]) { continue }
-                            if (-not $Stages[$NodeIndex].ContainsKey($TestIndex)) { continue }
+                        $TestIndex = $TestIndices[$_]
+                        if ($null -eq $TestIndex) { return $true } # Might happen at maxdepth
+                        $SubTest = $SubTests[$TestIndex]
+                        $Indices = $Permutation[$TestIndex]
+                        $OutsideBounds = if ($Indices.Count -lt $MinimumCount[$TestIndex]) {
+                            $Indices.Count - $MinimumCount[$TestIndex]
+                        }
+                        elseif ($MaximumCount.ContainsKey($TestIndex) -and $Indices.Count -gt $MaximumCount[$TestIndex]) {
+                            $MaximumCount[$TestIndex] - $Indices.Count
+                        }
+                        if ($OutsideBounds) {
+                            $Score -= $OutsideBounds
+                            if (-not $TestStage.Report) { return $false } # Validate only
+                            # if (-not $TestPassed.ContainsKey($TestIndex)) { return $false }
+                            foreach ($NodeIndex in $Indices) {
+                                # Add score based on what is known
+                                if (-not $Stages[$NodeIndex]) { continue }
+                                if (-not $Stages[$NodeIndex].ContainsKey($TestIndex)) { continue }
+                                $Stage = $Stages[$NodeIndex][$TestIndex]
+                                if ($Stage.Passed) { $Score++ } else { $Score -= 2 + $Stage.FailCount }
+                            }
+                            return $false
+                        }
+                        if (-not $TestPassed.ContainsKey($TestIndex)) {
+                            $TestPassed[$TestIndex] = $false # $MaximumCount[$TestIndex] -eq 0
+                        }
+                        foreach ($NodeIndex in $Indices) {
+                            # A logical variable might refer to multiple child nodes
+                            if (-not $Stages[$NodeIndex]) { $Stages[$NodeIndex] = [Dictionary[int, TestStage]]::new() }
+                            if (-not $Stages[$NodeIndex].ContainsKey($TestIndex)) {
+                                $ChildNode = $SubNodes[$NodeIndex]
+                                $Stages[$NodeIndex][$TestIndex] = $TestStage.Create($ChildNode, $true)
+                                TestNode $Stages[$NodeIndex][$TestIndex] $SubTest
+                            }
                             $Stage = $Stages[$NodeIndex][$TestIndex]
-                            if ($Stage.Passed) { $Score++ } else { $Score -= 2 + $Stage.FailCount }
-                        }
-                        return $false
-                    }
-                    if (-not $TestPassed.ContainsKey($TestIndex)) { $TestPassed[$TestIndex] = $false }
-                    foreach ($NodeIndex in $Indices) {
-                        # A logical variable might refer to multiple child nodes
-                        if (-not $Stages[$NodeIndex]) { $Stages[$NodeIndex] = [Dictionary[int, TestStage]]::new() }
-                        if (-not $Stages[$NodeIndex].ContainsKey($TestIndex)) {
-                            $ChildNode = $SubNodes[$NodeIndex]
-                            $Stages[$NodeIndex][$TestIndex] = $TestStage.Create($ChildNode, $true)
-                            TestNode $Stages[$NodeIndex][$TestIndex] $SubTest
-                        }
-                        $Stage = $Stages[$NodeIndex][$TestIndex]
-                        if ($Stage.Passed) { $Score++ } else { $Score -= 2 + $Stage.FailCount; return $false } # All child nodes need to fulfill the test
-                        $null = $UsedNodes.Add($NodeIndex)
+                            if ($Stage.Passed) { $Score++ } else { $Score -= 2 + $Stage.FailCount; return $false } # All child nodes need to fulfill the test
+                            $null = $UsedNodes.Add($NodeIndex)
 
-                    }
-                    $Score += 1 + $Indices.Count
-                    $TestPassed[$TestIndex] = $true
-                    return $true
-                })
-            } else { $true }
+                        }
+                        $Score += 1 + $Indices.Count
+                        $TestPassed[$TestIndex] = $true
+                        return $true
+                    })
+            }
+            else { $true }
             $NodesLeft = $SubNodes.Count - $UsedNodes.Count
             $TestsLeft = $SubTests.Count - $TestPassed.Count
             $OptionalPassed = if (-not $RequiredPassed) { $false }
-            elseif ($NodesLeft -and $TestsLeft) { $null } # else: one or both are zero
-            elseif (-not $NodesLeft) { $true }
-            elseif (-not $ContainsOptionalTests) { $false }
+                elseif ($TestPassed.Count -eq 0) { $false }
+                elseif ($NodesLeft -and $TestsLeft) { $null } # else: one or both are zero
+                elseif (-not $NodesLeft) { $true }
+                elseif (-not $ContainsOptionalTests) { $false }
+                elseif (-not $TestsLeft) { $false }
             # $TestOptional = if ($RequiredPassed -and $NodesLeft) {
             #     if ($TestsLeft) { $ContainsOptionalTests } else { $RequiredPassed = $false }
             # }
@@ -887,7 +897,8 @@ begin {
                     if ($MaximumCount.ContainsKey($TestIndex) -and $Indices.Count -gt $MaximumCount[$TestIndex]) {
                         $Score -= $Indices.Count - $MaximumCount[$TestIndex]
                         if (-not $TestStage.Report) { break } # Validate only
-                        foreach ($NodeIndex in $Indices) { # Add score based on what is known
+                        foreach ($NodeIndex in $Indices) {
+                            # Add score based on what is known
                             if (-not $Stages[$NodeIndex]) { continue }
                             if (-not $Stages[$NodeIndex].ContainsKey($TestIndex)) { continue }
                             $Stage = $Stages[$NodeIndex][$TestIndex]
@@ -910,11 +921,12 @@ begin {
                     if ($OptionalPassed -eq $false) { break }
                     $Score += 1 + $Indices.Count
                 }
-            } else { $Score -= $NodesLeft }
+            }
+            else { $Score -= $NodesLeft }
             if ($null -eq $OptionalPassed) { $OptionalPassed = $true }
 
             if ([TestStage]::Debug) {
-                $Better = if (-not $Best -or $Score -gt $Best['Score']) { ' (best)' }
+                $Better = if (-not $Best -or $Score -gt $Best['Score']) { '(best)' }
                 $Designates = $TestStage.GetDesignates($Stages, $SubTests, $Permutation, $TestPassed)
                 $TestStage.WriteDebug($null, "$([ParameterColor]'Required')$([CheckBox]::new($RequiredPassed)):$($Required.ToString($Designates)) $([ParameterColor]""Score:$Score $Better"")")
                 if ($TestsLeft -and $NodesLeft) {
@@ -925,7 +937,8 @@ begin {
             $TestStage.Passed = $RequiredPassed -and $OptionalPassed
             # $TestStage.Passed = $RequiredPassed -and $OptionalPassed
             if ($TestStage.Passed) { break }
-            if (-not $Best -or $Score -gt $Best['Score']) { # Capture the highest score with the least amount of issues
+            if (-not $Best -or $Score -gt $Best['Score']) {
+                # Capture the highest score with the least amount of issues
                 if (-not $Best) { $Best = @{} }
                 $Best['Score'] = $Score
                 $Best['TestPassed'] = [Dictionary[Int, Bool]]::new($TestPassed)
