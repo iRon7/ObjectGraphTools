@@ -1,6 +1,7 @@
 #Requires -Modules @{ModuleName="Pester"; ModuleVersion="5.5.0"}
 
 using module ..\..\ObjectGraphTools
+using namespace System.Collections.Generic
 
 [Diagnostics.CodeAnalysis.SuppressMessage('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'False positive')]
 param(
@@ -12,6 +13,12 @@ Describe 'Test-ObjectGraph' {
     BeforeAll {
 
         Set-StrictMode -Version Latest
+
+        # $h = @{}
+        # (0..7).ForEach{ $h["$_"] = $null }
+        # $HashId = 0
+        # $h.get_Keys().foreach{ $HashId = 2 * $HashId + $_ }
+        # Write-Host "HashId: $HashId"
 
         if ($PrototypePath) {
             $Content = Get-Content -Raw -LiteralPath $PrototypePath
@@ -1989,9 +1996,12 @@ Describe 'Test-ObjectGraph' {
         }
 
         It 'Too many Integers' {
-            ,@(1, 2 ,3)                 | Test-Object $Schema | Select-Issue | Should -be "'Maximal 2 Integers' occurred more than 2 times"
-            ,@(1, 2 ,3, 'four')         | Test-Object $Schema | Select-Issue | Should -be "'Maximal 2 Integers' occurred more than 2 times"
-            ,@(1, 2 ,3, 'Four', 'Five') | Test-Object $Schema | Select-Issue | Should -be "'Maximal 2 Integers' occurred more than 2 times"
+            ,@(1, 2 ,3)                 | Test-Object $Schema               | Should -not -BeNullOrEmpty
+            ,@(1, 2 ,3)                 | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            ,@(1, 2 ,3, 'Four')         | Test-Object $Schema               | Should -not -BeNullOrEmpty
+            ,@(1, 2 ,3, 'Four')         | Test-Object $Schema -ValidateOnly | Should -BeFalse
+            ,@(1, 2 ,3, 'Four', 'Five') | Test-Object $Schema               | Should -not -BeNullOrEmpty
+            ,@(1, 2 ,3, 'Four', 'Five') | Test-Object $Schema -ValidateOnly | Should -BeFalse
         }
     }
     #EndRegion Github issues

@@ -825,6 +825,7 @@ begin {
         $Stages = [Object[]]::new($SubNodes.Count)
         $TestStage.Passed = $false
         $Best = $null
+        $TestPassed = $null
         foreach ($Permutation in [Permutation]::new($SubNodes.Count, $SubTests.Count)) {
             $Score = 0
             $TestPassed = [Dictionary[Int, Bool]]::new()
@@ -879,11 +880,13 @@ begin {
             $NodesLeft = $SubNodes.Count - $UsedNodes.Count
             $TestsLeft = $SubTests.Count - $TestPassed.Count
             $OptionalPassed = if (-not $RequiredPassed) { $false }
+                elseif ($null -eq $Condition) { $null }
                 elseif ($TestPassed.Count -eq 0) { $false }
                 elseif ($NodesLeft -and $TestsLeft) { $null } # else: one or both are zero
                 elseif (-not $NodesLeft) { $true }
                 elseif (-not $ContainsOptionalTests) { $false }
                 elseif (-not $TestsLeft) { $false }
+            # Write-Host 123 $Condition $TestPassed $NodesLeft $TestsLeft $OptionalPassed
             # $TestOptional = if ($RequiredPassed -and $NodesLeft) {
             #     if ($TestsLeft) { $ContainsOptionalTests } else { $RequiredPassed = $false }
             # }
@@ -896,7 +899,7 @@ begin {
                     $Indices = $Permutation[$TestIndex]
                     if ($MaximumCount.ContainsKey($TestIndex) -and $Indices.Count -gt $MaximumCount[$TestIndex]) {
                         $Score -= $Indices.Count - $MaximumCount[$TestIndex]
-                        if (-not $TestStage.Report) { break } # Validate only
+                        # if (-not $TestStage.Report) { break } # Validate only
                         foreach ($NodeIndex in $Indices) {
                             # Add score based on what is known
                             if (-not $Stages[$NodeIndex]) { continue }
@@ -950,6 +953,7 @@ begin {
         #     $Designates = $TestStage.GetDesignates($Stages, $SubTests, $Best['Permutation'], $Best['TestPassed'])
         #     $TestStage.WriteDebug($null, "Selected$([CheckBox]::new($RequiredPassed)):$($Required.ToString($Designates)) $ScoreFail")
         # }
+        if (-not $TestPassed) { $TestStage.Passed = -not $Required.Terms -and $SubTests.Count } # In case of no permutations
         if ($TestStage.Elaborate) {
             for ($NodeIndex = 0; $NodeIndex -lt $SubNodes.Count; $NodeIndex++) {
                 if (-not $Stages[$NodeIndex]) { continue }
@@ -983,6 +987,7 @@ begin {
                 }
             }
         }
+
         if (-not $TestStage.Passed -and $FailCount -eq $TestStage.FailCount) {
             # Presumably concerns a negative requirement
             # $Not = if ($TestStage.Passed) { ' not' }
