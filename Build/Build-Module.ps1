@@ -1,5 +1,5 @@
 <#PSScriptInfo
-.VERSION 0.1.1
+.VERSION 0.1.2
 .GUID 19631007-c6ce-4a9f-a32c-dc87fdc8c1ff
 .AUTHOR Ronald Bode (iRon)
 .DESCRIPTION Build a new module file.
@@ -531,23 +531,25 @@ Begin {
     class ModuleBuilder {
         static [String]$Tab = '    ' # Used for indenting cmdlet contents
 
-        [string] $Path
+        [string] $psd1
+        [string] $psm1
         [String] $Name
 
         ModuleBuilder($Path) {
             $FullPath = [Path]::GetFullPath($Path)
             $Extension = [Path]::GetExtension($FullPath)
-            if ($Extension -eq '.psm1') { $this.Path = $FullPath }
+            if ($Extension -eq '.psm1') { $this.psm1 = $FullPath }
             elseif ([Directory]::Exists($FullPath)) {
-                $this.Path = [Path]::Combine($FullPath, "$([Path]::GetFileName($Path)).psm1")
+                $this.psm1 = [Path]::Combine($FullPath, "$([Path]::GetFileName($Path)).psm1")
             }
             else { Throw "The module path '$Path' is not a folder or doesn't have a '.psm1' extension." }
-            $this.Name = [Path]::GetFileNameWithoutExtension($this.Path)
+            $this.psd1 = [System.IO.Path]::ChangeExtension($this.psm1, '.psd1')
+            $this.Name = [Path]::GetFileNameWithoutExtension($this.psm1)
         }
 
         [String]GetRelativePath([String]$Path) {
             $ToPath   = $Path -split '[\\\/]'
-            $BasePath = [Path]::GetDirectoryName($this.Path) -split '[\\\/]'
+            $BasePath = [Path]::GetDirectoryName($this.psm1) -split '[\\\/]'
             for ($i = 0; $i -lt $BasePath.Length; $i++) { if ($ToPath[$i] -ne $BasePath[$i]) { break } }
             $RelativePath = '..\' * ($BasePath.Length - $i)
             $RelativePath += $ToPath[$i..($ToPath.Length - 1)] -join [IO.Path]::DirectorySeparatorChar
@@ -794,8 +796,13 @@ $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
 
             if ($Statements) { $this.AppendRegion('Export', $Statements) }
 
-            Write-Verbose "Saving module content to '$($this.Path)'"
-            Set-Content -LiteralPath $this.Path -Value $this.Content -NoNewline
+            Write-Verbose "Saving module content to '$($this.psm1)'"
+            if ($this.Sections['Alias']) {
+                $Aliases = $this.Sections['Alias'].get_Keys()
+                if (Test-Path $this.psm1) { Update-ModuleManifest -Path $this.psd1 -AliasesToExport $Aliases }
+                else { New-ModuleManifest -Path $this.psd1 -AliasesToExport $Aliases }
+            }
+            Set-Content -LiteralPath $this.psm1 -Value $this.Content -NoNewline
         }
     }
 
