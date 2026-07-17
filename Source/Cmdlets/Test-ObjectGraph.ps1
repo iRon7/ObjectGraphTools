@@ -674,8 +674,8 @@ begin {
 
         $ContainsOptionalTests = $false
         $TestIndices = [Dictionary[string, int]]::new($Ordinal)
-        $MinimumCount = [Dictionary[int, int]]::new()
-        $MaximumCount = [Dictionary[int, int]]::new()
+        $MinimumCount = [Dictionary[int, double]]::new()
+        $MaximumCount = [Dictionary[int, double]]::new()
         $TestIndex = 0
         foreach ($TestName in $SubTests.get_Keys()) {
             #$TestName is the reference name, $SubTest.Name is the actual name of the test
@@ -712,10 +712,11 @@ begin {
             }
             if ($null -ne $Maximum) {
                 if ($null -ne ($Int = $Maximum -as [UInt32])) {
-                    $MaximumCount[$TestIndex] = $int
+                    $MaximumCount[$TestIndex] = $Int
                 }
                 else { SchemaError "The MaximumCount assert should be a positive integer type" $SubTest }
             }
+
             if ($MinimumCount.ContainsKey($TestIndex)) {
                 if ($MinimumCount[$TestIndex]) {
                     if ($Required) { $Required.And($TestName) }
@@ -733,6 +734,10 @@ begin {
                 $ContainsOptionalTests = $MinimumCount[$TestIndex] -eq 1
             }
             else { $MinimumCount[$TestIndex] = 0 }
+
+            if (-not $MaximumCount.ContainsKey($TestIndex)) {
+                $MaximumCount[$TestIndex] = [double]::PositiveInfinity
+            }
             $TestIndex++
         }
         if ($Condition) { $Required = $Condition }

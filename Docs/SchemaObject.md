@@ -436,38 +436,38 @@ Defines the minimum allowed (converted to) string length of the node value.
 | Default     |                                                  |
 | Applies to  | (Scalar) value                                   |
 
-### `MinimumCount`
-
-Defines the minimum allowed (converted to) string length of the node value.
-
-| Name        | @MinimumCount                        |
-| ----------- | ------------------------------------ |
-| Description | The minimum allowed collection count |
-| Type        | `Int`                                |
-| Default     |                                      |
-| Applies to  | Collection                           |
-
 ### `Count`
 
-Defines the allowed (converted to) string length of the node value.
+Defines the exact number of items (`MinimumCount` and `MaximumCount`) in a collection.
 
-| Name        | @Count                             |
-| ----------- | ---------------------------------- |
-| Description | The exact allowed collection count |
-| Type        | `Int`                              |
-| Default     |                                    |
-| Applies to  | Collection                         |
+| Name        | @Count                                      |
+| ----------- | ------------------------------------------- |
+| Description | The exact allowed collection count          |
+| Type        | `Int`                                       |
+| Default     | See `MinimumCount` and `MaximumCount`       |
+| Applies to  | Collection                                  |
+
+### `MinimumCount`
+
+Defines the minimum allowed items in a collection.
+
+| Name        | @MinimumCount                               |
+| ----------- | ------------------------------------------- |
+| Description | The minimum allowed collection count        |
+| Type        | `Int`                                       |
+| Default     | `0`                                         |
+| Applies to  | Collection                                  |
 
 ### `MaximumCount`
 
-Defines the maximum allowed (converted to) string length of the node value.
+Defines the maximum allowed items in a collection.
 
-| Name        | @MaximumCount                        |
-| ----------- | ------------------------------------ |
-| Description | The maximum allowed collection count |
-| Type        | `Int`                                |
-| Default     |                                      |
-| Applies to  | Collection                           |
+| Name        | @MaximumCount                                      |
+| ----------- | -------------------------------------------------- |
+| Description | The maximum allowed collection count               |
+| Type        | `Int`                                              |
+| Default     | `Infinite`                                         |
+| Applies to  | Collection                                         |
 
 ### `Like`
 

@@ -90,5 +90,11 @@ Describe 'ConvertFrom-Expression' {
             '@{ Culture = $PSCulture }'   | ConvertFrom-Expression | ConvertTo-Expression | Should -be "@{ Culture = '$PSCulture' }"
             '@{ Culture = $PSUICulture }' | ConvertFrom-Expression | ConvertTo-Expression | Should -be "@{ Culture = '$PSUICulture' }"
         }
+
+        It "#144 ConvertFrom-Expression -ListAs System.Collections.Generic.List[Object] doesn't work as expected" {
+            $Expression = "@{ a = @('b', 'c') }"
+            $Object = $Expression | ConvertFrom-Expression -ListAs System.Collections.Generic.List[Object]
+            ,$Object.a | Should -BeOfType [System.Collections.Generic.List[System.Object]]
+        }
     }
 }

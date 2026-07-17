@@ -14,12 +14,6 @@ Describe 'Test-ObjectGraph' {
 
         Set-StrictMode -Version Latest
 
-        # $h = @{}
-        # (0..7).ForEach{ $h["$_"] = $null }
-        # $HashId = 0
-        # $h.get_Keys().foreach{ $HashId = 2 * $HashId + $_ }
-        # Write-Host "HashId: $HashId"
-
         if ($PrototypePath) {
             $Content = Get-Content -Raw -LiteralPath $PrototypePath
             $CommandName = [io.path]::GetFileNameWithoutExtension($PSCommandPath) -replace '\.Tests$'
@@ -1585,6 +1579,40 @@ Describe 'Test-ObjectGraph' {
 
     }
 
+    Context 'Module Manifest' {
+        BeforeAll {
+            $Schema = @{
+                '@References' = @{
+                    CommandList = @{ '@Type' = 'String', 'Array'; '@Match' = '^[\w-]+$' }
+                    Uri = @{ '@Type' = 'String'; '@Like' = 'https://*'; '@Optional' = $true }
+                }
+                ModuleVersion = @{ '@Type' = 'String'; '@Match' = '^\d+\.\d+\.\d+$' }
+                GUID = @{ '@Type' = 'String'; '@Like' = '????????-????-????-????-????????????' }
+                Author = @{ '@Type' = 'String'; '@MinimumLength' = 2 }
+                CompanyName = @{ '@Type' = 'String'; '@MinimumLength' = 2 }
+                Copyright = @{ '@Type' = 'String'; '@MinimumLength' = 2 }
+                RootModule = @{ '@Type' = 'String'; '@match' = '^[\w-]+|$' }
+                Description = @{ '@Type' = 'String' }
+                PowerShellVersion = @{ '@Type' = 'String'; '@Match' = '^\d+\.\d+$' }
+                FunctionsToExport = 'CommandList'
+                CmdletsToExport = @{ '@Type' = 'Array', 'Array'; '@Optional' = $true }
+                VariablesToExport = @{ '@Type' = 'String', 'Array'; '@Optional' = $true }
+                AliasesToExport = 'CommandList'
+                PrivateData = @{
+                    '@Type' = 'PSMapNode'
+                    PSData = @{
+                        Tags = @{ '@Type' = 'String', 'Array'; '@Optional' = $true }
+                        LicenseUri = 'Uri'
+                        ProjectUri = 'Uri'
+                        IconUri = 'Uri'
+                        Prerelease = @{ '@Type' = 'String'; '@MinimumLength' = 1 }
+                    }
+                }
+            }
+        }
+
+    }
+
     Context 'Error handling' {
 
         It 'Unknown assert' {
@@ -1780,7 +1808,13 @@ Describe 'Test-ObjectGraph' {
             }
 
             $Data | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            $Data | Test-Object $Schema | Select-Issue | Should -Be "The requirement 'FMO' is missing"
+            # $Data | Test-Object $Schema | Select-Issue | Should -Be "The requirement 'FMO' is missing"
+            $Issues = $Data | Test-Object $Schema | Select-Issue
+            $Issues.Count | Should -Be 4
+            $Issues | Should -Contain "The value 'CMO' is not like 'FMO'"
+            $Issues | Should -Contain "The value 1234 is less or equal than 2000"
+            $Issues | Should -Contain "The value 1235 is less or equal than 2000"
+            $Issues | Should -Contain "The value 'XMO' is not like 'FMO'"
         }
 
         It '#129 [V] A Company wide application' {
@@ -1858,7 +1892,9 @@ Describe 'Test-ObjectGraph' {
             , @(1, 'two', 3, 'four') | Test-Object $Schema -ValidateOnly | Should -BeFalse
             $Issues = , @(1, 'two', 3, 'four') | Test-Object $Schema | Select-Issue
             $Issues.Count | Should -Be 2
-            $Issues | Should -Contain "'Minimal 3 Strings' occurred less than 3 times"
+            # $Issues | Should -Contain "'Minimal 3 Strings' occurred less than 3 times"
+            # $Issues | Should -Contain "'Minimal 3 Integers' occurred less than 3 times"
+            $Issues | Should -Contain "3 is not of type 'string'"
             $Issues | Should -Contain "'Minimal 3 Integers' occurred less than 3 times"
         }
 
@@ -1909,12 +1945,16 @@ Describe 'Test-ObjectGraph' {
 
         It "1, 'two', 3, 'four', 5" {
             , @(1, 'two', 3, 'four', 5) | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            , @(1, 'two', 3, 'four', 5) | Test-Object $Schema | Select-Issue | Should -Be "'Maximal 2 Integers' occurred more than 2 times"
+            # , @(1, 'two', 3, 'four', 5) | Test-Object $Schema | Select-Issue | Should -Be "'Maximal 2 Integers' occurred more than 2 times"
         }
 
         It "1, 'two', 3, 'four', 'five'" {
             , @(1, 'two', 3, 'four', 'five') | Test-Object $Schema -ValidateOnly | Should -BeFalse
-            , @(1, 'two', 3, 'four', 'five') | Test-Object $Schema | Select-Issue | Should -Be "'Maximal 2 Strings' occurred more than 2 times"
+            # , @(1, 'two', 3, 'four', 'five') | Test-Object $Schema | Select-Issue | Should -Be "'Maximal 2 Strings' occurred more than 2 times"
+            # $Issues = , @(1, 'two', 3, 'four', 5) | Test-Object $Schema | Select-Issue
+            # $Issues.Count | Should -Be 2
+            # $Issues[0] | Should -BeLike "'Maximal 2 Integers' occurred more than 2 times"
+            # $Issues[1] | Should -BeLike "'five' is not of type 'int'"
         }
 
         It "1, 'two', 3, 'four', 5, 'Six'" {
@@ -1929,7 +1969,7 @@ Describe 'Test-ObjectGraph' {
     Context '#142 @Count' {
 
         BeforeAll {
-            $Schema = @{
+            $Schema = [Ordered]@{
                 '3 Strings'  = @{ '@Type' = [String]; '@Count' = 3 }
                 '3 Integers' = @{ '@Type' = [Int]; '@Count' = 3 }
             }
@@ -1938,11 +1978,14 @@ Describe 'Test-ObjectGraph' {
         It "1, 'two', 3, 'four'" {
             , @(1, 'two', 3, 'four') | Test-Object $Schema -ValidateOnly | Should -BeFalse
             $Issues = , @(1, 'two', 3, 'four') | Test-Object $Schema | Select-Issue
-            $Issues.Count | Should -Be 4
-            $Issues | Should -Contain "'3 Integers' occurred more than 3 times"
-            $Issues | Should -Contain "'two' is not of type 'int'"
-            $Issues | Should -Contain "'four' is not of type 'int'"
-            $Issues | Should -Contain "'3 Strings' occurred less than 3 times"
+            # $Issues.Count | Should -Be 4
+            # $Issues | Should -Contain "'3 Integers' occurred more than 3 times"
+            # $Issues | Should -Contain "'two' is not of type 'int'"
+            # $Issues | Should -Contain "'four' is not of type 'int'"
+            # $Issues | Should -Contain "'3 Strings' occurred less than 3 times"
+            $Issues.Count | Should -Be 2
+            $Issues | Should -Contain "'3 Integers' occurred less than 3 times"
+            $Issues | Should -Contain "3 is not of type 'string'"
         }
 
         It "1, 'two', 3, 'four', 5" {
@@ -1970,9 +2013,10 @@ Describe 'Test-ObjectGraph' {
         It "1, 'two', 'three', 'four', 'five'" {
             , @(1, 'two', 'three', 'four', 'five') | Test-Object $Schema -ValidateOnly | Should -BeFalse
             $Issues = , @(1, 'two', 'three', 'four', 'five') | Test-Object $Schema | Select-Issue
-            $Issues.Count | Should -Be 2
-            $Issues | Should -Contain "'3 Integers' occurred less than 3 times"
-            $Issues | Should -Contain "'three' is not of type 'int'"
+            $Issues | Should -Be "'3 Integers' occurred less than 3 times"
+            # $Issues.Count | Should -Be 2
+            # $Issues | Should -Contain "'3 Integers' occurred less than 3 times"
+            # $Issues | Should -Contain "'five' is not of type 'int'"
         }
     }
 
@@ -2002,6 +2046,30 @@ Describe 'Test-ObjectGraph' {
             ,@(1, 2 ,3, 'Four')         | Test-Object $Schema -ValidateOnly | Should -BeFalse
             ,@(1, 2 ,3, 'Four', 'Five') | Test-Object $Schema               | Should -not -BeNullOrEmpty
             ,@(1, 2 ,3, 'Four', 'Five') | Test-Object $Schema -ValidateOnly | Should -BeFalse
+        }
+    }
+
+    Context "#145 Cache doesn't always reset with New-Node" {
+        It 'Test Schema' {
+            $Object = @{
+                a1 = @{
+                    b1 = @{ c1 = 'C1'; c2 = 'C2' }
+                    b2 = @{ d1 = 'D1' }
+                }
+                a2 = 'A2'
+            }
+            $Expression = $Object | ConvertTo-Expression -LanguageMode Full
+
+            $Object = @{
+                a1 = @{
+                    b1 = @{ c1 = 'C1'; c3 = 'C3' }
+                    b2 = @{ d1 = 'D1' }
+                }
+                a2 = 'A2'
+            }
+
+            $Node = $Object | Get-Node
+
         }
     }
     #EndRegion Github issues

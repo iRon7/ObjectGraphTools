@@ -203,7 +203,7 @@ The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 
 begin {
     $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
-        [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
+        [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth
     } elseif ($Recurse) { -1 } else { 1 }
 }
 

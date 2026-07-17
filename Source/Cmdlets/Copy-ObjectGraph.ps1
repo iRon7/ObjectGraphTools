@@ -32,7 +32,7 @@ This parameter also accepts the [`PSCustomObject`][1] types
 By default (if the [-DictionaryAs] parameters is omitted),
 [`Component`][2] objects will be converted to a [`PSCustomObject`][1] type.
 
-.PARAMETER ExcludeLeafs
+.PARAMETER ReferenceLeaves
 If supplied, only the structure (lists, dictionaries, [`PSCustomObject`][1] types and [`Component`][2] types will be copied.
 If omitted, each leaf will be shallow copied
 
@@ -51,7 +51,7 @@ If omitted, each leaf will be shallow copied
 
     [ValidateNotNull()][Alias('DictionaryAs')]$MapAs,
 
-    [Switch]$ExcludeLeafs,
+    [Switch]$ReferenceLeaves,
 
     [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
 )
@@ -88,10 +88,10 @@ begin {
         [PSNode]$Node,
         [Type]$ListType,
         [Type]$MapType,
-        [Switch]$ExcludeLeafs
+        [Switch]$ReferenceLeaves
     ) {
         if ($Node -is [PSLeafNode]) {
-            if ($ExcludeLeafs -or $Null -eq $Node.Value) { return $Node.Value }
+            if ($ReferenceLeaves -or $Null -eq $Node.Value) { return $Node.Value }
             else { $Node.Value.PSObject.Copy() }
         }
         elseif ($Node -is [PSListNode]) {
@@ -113,5 +113,5 @@ begin {
 }
 process {
     $PSNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
-    CopyObject $PSNode -ListType $ListType -MapType $MapType -ExcludeLeafs:$ExcludeLeafs
+    CopyObject $PSNode -ListType $ListType -MapType $MapType -ReferenceLeaves:$ReferenceLeaves
 }

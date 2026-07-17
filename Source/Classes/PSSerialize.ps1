@@ -262,7 +262,11 @@ Class PSSerialize {
         }
         else { # if ($Node -is [PSMapNode]) {
             $ChildNodes = $Node.get_ChildNodes()
-            if ($ChildNodes) {
+            if ($ChildNodes.Count -eq 1 -and $Node._Value -is [Attribute]) {
+                if ($TypeInitializer) { $this.StringBuilder.Append('::new()') }
+                else { $this.StringBuilder.Append('@{}') }
+            }
+            elseif ($ChildNodes) {
                 $this.StringBuilder.Append('@{')
                 if ($this.LanguageMode -eq 'NoLanguage') {
                     if ($ChildNodes.Count -gt 0) {

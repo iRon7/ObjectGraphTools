@@ -210,7 +210,9 @@ Describe 'Get-ChildNode' {
 
         It "#133 Get-ChildNode Name -Recurse -AtDepth doesn't work as expected" {
             $Object = @{ Name = @{ Name = @{ Name = @{ Name = @{ Name = 1 } } } } }
-            $Object | Get-ChildNode Name -AtDepth 3 | Should -not -BeNullOrEmpty
+            $Object | Get-ChildNode Name -AtDepth 3    | Should -HaveCount 1
+            $Object | Get-ChildNode Name -AtDepth 3, 4 | Should -HaveCount 2
+            $Object | Get-ChildNode Name -AtDepth 9    | Should -BeNullOrEmpty
         }
     }
 }

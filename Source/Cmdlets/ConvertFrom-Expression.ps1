@@ -63,8 +63,8 @@ begin {
 
     if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
 
-    $ListNode = if ($ListAs) { [PSNode]::ParseInput([PSInstance]::Create($ListAs)) }
-    $MapNode  = if ($MapAs)  { [PSNode]::ParseInput([PSInstance]::Create($MapAs)) }
+    $ListNode = if ($PSBoundParameters.ContainsKey('ListAs')) { [PSNode]::ParseInput([PSInstance]::Create($ListAs)) }
+    $MapNode  = if ($PSBoundParameters.ContainsKey('MapAs'))  { [PSNode]::ParseInput([PSInstance]::Create($MapAs)) }
 
     if (
         $ListNode -is [PSMapNode] -and $MapNode -is [PSListNode] -or
@@ -75,7 +75,7 @@ begin {
     }
 
     $ListType = if ($ListNode) {
-        if ($ListType -is [PSListNode]) { $ListNode.ValueType }
+        if ($ListNode -is [PSListNode]) { $ListNode.ValueType }
         else { StopError 'The -ListAs parameter requires a string, type or an object example that supports a list structure' }
     }
 

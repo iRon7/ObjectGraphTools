@@ -973,7 +973,10 @@ Class PSDictionaryNode : PSMapNode {
     }
 
     hidden [Object]get_CaseMatters() { #Returns Nullable[Boolean]
-        if (-not $this.Cache.ContainsKey('CaseMatters')) {
+        if (
+            -not $this.Cache.ContainsKey('CaseMatters') -or
+            (-not $this.Cache.ContainsKey('ChildNodes') -and $null -eq $this.Cache['CaseMatters']) # Apparently the ChildNode cache has been flushed
+        ) {
             $this.Cache['CaseMatters'] = $null # else $Null means that there is no key with alphabetic characters in the dictionary
             foreach ($Key in $this._Value.Get_Keys()) {
                 if ($Key -is [String] -and $Key -match '[a-z]') {
@@ -1035,24 +1038,6 @@ Class PSDictionaryNode : PSMapNode {
             # appear in the cache but shouldn't effect the results other than slightly slow down the performance.
             # In other words, do not use the cache to count the entries. Custom comparers are not supported.
             $this.Cache['ChildNode'] = if ($this.get_CaseMatters()) { [HashTable]::new() } else { @{} } # default is case insensitive
-        }
-        elseif (
-            -not $this.Cache.ChildNode.ContainsKey($Key) -or
-            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Key]._Value, $this._Value[$Key])
-        ) {
-            if($null -eq $this.get_CaseMatters()) { # If the case was undetermined, check the new key for case sensitivity
-                $this.Cache.CaseMatters = if ($Key -is [String] -and $Key -match '[a-z]') {
-                    $Case = if ([Int][Char]($Matches[0]) -ge 97) { $Key.ToUpper() } else { $Key.ToLower() }
-                    -not $this._Value.Contains($Case) -or $Case -cin $this._Value.Get_Keys()
-                }
-                if ($this.get_CaseMatters()) {
-                    $ChildNode = $this.Cache['ChildNode']
-                    $this.Cache['ChildNode'] = [HashTable]::new() # Create a new cache as it appears to be case sensitive
-                    foreach ($Name in $ChildNode.get_Keys()) { # Migrate the content
-                        $this.Cache.ChildNode[$Name] = $ChildNode[$Name]
-                    }
-                }
-            }
         }
         if (
             -not $this.Cache.ChildNode.ContainsKey($Key) -or
@@ -1943,7 +1928,11 @@ Class PSSerialize {
         }
         else { # if ($Node -is [PSMapNode]) {
             $ChildNodes = $Node.get_ChildNodes()
-            if ($ChildNodes) {
+            if ($ChildNodes.Count -eq 1 -and $Node._Value -is [Attribute]) {
+                if ($TypeInitializer) { $this.StringBuilder.Append('::new()') }
+                else { $this.StringBuilder.Append('@{}') }
+            }
+            elseif ($ChildNodes) {
                 $this.StringBuilder.Append('@{')
                 if ($this.LanguageMode -eq 'NoLanguage') {
                     if ($ChildNodes.Count -gt 0) {
@@ -2698,8 +2687,8 @@ begin {
 
     if ($this.LanguageMode -eq 'NoLanguage') { Throw 'The language mode "NoLanguage" is not supported.' }
 
-    $ListNode = if ($ListAs) { [PSNode]::ParseInput([PSInstance]::Create($ListAs)) }
-    $MapNode  = if ($MapAs)  { [PSNode]::ParseInput([PSInstance]::Create($MapAs)) }
+    $ListNode = if ($PSBoundParameters.ContainsKey('ListAs')) { [PSNode]::ParseInput([PSInstance]::Create($ListAs)) }
+    $MapNode  = if ($PSBoundParameters.ContainsKey('MapAs'))  { [PSNode]::ParseInput([PSInstance]::Create($MapAs)) }
 
     if (
         $ListNode -is [PSMapNode] -and $MapNode -is [PSListNode] -or
@@ -2710,7 +2699,7 @@ begin {
     }
 
     $ListType = if ($ListNode) {
-        if ($ListType -is [PSListNode]) { $ListNode.ValueType }
+        if ($ListNode -is [PSListNode]) { $ListNode.ValueType }
         else { StopError 'The -ListAs parameter requires a string, type or an object example that supports a list structure' }
     }
 
@@ -2926,7 +2915,7 @@ This parameter also accepts the [`PSCustomObject`][1] types
 By default (if the [-DictionaryAs] parameters is omitted),
 [`Component`][2] objects will be converted to a [`PSCustomObject`][1] type.
 
-.PARAMETER ExcludeLeafs
+.PARAMETER ReferenceLeaves
 If supplied, only the structure (lists, dictionaries, [`PSCustomObject`][1] types and [`Component`][2] types will be copied.
 If omitted, each leaf will be shallow copied
 
@@ -2945,7 +2934,7 @@ If omitted, each leaf will be shallow copied
 
     [ValidateNotNull()][Alias('DictionaryAs')]$MapAs,
 
-    [Switch]$ExcludeLeafs,
+    [Switch]$ReferenceLeaves,
 
     [Alias('Depth')][int]$MaxDepth = [PSNode]::DefaultMaxDepth
 )
@@ -2982,10 +2971,10 @@ begin {
         [PSNode]$Node,
         [Type]$ListType,
         [Type]$MapType,
-        [Switch]$ExcludeLeafs
+        [Switch]$ReferenceLeaves
     ) {
         if ($Node -is [PSLeafNode]) {
-            if ($ExcludeLeafs -or $Null -eq $Node.Value) { return $Node.Value }
+            if ($ReferenceLeaves -or $Null -eq $Node.Value) { return $Node.Value }
             else { $Node.Value.PSObject.Copy() }
         }
         elseif ($Node -is [PSListNode]) {
@@ -3007,7 +2996,7 @@ begin {
 }
 process {
     $PSNode = [PSNode]::ParseInput($InputObject, $MaxDepth)
-    CopyObject $PSNode -ListType $ListType -MapType $MapType -ExcludeLeafs:$ExcludeLeafs
+    CopyObject $PSNode -ListType $ListType -MapType $MapType -ReferenceLeaves:$ReferenceLeaves
 }
 }
 function Export-ObjectGraph {
@@ -3374,7 +3363,7 @@ The default `MaxDepth` is defined by `[PSNode]::DefaultMaxDepth = 10`.
 
 begin {
     $SearchDepth = if ($PSBoundParameters.ContainsKey('AtDepth')) {
-        [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth - 1
+        [System.Linq.Enumerable]::Max($AtDepth) - $Node.Depth
     } elseif ($Recurse) { -1 } else { 1 }
 }
 
@@ -4568,8 +4557,8 @@ begin {
 
         $ContainsOptionalTests = $false
         $TestIndices = [Dictionary[string, int]]::new($Ordinal)
-        $MinimumCount = [Dictionary[int, int]]::new()
-        $MaximumCount = [Dictionary[int, int]]::new()
+        $MinimumCount = [Dictionary[int, double]]::new()
+        $MaximumCount = [Dictionary[int, double]]::new()
         $TestIndex = 0
         foreach ($TestName in $SubTests.get_Keys()) {
             #$TestName is the reference name, $SubTest.Name is the actual name of the test
@@ -4606,10 +4595,11 @@ begin {
             }
             if ($null -ne $Maximum) {
                 if ($null -ne ($Int = $Maximum -as [UInt32])) {
-                    $MaximumCount[$TestIndex] = $int
+                    $MaximumCount[$TestIndex] = $Int
                 }
                 else { SchemaError "The MaximumCount assert should be a positive integer type" $SubTest }
             }
+
             if ($MinimumCount.ContainsKey($TestIndex)) {
                 if ($MinimumCount[$TestIndex]) {
                     if ($Required) { $Required.And($TestName) }
@@ -4627,6 +4617,10 @@ begin {
                 $ContainsOptionalTests = $MinimumCount[$TestIndex] -eq 1
             }
             else { $MinimumCount[$TestIndex] = 0 }
+
+            if (-not $MaximumCount.ContainsKey($TestIndex)) {
+                $MaximumCount[$TestIndex] = [double]::PositiveInfinity
+            }
             $TestIndex++
         }
         if ($Condition) { $Required = $Condition }
@@ -4956,11 +4950,6 @@ if (-not (Get-FormatData 'XdnPath' -ErrorAction Ignore)) {
 
 #Region Export
 
-$ModuleMembers = @{
-    Alias = 'cfe', 'cto', 'Copy-Object', 'cpo', 'Export-Object', 'epo', 'gcn', 'gn', 'Sort-ObjectGraph', 'sro', 'Import-Object', 'imo', 'Merge-Object', 'mgo', 'Test-Object', 'tso'
-    Function = 'Compare-ObjectGraph', 'ConvertFrom-Expression', 'ConvertTo-Expression', 'Copy-ObjectGraph', 'Export-ObjectGraph', 'Get-ChildNode', 'Get-Node', 'Get-SortObjectGraph', 'Import-ObjectGraph', 'Merge-ObjectGraph', 'Test-ObjectGraph'
-}
-Export-ModuleMember @ModuleMembers
 # https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_classes#exporting-classes-with-type-accelerators
 # Define the types to export with type accelerators.
 $ExportableTypes = @(
@@ -5015,18 +5004,20 @@ $ExportableTypes = @(
     [XdnPath]
 )
 
-$TypeAcceleratorsClass = [PSObject].Assembly.GetType('System.Management.Automation.TypeAccelerators')
+                            $TypeAcceleratorsClass = [PSObject].Assembly.GetType(
+                                'System.Management.Automation.TypeAccelerators'
+                            )
 
-foreach ($Type in $ExportableTypes) {
-    if ($Type.FullName -notin $ExistingTypeAccelerators.Keys) {
-        $TypeAcceleratorsClass::Add($Type.FullName, $Type)
-    }
-}
+                            foreach ($Type in $ExportableTypes) {
+                                if ($Type.FullName -notin $ExistingTypeAccelerators.Keys) {
+                                    $TypeAcceleratorsClass::Add($Type.FullName, $Type)
+                                }
+                            }
 
-$MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
-    foreach($Type in $ExportableTypes) {
-        $TypeAcceleratorsClass::Remove($Type.FullName)
-    }
-}.GetNewClosure()
+                            $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
+                                foreach ($Type in $ExportableTypes) {
+                                    $TypeAcceleratorsClass::Remove($Type.FullName)
+                                }
+                            }.GetNewClosure() 
 
 #EndRegion Export

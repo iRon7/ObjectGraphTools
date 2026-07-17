@@ -629,7 +629,10 @@ Class PSDictionaryNode : PSMapNode {
     }
 
     hidden [Object]get_CaseMatters() { #Returns Nullable[Boolean]
-        if (-not $this.Cache.ContainsKey('CaseMatters')) {
+        if (
+            -not $this.Cache.ContainsKey('CaseMatters') -or
+            (-not $this.Cache.ContainsKey('ChildNodes') -and $null -eq $this.Cache['CaseMatters']) # Apparently the ChildNode cache has been flushed
+        ) {
             $this.Cache['CaseMatters'] = $null # else $Null means that there is no key with alphabetic characters in the dictionary
             foreach ($Key in $this._Value.Get_Keys()) {
                 if ($Key -is [String] -and $Key -match '[a-z]') {
@@ -691,24 +694,6 @@ Class PSDictionaryNode : PSMapNode {
             # appear in the cache but shouldn't effect the results other than slightly slow down the performance.
             # In other words, do not use the cache to count the entries. Custom comparers are not supported.
             $this.Cache['ChildNode'] = if ($this.get_CaseMatters()) { [HashTable]::new() } else { @{} } # default is case insensitive
-        }
-        elseif (
-            -not $this.Cache.ChildNode.ContainsKey($Key) -or
-            -not [Object]::ReferenceEquals($this.Cache.ChildNode[$Key]._Value, $this._Value[$Key])
-        ) {
-            if($null -eq $this.get_CaseMatters()) { # If the case was undetermined, check the new key for case sensitivity
-                $this.Cache.CaseMatters = if ($Key -is [String] -and $Key -match '[a-z]') {
-                    $Case = if ([Int][Char]($Matches[0]) -ge 97) { $Key.ToUpper() } else { $Key.ToLower() }
-                    -not $this._Value.Contains($Case) -or $Case -cin $this._Value.Get_Keys()
-                }
-                if ($this.get_CaseMatters()) {
-                    $ChildNode = $this.Cache['ChildNode']
-                    $this.Cache['ChildNode'] = [HashTable]::new() # Create a new cache as it appears to be case sensitive
-                    foreach ($Name in $ChildNode.get_Keys()) { # Migrate the content
-                        $this.Cache.ChildNode[$Name] = $ChildNode[$Name]
-                    }
-                }
-            }
         }
         if (
             -not $this.Cache.ChildNode.ContainsKey($Key) -or
